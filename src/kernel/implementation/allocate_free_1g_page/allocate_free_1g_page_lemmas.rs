@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use vstd::{assert_seqs_equal, assert_seqs_equal_internal};
 
 verus! {
 /// The first `n` CPU caches of the 1G allocator `allc_ptr` hold no page, so their length fold is zero: 1G pages never enter a CPU cache.
@@ -16,7 +18,7 @@ pub(crate) proof fn allocator_1g_cpu_caches_empty_implies_cache_len_fold_zero(k:
     if n > 0 {
         allocator_1g_cpu_caches_empty_implies_cache_len_fold_zero(k, allc_ptr, n - 1);
         allocator_perms_wf_map(k.allc_1g_mp); allocator_perms_wf_at(k.allc_1g_mp, allc_ptr);
-        assert(caches.view().take(n).drop_last() =~= caches.view().take(n - 1));
+        assert_seqs_equal!(caches.view().take(n).drop_last(), caches.view().take(n - 1));
         caches.view_index_eq_element_value();
         caches.spec_index((n - 1) as usize).view().view().linked_list.wf_implies_view_len_eq_len();
         allocator_1g_cpu_caches_empty_wf_at(k.allc_1g_mp, allc_ptr, (n - 1) as usize);
@@ -40,7 +42,7 @@ pub(crate) proof fn thread_effective_quota_1g_positive_implies_global_pool_1g_no
     allocator_1g_cpu_caches_empty_implies_cache_len_fold_zero(k, alloc_ptr_1g, NUM_CPUS as int);
     assert(k.allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.view().len() > 0) by {
         allocator_perms_wf_map(k.allc_1g_mp); allocator_perms_wf_at(k.allc_1g_mp, alloc_ptr_1g);
-        assert(k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view().take(NUM_CPUS as int) =~= k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view());
+        assert_seqs_equal!(k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view().take(NUM_CPUS as int), k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view());
         reveal(container_thread_wf); reveal(container_process_allocator_quota_1g_wf); reveal(thread_perms_wf);
         process_effective_quota_1g_nonneg_implies_fold_nonneg(owned_processes, k.prc_mp);
         thread_effective_quota_1g_nonneg_implies_fold_ge_member(owned_threads, k.thrd_mp, thrd_ptr);
@@ -85,7 +87,8 @@ pub proof fn kernel_inv_implies_container_allocator_1g_quota_bounded(krnl: &Kern
         krnl.ctn_mp.dom().contains(owner),
     ensures
         krnl.allc_1g_mp.dom().contains(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g),
-        krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g).quota.view().value <= krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g).total_free_pages.view(),
+        krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g).quota.view().value
+            <= krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g).total_free_pages.view(),
         krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g).total_free_pages.view() < usize::MAX,
         krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g).total_free_pages.view() <= NUM_PAGES * 4096 + NUM_CPUS * ALLOCATOR_MAX_WATERMARK,
 {

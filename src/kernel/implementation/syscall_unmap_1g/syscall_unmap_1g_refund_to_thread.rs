@@ -5,7 +5,7 @@ use veriflat_map_4k::map_4k::unmap_4k_spec::THREAD_QUOTA_1G_REFUND_CAP;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::map_4k::unmap_4k_spec::THREAD_QUOTA_1G_REFUND_CAP;
 #[cfg(verus_keep_ghost)]
-use super::refund_unmap_1g_quota_to_thread_eof::{refund_unmap_1g_quota_to_thread_eof, refund_unmap_1g_quota_to_thread_eof_transition_framing};
+use super::syscall_unmap_1g_refund_to_thread_eof::{refund_unmap_1g_quota_to_thread_eof, refund_unmap_1g_quota_to_thread_eof_transition_framing};
 
 verus! {
 /// When the direct pending 1G quota `direct` of the write-held thread `thrd_ptr` is non-zero and the thread's 1G quota stays at

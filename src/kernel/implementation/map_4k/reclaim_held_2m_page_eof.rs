@@ -338,7 +338,8 @@ pub(super) open spec fn remove_last_held_2m_mapping_to_allocator_eof_transition_
     &&& new_counter == old_counter + 1
     &&& new_thread.view().free_quota_pending_2m_at_depth(depth) == new_counter
     &&& new_thread.view().direct_free_quota_pending_2m.view() == old_thread.view().direct_free_quota_pending_2m.view() + if depth == old_thread.view().container_depth { 1int } else { 0int }
-    &&& new_thread.view().indirect_free_quota_pending_2m.view() == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_2m.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_2m.view() }
+    &&& new_thread.view().indirect_free_quota_pending_2m.view()
+        == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_2m.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_2m.view() }
     &&& forall|t: RwLockThreadPtr|
         #![trigger pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_4k]
         #![trigger post.thrd_mp.spec_index(t).view().direct_free_quota_pending_4k]

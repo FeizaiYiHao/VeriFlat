@@ -43,7 +43,8 @@ pub fn remove_last_held_1g_mapping_to_allocator(
         old(krnl).ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
         old(krnl).ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
         depth <= old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth,
-        if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container } else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+        if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { owner
+            == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container } else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
         *old(counter) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         thread_perm.view().state() is WriteLock,
@@ -103,7 +104,8 @@ pub fn remove_last_held_1g_mapping_to_allocator(
         final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
             indirect_free_quota_pending_1g: final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() + if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { 1int } else { 0int },
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() + if depth
+            == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { 1int } else { 0int },
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()
             == if depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, *final(counter)) }
             else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() },
@@ -117,7 +119,9 @@ pub fn remove_last_held_1g_mapping_to_allocator(
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
     assert(krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX) by { kernel_inv_implies_container_allocator_1g_quota_bounded(krnl, owner); };
-    assert(krnl.allc_1g_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view()) by { kernel_inv_implies_thread_pending_1g_quota_bounded(krnl, thrd_ptr, owner, depth); };
+    assert(krnl.allc_1g_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view()) by {
+        kernel_inv_implies_thread_pending_1g_quota_bounded(krnl, thrd_ptr, owner, depth);
+    };
     let pg_idx = page_ptr2page_index(pg_ptr);
     let l4i = v2l4index(va);
     let l3i = v2l3index(va);

@@ -254,7 +254,7 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                         let after_business = *krnl;
                         let before_sources = after_business.allc_4k_mp.spec_index(alloc_ptr_4k);
                         merge_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
-                        merge_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
+                        merge_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr);
                         krnl.kernel_step_boundary_free_4k_block_merged(&mut *lctx, &mut *steps, thrd_ptr, alloc_ptr_4k, alloc_ptr_2m);
                         let after_sources = krnl.allc_4k_mp.spec_index(alloc_ptr_4k);
                         assert_seqs_equal!(Seq::new((NUM_CPUS + 1) as nat, |source: int| after_sources.merge_2m_source_list(source as usize).view().to_set()),
@@ -285,7 +285,7 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         let count = if ret is SuccessUsize { ret->SuccessUsize_value } else { 0usize };
         if count > 0 {
             merge_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
-            merge_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
+            merge_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr);
             steps.end_kernel_step_thread_quota_4k_changed(&*krnl, &*lctx, thrd_ptr);
             merge_2m_recorded_step_implies_extended_trace(before_trace, steps.view(), old(steps).view().len() as int,
                 before_business, after_business, cpu_id, n, (count - 1) as usize);

@@ -3,7 +3,7 @@ use crate::*;
 use super::syscall_unmap_1g_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_unmap_1g_trace::*;
-use super::refund_unmap_1g_quota_to_thread::refund_unmap_1g_quota_to_thread;
+use super::syscall_unmap_1g_refund_to_thread::refund_unmap_1g_quota_to_thread;
 #[cfg(feature = "split-crates")]
 use veriflat_map_4k::map_4k::reclaim_held_1g_page::reclaim_held_1g_page;
 #[cfg(feature = "split-crates")]
@@ -189,7 +189,8 @@ pub(super) fn unmap_1g_reclaim_range(
             forall|l4i: L4Index, l3i: L3Index| #![trigger hv.spec_held_l3(l4i, l3i)]
                 hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && hv.spec_held_l3(l4i, l3i) is Some ==> hv.spec_resolve_mapping_l3(l4i, l3i) is Some,
             forall|l4i: L4Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-                hv.kernel_l4_end <= l4i && pei_valid(l4i) ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) == hv.spec_held_l4(l4i) && krnl.pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) == hv.spec_resolve_mapping_l4(l4i),
+                hv.kernel_l4_end <= l4i && pei_valid(l4i)
+                    ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) == hv.spec_held_l4(l4i) && krnl.pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) == hv.spec_resolve_mapping_l4(l4i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
                 hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) == hv.spec_held_l3(l4i, l3i),
             old(lctx).scheduler_lock_map().dom().is_empty(),
@@ -234,9 +235,8 @@ pub(super) fn unmap_1g_reclaim_range(
     proof {
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() =~= old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         unmap_1g_range_steps_from_refund(&*steps, refund_before, start, cpu_id, thrd_ptr, prc_ptr, ctn_ptr, refund_progress);
-        assert(refund_lctx.pagetable_lock_map().dom().contains(pagetable));
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(refund_k.pt_mp, refund_k.pt_lower.view(), pagetable));
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == entry.mapping_4k() && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == entry.mapping_2m());
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == entry.mapping_4k() && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == entry.mapping_2m())
+            by { assert(refund_lctx.pagetable_lock_map().dom().contains(pagetable)); };
     }
     proof { broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq; }
 }

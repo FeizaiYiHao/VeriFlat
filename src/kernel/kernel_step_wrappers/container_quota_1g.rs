@@ -74,15 +74,11 @@ pub proof fn kernel_page_freed_to_owner_quota_1g_implies_u_step(
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
-    let changed = a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]);
     assert(kernel_u_container_quota_1g_increased(a, b, origin)) by {
         reveal(kernel_u_container_quota_1g_increased);
-        assert(b.container_map[owner] != a.container_map[owner]);
-        assert(changed =~= set![owner]);
-        assert(changed.len() == 1);
-        assert(b.container_map.dom() == a.container_map.dom());
-        assert(b.container_map[owner].quota_1g > a.container_map[owner].quota_1g);
-        assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
+        kernel_container_ancestry_projection_at(pre, origin);
+        assert_sets_equal!(a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]), set![owner]);
+        assert_sets_equal!(b.container_map.dom(), a.container_map.dom());
     };
 }
 

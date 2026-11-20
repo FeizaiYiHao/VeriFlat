@@ -78,15 +78,13 @@ pub(super) proof fn mmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
             let root = krnl.prc_mp.spec_index(prc_ptr).view().pagetable;
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), root);
             let u_pt = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
-            kernel_process_projection_at(krnl, prc_ptr);
-            assert(u_pt == table.user_view(krnl.pt_mp.spec_index(root).lock_state_u()));
+            assert(u_pt == table.user_view(krnl.pt_mp.spec_index(root).lock_state_u())) by { kernel_process_projection_at(krnl, prc_ptr); };
             if cur is Some && ret is ErrorVaInUse {
                 let va_range = mmap_2m_syscall_va_range(va, range);
                 let at_va = va_range.view()[at];
                 let at_idx = spec_va2index(at_va);
-                assert(spec_va_2m_valid(at_va));
-                assert(spec_index2va((at_idx.0, at_idx.1, at_idx.2, 0usize)) == at_va && pei_valid(at_idx.0) && pei_valid(at_idx.1) && pei_valid(at_idx.2)) by {
-                    spec_va_2m_valid_index_roundtrip(at_va);
+                assert(spec_va_2m_valid(at_va) && spec_index2va((at_idx.0, at_idx.1, at_idx.2, 0usize)) == at_va && pei_valid(at_idx.0) && pei_valid(at_idx.1) && pei_valid(at_idx.2)) by {
+                    va_range.wf_implies_view_index_is_start_plus_offset(); spec_va_2m_valid_index_roundtrip(at_va);
                 };
                 assert(spec_va2index(window_of(at_va).va) == (at_idx.0, at_idx.1, at_idx.2, 0usize)) by { spec_va_2m_valid_index_roundtrip(at_va); spec_va_4k_index_roundtrip_at(at_va, at_idx.0, at_idx.1, at_idx.2, 0usize); };
                 assert(cur->Some_0.window_leaves_present(window_of(at_va))) by {
@@ -94,19 +92,18 @@ pub(super) proof fn mmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
                     va_range.wf_implies_view_index_is_start_plus_offset(); cover.wf_implies_view_index_is_start_plus_offset();
                     va_range_2m_windows_contains_window_of_first_n_pages(cover, cover.len as int);
                     assert(spec_va_add_range(va, (512 * at) as usize) == spec_va_add_range_2m(va, at as usize)) by (nonlinear_arith) requires 0 <= at < range, range <= usize::MAX / 0x200000;
-                    assert(cover.view()[512 * at] == at_va);
+                    assert(cover.view()[512 * at] == at_va) by { cover.wf_implies_view_index_is_start_plus_offset(); };
                 };
                 if found is Some {
                     let f = found->Some_0;
                     let fv = spec_index2va(f);
-                    spec_va_4k_index_roundtrip_at(fv, f.0, f.1, f.2, f.3);
-                    assert(cur->Some_0.mapping_4k().spec_index(fv).present);
-                    assert(u_pt.mapping_4k.dom().contains(spec_index2va((at_idx.0, at_idx.1, at_idx.2, f.3))));
+                    assert(cur->Some_0.mapping_4k().spec_index(fv).present && u_pt.mapping_4k.dom().contains(spec_index2va((at_idx.0, at_idx.1, at_idx.2, f.3)))) by {
+                        spec_va_4k_index_roundtrip_at(fv, f.0, f.1, f.2, f.3);
+                    };
                 } else if cur->Some_0.mapping_2m().dom().contains(at_va) {
-                    assert(cur->Some_0.mapping_2m().spec_index(at_va).present);
-                    assert(u_pt.mapping_2m.dom().contains(at_va));
+                    assert(cur->Some_0.mapping_2m().spec_index(at_va).present && u_pt.mapping_2m.dom().contains(at_va)) by { spec_va_2m_valid_index_roundtrip(at_va); };
                 } else {
-                    assert(u_pt.mapping_1g.dom().contains(spec_index2va((at_idx.0, at_idx.1, 0, 0))));
+                    assert(u_pt.mapping_1g.dom().contains(spec_index2va((at_idx.0, at_idx.1, 0, 0)))) by { spec_va_2m_valid_index_roundtrip(at_va); };
                 }
             }
         }
@@ -235,8 +232,8 @@ pub(super) proof fn mmap_2m_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
     let pre = kernel_k_to_kernel_u(*krnl);
     let process = pre.process_map.spec_index(prc_ptr);
     kernel_process_projection_at(krnl, prc_ptr);
-    assert(post.thread_map =~= mid.thread_map);
-    assert(post.process_map =~= pre.process_map.insert(prc_ptr, ProcessU {
+    assert_maps_equal!(post.thread_map, mid.thread_map);
+    assert_maps_equal!(post.process_map, pre.process_map.insert(prc_ptr, ProcessU {
         pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process
     }));
     mmap_2m_enter_step_from_u(krnl, post, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, va, len, range, Mmap2mPhase::Fill, windows);
@@ -348,6 +345,8 @@ pub(super) proof fn mmap_2m_downgrade_step_from_u(krnl: &KernelK, post: KernelU,
     whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).range_windows_linked_implies_pagetable_range_windows_exist(progress->Mmap2m_range.covering_4k_range());
     reveal(mmap_2m_downgrade_step_pre); reveal(mmap_2m_downgrade_step);
 }
+
+/// Clearing the progress, unlocking the caller's cpu and its current thread `thrd_ptr`, setting the window locks
 /// of pagetable `pagetable_ptr` to `windows`, those of `krnl` after unlocking `range`, returning the cpu to its trap path, and
 /// releasing this cpu's read hold on the pagetable, is the exit step from `krnl`'s projection to `post`.
 pub(super) proof fn mmap_2m_exit_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,

@@ -218,7 +218,7 @@ impl Merge2mScanner {
         let queue = Merge2mCursorQueue::new(cursors);
         let scanner = Merge2mScanner { queue, candidate: Merge2mCandidate::new(), initial_pages: Ghost(merge_2m_source_pages(krnl.allc_4k_mp.spec_index(allocator))),
             consumed_pages: Ghost(Set::<PagePtr>::empty()), returned_heads: Ghost(Set::<PageIndex>::empty()) };
-        proof { super::merge_2m_scanner_eof::merge_2m_scanner_constructor_eof_implies_wf(scanner, krnl, allocator, cursors.view()); }
+        proof { merge_2m_scanner_constructor_eof_implies_wf(scanner, krnl, allocator, cursors.view()); }
         scanner
     }
 

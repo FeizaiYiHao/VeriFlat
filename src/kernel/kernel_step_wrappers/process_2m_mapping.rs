@@ -37,6 +37,7 @@ pub proof fn kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k: KernelK, pt: Rw
     pagetable_pci_mappings_wf_held_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
 }
 
+/// A changed 2M leaf of `prc_ptr`'s pagetable changes the user view.
 pub proof fn kernel_process_2m_mapping_changed_implies_u_neq(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires kernel_process_2m_mapping_changed(pre, post, prc_ptr, pagetable_ptr, va),
     ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
@@ -45,6 +46,15 @@ pub proof fn kernel_process_2m_mapping_changed_implies_u_neq(pre: &KernelK, post
         reveal(kernel_process_2m_mapping_changed); reveal(kernel_k_to_kernel_u);
     };
 }
+
+/// A changed 2M quota of thread `thrd_ptr` changes the user view.
+pub proof fn kernel_thread_quota_2m_changed_implies_u_neq(pre: &KernelK, post: &KernelK, thrd_ptr: RwLockThreadPtr)
+    requires
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        post.thrd_mp.dom().contains(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).view().quota_2m != post.thrd_mp.spec_index(thrd_ptr).view().quota_2m,
+    ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
+{ kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr); }
 
 impl KernelK {
     /// Records the section that changed the 2M leaf `va` of `prc_ptr`'s pagetable when the tables are held in either mode: the
@@ -375,7 +385,8 @@ broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k:
 /// the thread's 2M quota, temporary 2M cache, and progress replaced, adds that leaf to the process's 2M user mapping and changes
 /// only that thread's 2M quota and progress. The window of `va` links no L1 table under a directory L3 entry, so it holds no 4K or
 /// 1G leaf, and the frame overlaps no mapping.
-pub proof fn kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rlocked_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
+pub proof fn kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rlocked_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr,
+    pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -400,7 +411,8 @@ pub proof fn kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rloc
         post.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread(),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(va),
-        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().insert(va, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va)),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m()
+            == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().insert(va, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va)),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va).present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
@@ -520,7 +532,8 @@ pub proof fn kernel_pagetable_2m_present_cleared_and_progress_changed_implies_u_
         post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()[va].present,
-        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()[va] }),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m()
+            == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()[va] }),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g(),
         post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),

@@ -42,7 +42,6 @@ pub open spec fn merge_2m_commit_eof_transition_framing(pre: KernelK, post: Kern
             perm_2m: new_page.perm_2m, free_list_node_storage: new_page.free_list_node_storage, ..old_page })
         &&& new_page.perm_4k.view().is_none()
         &&& new_page.free_list_node_storage.addr() == old_page.free_list_node_storage.addr()
-        &&& old_page.owning_container == pre.allc_4k_mp.spec_index(allocator_4k).owning_container
         &&& if index == head {
             &&& new_page.state == PageState::Free2m { allocator_ptr: Ghost(allocator_2m), state: FreePageAllocatorState::GlobalList }
             &&& !new_page.free_list_node_storage.is_init()
@@ -102,7 +101,6 @@ pub open spec fn merge_2m_commit_eof_transition_framing(pre: KernelK, post: Kern
     &&& post.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.allc_4k_mp.spec_index(allocator_4k).owning_container
     &&& post.allc_2m_mp.spec_index(allocator_2m).owning_container == pre.allc_2m_mp.spec_index(allocator_2m).owning_container
     &&& post.allc_2m_mp.spec_index(allocator_2m).cpu_caches == pre.allc_2m_mp.spec_index(allocator_2m).cpu_caches
-    &&& !pre.allc_2m_mp.spec_index(allocator_2m).global_pool.view().map().dom().contains(head_node)
     &&& post.allc_2m_mp.spec_index(allocator_2m).global_pool.view().view() == pre.allc_2m_mp.spec_index(allocator_2m).global_pool.view().view().insert(0, head_ptr)
     &&& post.allc_2m_mp.spec_index(allocator_2m).global_pool.view().map() == pre.allc_2m_mp.spec_index(allocator_2m).global_pool.view().map().insert(head_node, head_ptr)
     &&& forall|page: PagePtr| #![trigger post.allc_2m_mp.spec_index(allocator_2m).global_pool.view().view().contains(page)] #![trigger pre.allc_2m_mp.spec_index(allocator_2m).global_pool.view().view().contains(page)]
@@ -139,7 +137,6 @@ pub open spec fn merge_2m_commit_eof_transition_framing(pre: KernelK, post: Kern
         &&& new_cache.view().line_pad == old_cache.view().line_pad
         &&& new_cache.view().linked_list.minor == old_cache.view().linked_list.minor
         &&& new_cache.view().linked_list.container_depth == old_cache.view().linked_list.container_depth
-
     }
 }
 }

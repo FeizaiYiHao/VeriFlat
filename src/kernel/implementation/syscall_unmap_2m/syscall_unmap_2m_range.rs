@@ -78,14 +78,16 @@ pub(super) fn unmap_2m_range(
             &&& window_of(range.view()[j]).va == range.view()[j]
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
             &&& window_perms.dom().contains(window_of(range.view()[j]))
-            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])), spec_v2l2index(range.view()[j]))
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(range.view()[j]),
+                spec_v2l3index(range.view()[j])), spec_v2l2index(range.view()[j]))
                 == (RwLockState::Write { thread_id: window_perms.index(window_of(range.view()[j])).thread_id(), lock_id: window_perms.index(window_of(range.view()[j])).lock_id() })
         },
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
             &&& w.wf()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_leaves_present(w)
-            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va),
+                spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         old(krnl).prc_mp.spec_index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
     ensures
@@ -122,8 +124,10 @@ pub(super) fn unmap_2m_range(
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_leaves_present(w) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_leaves_present(w)
             &&& pei_valid(spec_v2l2index(w.va))
-                && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va),
+                    spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va),
+                    spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j]),
 {
@@ -186,7 +190,8 @@ pub(super) fn unmap_2m_range(
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
                 &&& window_perms.dom().contains(window_of(range.view()[j]))
-                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])),
+                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(range.view()[j]),
+                    spec_v2l3index(range.view()[j])),
                         spec_v2l2index(range.view()[j]))
                     == (RwLockState::Write { thread_id: window_perms.index(window_of(range.view()[j])).thread_id(), lock_id: window_perms.index(window_of(range.view()[j])).lock_id() })
             },
@@ -212,13 +217,17 @@ pub(super) fn unmap_2m_range(
             steps.view().len() == old(steps).view().len() + i,
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).lock_state == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).lock_state
-                &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus is None || whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(0usize, NUM_CPUS))
-                &&& !range.view().contains(w.va) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
+                &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus is None
+                    || whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(0usize, NUM_CPUS))
+                &&& !range.view().contains(w.va) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
+                    == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
                 &&& !range.view().contains(w.va) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
                     ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(w.va)
                 &&& pei_valid(spec_v2l2index(w.va))
-                    && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va),
+                        spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)),
+                        spec_v2l2index(w.va))
             },
             forall|w: WindowVa, v: VAddr|
                 #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)), whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(v)]
@@ -266,8 +275,8 @@ pub(super) fn unmap_2m_range(
     let ghost flushed_lctx = *lctx;
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Unmap2m { range: *range, unmapped: range.len, flushed: true })), Tracked(&*lctx), thread_perm);
     proof {
-        let ghost flushed_before = steps.view();
-        let ghost flushed_k = *krnl;
+        let flushed_before = steps.view();
+        let flushed_k = *krnl;
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         unmap_2m_flushed_range_steps_from_k(&*steps, flushed_before, old(steps).view().len() as int, &flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable,
             pcid, *range);
@@ -333,7 +342,8 @@ pub(super) fn unmap_2m_range(
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
                 &&& window_perms.dom().contains(window_of(range.view()[j]))
-                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])),
+                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(range.view()[j]),
+                    spec_v2l3index(range.view()[j])),
                         spec_v2l2index(range.view()[j]))
                     == (RwLockState::Write { thread_id: window_perms.index(window_of(range.view()[j])).thread_id(), lock_id: window_perms.index(window_of(range.view()[j])).lock_id() })
             },
@@ -366,12 +376,15 @@ pub(super) fn unmap_2m_range(
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).lock_state == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).lock_state
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus is None
-                &&& !range.view().contains(w.va) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
+                &&& !range.view().contains(w.va) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
+                    == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
                 &&& !range.view().contains(w.va) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(w.va)
                     ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(w.va)
                 &&& pei_valid(spec_v2l2index(w.va))
-                    && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va),
+                        spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)),
+                        spec_v2l2index(w.va))
             },
             forall|w: WindowVa, v: VAddr|
                 #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)), whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(v)]
@@ -399,7 +412,7 @@ pub(super) fn unmap_2m_range(
     proof {
         if credited {
             let credit_post = *krnl;
-            unmap_2m_thread_refund_step_pre_from_k(&credit_pre, &credit_post, thrd_ptr);
+            kernel_thread_quota_2m_changed_implies_u_neq(&credit_pre, &credit_post, thrd_ptr);
             enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             unmap_2m_thread_refund_range_steps_from_k(&*steps, credit_before, old(steps).view().len() as int, &credit_pre, &credit_post, &credit_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable, *range);
@@ -414,7 +427,8 @@ pub(super) fn unmap_2m_range(
     }
 }
 
-/// Flush the TLBs of the read-held page table `pagetable` after every leaf of `range` was cleared: address by address for a range of at most `TLB_FLUSH_VA_RANGE_MAX_PAGES_2M` pages, the whole PCID otherwise. Steps recorded from `start` stay range steps.
+/// Flush the TLBs of the read-held page table `pagetable` after every leaf of `range` was cleared: address by address for a range of
+/// at most `TLB_FLUSH_VA_RANGE_MAX_PAGES_2M` pages, the whole PCID otherwise. Steps recorded from `start` stay range steps.
 fn flush_unmap_2m_range_tlbs(
     krnl: &mut KernelK, range: &VaRange2M, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(prc_ptr): Ghost<RwLockProcessPtr>,
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(start): Ghost<int>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>,
@@ -495,7 +509,8 @@ fn flush_unmap_2m_range_tlbs(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> final(krnl).cpu_arr.spec_index(held_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(held_cpu_id).view().view(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id)
+            ==> final(krnl).cpu_arr.spec_index(held_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(held_cpu_id).view().view(),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),

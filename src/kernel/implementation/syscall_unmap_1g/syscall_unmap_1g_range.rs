@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use super::syscall_unmap_1g_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_unmap_1g_trace::*;
@@ -200,6 +202,7 @@ pub(super) fn unmap_1g_range(
             krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,
             krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty() || krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower == entry.lower,
+            whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == entry.mapping_4k() && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == entry.mapping_2m(),
             forall|l4i: L4Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
                 krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
                 ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
@@ -226,7 +229,7 @@ pub(super) fn unmap_1g_range(
         let ghost leaf_before = steps.view();
         let leaf = unmap_1g_hide_leaf(krnl, pagetable, va, thrd_ptr, Ghost(*range), Ghost(i), Tracked(&mut *lctx), Tracked(&mut *steps), pagetable_perm, thread_perm);
         proof {
-            assert(leaf.0@.pt_lower.view() =~= leaf_pre.pt_lower.view().insert(pagetable, leaf.0@.pt_lower.view().spec_index(pagetable)));
+            assert_maps_equal!(leaf.0@.pt_lower.view(), leaf_pre.pt_lower.view().insert(pagetable, leaf.0@.pt_lower.view().spec_index(pagetable)));
             unmap_1g_leaf_range_steps_from_k(&*steps, leaf_before, start, &leaf_pre, &leaf.0@, &leaf_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable, *range, i, va);
         }
         i = i + 1;
@@ -255,7 +258,6 @@ pub(super) fn unmap_1g_range(
         unmap_1g_flushed_range_steps_from_k(&*steps, flushed_before, start, &flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid,
             *range);
     }
-    assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == entry.mapping_4k() && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == entry.mapping_2m());
     unmap_1g_reclaim_range(krnl, range, pagetable, thrd_ptr, cpu_id, Ghost(start), Ghost(hv.higher), Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm, pagetable_perm);
 }
 } // verus!

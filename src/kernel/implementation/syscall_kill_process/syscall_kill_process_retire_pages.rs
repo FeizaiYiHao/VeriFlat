@@ -373,7 +373,7 @@ pub(crate) fn kill_retire_table_pages(
                 process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
                 pagetable_perms_wf_map(krnl.pt_mp);
                 pagetable_perms_wf_at(krnl.pt_mp, table);
-                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table); mapped_1g_page_pagetable_wf_table_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, table);
+                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table);
             }
             krnl.pt_mp.borrow_typed(table, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(table_perm)).higher.next_structure_page(Tracked(krnl.pt_lower.borrow().tracked_borrow(table)))
         };

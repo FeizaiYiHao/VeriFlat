@@ -244,7 +244,6 @@ pub(super) fn mmap_2m_hide_linked_l1_range(
         let va = va_range.index(i);
         let ghost table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         proof {
-            assert(table.higher == t0.higher);
             spec_va_2m_valid_index_roundtrip(va);
             assert(spec_va_2m_valid(va) ==> spec_va_4k_valid(va)) by (bit_vector);
             assert forall|l1i: L1Index| #![trigger table.mapping_4k().dom().contains(spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), l1i)))]
@@ -521,27 +520,23 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         let va = va_range.index(i);
         let ghost table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         proof {
-            assert(table.higher == t0.higher);
             spec_va_2m_valid_index_roundtrip(va);
             assert(spec_va_2m_valid(va) ==> spec_va_4k_valid(va)) by (bit_vector);
         }
         let (l2_ptr, word) = mmap_2m_window_l2_word(krnl, pagetable_ptr, va, Tracked(&*lctx), Tracked(pagetable_lock_perm));
         if word.perm.kernel_present && !word.perm.present && !word.perm.ps {
             proof {
-                assert(table.window_view(window_of(va)).l1_table is Some && !table.window_view(window_of(va)).l2_entry.perm.present);
-                assert(old(lctx).thread_lock_map().dom().contains(thrd_ptr));
+                assert(table.window_view(window_of(va)).l1_table is Some && !table.window_view(window_of(va)).l2_entry.perm.present && old(lctx).thread_lock_map().dom().contains(thrd_ptr)
+                    && old(lctx).cpu_lock_map().dom().contains(cpu_id)) by { spec_va_2m_valid_index_roundtrip(va); };
                 process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
             }
-            proof { assert(old(lctx).cpu_lock_map().dom().contains(cpu_id)); }
             let ghost before = steps.view();
             let (owner, reclaim_entry, reclaim_lctx) = reclaim_hidden_l1_page_in_window(krnl, pagetable_ptr, va, l2_ptr, word.addr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
                 Tracked(pagetable_lock_perm), Tracked(window_perms.tracked_borrow(window_of(va))));
             proof {
-                assert(owner == ctn_ptr);
                 process_thread_wf_thread_at(reclaim_entry@.prc_mp, reclaim_entry@.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(reclaim_entry@.prc_mp, reclaim_entry@.pt_mp, prc_ptr);
                 container_thread_wf_thread_at(reclaim_entry@.ctn_mp, reclaim_entry@.thrd_mp, thrd_ptr);
-                assert forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() implies steps.view()[j] == before[j] by { assert(steps.view().drop_last()[j] == steps.view()[j]); };
-                assert(steps.view() =~= before.push(steps.view().last()));
+                assert(owner == ctn_ptr) by { process_thread_wf_thread_at(reclaim_entry@.prc_mp, reclaim_entry@.thrd_mp, thrd_ptr); };
                 mmap_2m_l1_reclaim_range_steps_from_k(&*steps, before, start, &reclaim_entry@, &reclaim_lctx@, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable_ptr, *va_range, phase);
             }
         }

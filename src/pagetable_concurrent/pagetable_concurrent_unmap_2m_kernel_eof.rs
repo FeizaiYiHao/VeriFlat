@@ -42,7 +42,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         pre.wf_l2_at(target_l2_p, target_l2i);
         Self::unmap_2m_page_kernel_eof_va_addr_valid(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p);
-        Self::unmap_2m_page_kernel_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p);
+        Self::unmap_2m_page_kernel_eof_l3_links_l2_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p);
         Self::unmap_2m_page_kernel_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p);
         Self::unmap_2m_page_kernel_eof_wf_l1(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p);
         Self::unmap_2m_page_kernel_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p);
@@ -67,7 +67,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     { reveal(WholePageTable::unmap_2m_page_kernel_eof_transition_framing); }
 
     /// EOF closure of `unmap_2m_page_kernel`: `l3_links_l2_wf`.
-    proof fn unmap_2m_page_kernel_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr)
+    proof fn unmap_2m_page_kernel_eof_l3_links_l2_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr)
         requires
             pre.l3_links_l2_wf(),
             Self::unmap_2m_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p),

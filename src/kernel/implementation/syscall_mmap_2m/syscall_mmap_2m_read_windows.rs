@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_mmap_2m_map_range::mmap_2m_map_leaves_and_finish;
 use super::syscall_mmap_2m_precheck::{mmap_2m_precheck, Mmap2mPrecheck};
@@ -143,7 +144,7 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
     let ready = match precheck { Mmap2mPrecheck::Ready => true, _ => false };
     if !ready {
         krnl.unlock_pagetable_range_windows::<false>(pagetable_ptr, cover, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
-        proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= unlocked_windows); }
+        proof { assert_maps_equal!(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, unlocked_windows); }
         mmap_2m_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),
             Tracked(cpu_lock_perm));
         proof { mmap_2m_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::ErrorVaInUse, Some(checked), found, at); }

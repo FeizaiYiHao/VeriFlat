@@ -13,6 +13,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_owners(
     requires
         pre.inv(),
         kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
@@ -91,6 +92,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_mappings(
     requires
         pre.inv(),
         kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
@@ -125,7 +127,8 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_mappings(
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf); };
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_4k_valid_index_roundtrip,
+        spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf); };
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid; page_ptr_roundtrip(); reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); reveal(page_array_wf);
     };
@@ -141,6 +144,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
     requires
         pre.inv(),
         kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
@@ -202,11 +206,6 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
     assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
         reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
         seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();
-        assert forall|a: RwLockPageAllocatorPtr, c: CpuId, p: PagePtr| #![trigger post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view().contains(p)]
-            post.allc_2m_mp.dom().contains(a) && index_valid(NUM_CPUS, c) && post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view().contains(p)
-            implies post.pg_arr.spec_index(page_ptr2page_index(p)).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(a), state: FreePageAllocatorState::PreCpuCache { cpu_id: c } })
-                && post.pg_arr.spec_index(page_ptr2page_index(p)).view().view().owning_container == post.allc_2m_mp.spec_index(a).owning_container
-            by { allocator_free_2m_pages_wf_cache_at(pre.allc_2m_mp, pre.pg_arr, a, c, p); };
     };
     reveal(allocator_free_2m_pages_wf);
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(pg_ptr)); };
@@ -220,6 +219,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_allocator_quota_wf(
     requires
         pre.inv(),
         kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.allc_2m_mp.dom().contains(allc_ptr),
     ensures container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
@@ -235,6 +235,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_pagetable_pci_mappings_wf(
     requires
         pre.inv(),
         kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped2m,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
@@ -254,6 +255,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_pci_function_ownership_wf(
     requires
         pre.inv(),
         kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
     ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
     reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
@@ -270,6 +272,7 @@ pub(crate) proof fn kill_reclaim_held_2m_page_scoped_eof(
     requires
         pre.inv(),
         kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
@@ -320,8 +323,8 @@ pub(crate) proof fn kill_reclaim_held_2m_page_scoped_eof(
     assert(post.memory_management_inv()) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     kill_reclaim_held_2m_page_scoped_eof_pci_function_ownership_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
-    pre.default_pagetable_wf_at(pagetable);
-    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pre.default_pagetable_wf_at(pagetable); reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip,
+        spec_va_2m_valid_index_roundtrip; };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);

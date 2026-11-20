@@ -87,13 +87,17 @@ pub(super) proof fn reclaim_held_leaves_eol_iteration_pre(pre: KernelK, cur: Ker
         cur.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(cur.thrd_mp.spec_index(thrd_ptr)),
         cur.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
-        cur.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || cur.prc_mp.spec_index(cur.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view_rodata().view().owning_container == cur.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        cur.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable
+            || cur.prc_mp.spec_index(cur.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view_rodata().view().owning_container == cur.thrd_mp.spec_index(thrd_ptr).view().owning_container,
         direct_4k == cur.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
-        forall|depth: int| #![trigger indirect_4k[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_4k[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect_4k[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect_4k[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         direct_2m == cur.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view(),
-        forall|depth: int| #![trigger indirect_2m[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_2m[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect_2m[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect_2m[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
         direct_1g == cur.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
-        forall|depth: int| #![trigger indirect_1g[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_1g[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect_1g[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect_1g[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
         cur.pt_mp.dom().contains(pagetable),
         cur.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
         cur.pt_mp.spec_index(pagetable).view().higher
@@ -151,7 +155,8 @@ pub(super) proof fn reclaim_held_leaves_eol_step_4k(pre: KernelK, mid: KernelK, 
         call.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct_4k == call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
-        forall|depth: int| #![trigger indirect_4k[depth]] 0 <= depth < call.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_4k[depth] == call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect_4k[depth]] 0 <= depth < call.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect_4k[depth] == call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         call.pt_mp.dom().contains(pagetable),
         call.pt_mp.spec_index(pagetable).locking_thread() == mid.pt_mp.spec_index(pagetable).locking_thread(),
         call.pt_mp.spec_index(pagetable).being_killed() == mid.pt_mp.spec_index(pagetable).being_killed(),
@@ -226,7 +231,8 @@ pub(super) proof fn reclaim_held_leaves_eol_step_2m(pre: KernelK, mid: KernelK, 
         call.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_2m: call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m,
             indirect_free_quota_pending_2m: call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct_2m == call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view(),
-        forall|depth: int| #![trigger indirect_2m[depth]] 0 <= depth < call.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_2m[depth] == call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect_2m[depth]] 0 <= depth < call.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect_2m[depth] == call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
         call.pt_mp.dom().contains(pagetable),
         call.pt_mp.spec_index(pagetable).locking_thread() == mid.pt_mp.spec_index(pagetable).locking_thread(),
         call.pt_mp.spec_index(pagetable).being_killed() == mid.pt_mp.spec_index(pagetable).being_killed(),
@@ -236,7 +242,8 @@ pub(super) proof fn reclaim_held_leaves_eol_step_2m(pre: KernelK, mid: KernelK, 
             &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
-            &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
+            &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va))
+                ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
             &&& new_c.lower.l2_entry(old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)).is_empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
             &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
@@ -299,7 +306,8 @@ pub(super) proof fn reclaim_held_leaves_eol_step_1g(pre: KernelK, mid: KernelK, 
         call.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
             indirect_free_quota_pending_1g: call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct_1g == call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
-        forall|depth: int| #![trigger indirect_1g[depth]] 0 <= depth < call.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_1g[depth] == call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect_1g[depth]] 0 <= depth < call.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect_1g[depth] == call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
         call.pt_mp.dom().contains(pagetable),
         call.pt_mp.spec_index(pagetable).locking_thread() == mid.pt_mp.spec_index(pagetable).locking_thread(),
         call.pt_mp.spec_index(pagetable).being_killed() == mid.pt_mp.spec_index(pagetable).being_killed(),

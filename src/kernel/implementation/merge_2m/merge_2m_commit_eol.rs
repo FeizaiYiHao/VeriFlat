@@ -2,6 +2,8 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::simple_pptr::*;
+#[cfg(verus_keep_ghost)]
+use vstd::{assert_sets_equal, assert_sets_equal_internal};
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::merge_2m_scan::*;
@@ -73,8 +75,6 @@ pub open spec fn merge_2m_commit_eol_loop_framing(pre: KernelK, cur: KernelK, al
     &&& offset > 0 ==> head_node_addr == pre.pg_arr.spec_index(head).view().view().free_list_node_storage.addr()
     &&& head_node_perm.is_some() ==> head_node_perm.unwrap().is_init() && head_node_perm.unwrap().addr() == head_node_addr && head_node_perm.unwrap().value().view() == head_ptr
     &&& forall|i: usize| #![trigger tail_perms.spec_index(i)] 1 <= i < offset ==> {
-        &&& pre.pg_arr.spec_index((head + i) as usize).view().view().state is Free4k
-        &&& pre.pg_arr.spec_index((head + i) as usize).view().view().perm_4k.view().is_some()
         &&& tail_perms.spec_index(i) == pre.pg_arr.spec_index((head + i) as usize).view().view().perm_4k.view().unwrap()
         &&& tail_perms.spec_index(i).is_init()
         &&& tail_perms.spec_index(i).addr() == (head + i) * PAGE_SZ_4K
@@ -98,8 +98,6 @@ pub open spec fn merge_2m_commit_eol_loop_framing(pre: KernelK, cur: KernelK, al
         &&& cur.pg_arr.spec_index(index).view().killer_info() == pre.pg_arr.spec_index(index).view().killer_info()
         &&& cur.pg_arr.lock_id_by_index(index) == pre.pg_arr.lock_id_by_index(index)
     }
-    &&& forall|index: PageIndex| #![trigger pre.pg_arr.spec_index(index).view().view().owning_container] head <= index < head + offset ==>
-        pre.pg_arr.spec_index(index).view().view().owning_container == pre.allc_4k_mp.spec_index(allocator_4k).owning_container
     &&& cur.allc_4k_mp.spec_index(allocator_4k).total_free_pages.view() + offset == pre.allc_4k_mp.spec_index(allocator_4k).total_free_pages.view()
 }
 
@@ -150,9 +148,8 @@ pub proof fn merge_2m_commit_eol_iteration_pre(pre: KernelK, cur: KernelK, alloc
 
 /// EOL closure of the merge loop: after the region page `candidate.head + offset` left source list `source` from `cur` to `mid`, the
 /// source lists of `mid` are sorted and have lost exactly the region pages up to `offset`, with one free page fewer.
-pub proof fn merge_2m_commit_eol_step_source_lists(pre: KernelK, cur: KernelK, mid: KernelK, post: KernelK, allocator_4k: RwLockPageAllocatorPtr, candidate: Merge2mCandidate,
-    offset: usize, source: u8, node_perm: PointsTo<Node<PagePtr>>, head_node_addr: usize, head_node_perm: Option<PointsTo<Node<PagePtr>>>, tail_perms: Map<usize, PagePerm4k>,
-    post_head_node_addr: usize, post_head_node_perm: Option<PointsTo<Node<PagePtr>>>, post_tail_perms: Map<usize, PagePerm4k>)
+pub proof fn merge_2m_commit_eol_step_source_lists(pre: KernelK, cur: KernelK, mid: KernelK, allocator_4k: RwLockPageAllocatorPtr, candidate: Merge2mCandidate,
+    offset: usize, source: u8, node_perm: PointsTo<Node<PagePtr>>, head_node_addr: usize, head_node_perm: Option<PointsTo<Node<PagePtr>>>, tail_perms: Map<usize, PagePerm4k>)
     requires
         pre.inv(),
         pre.allc_4k_mp.dom().contains(allocator_4k),
@@ -223,9 +220,8 @@ pub proof fn merge_2m_commit_eol_step_source_lists(pre: KernelK, cur: KernelK, m
 
 /// EOL closure of the merge loop: removing the region page `candidate.head + offset` from `cur` to `mid` keeps every other allocator,
 /// the global pool's and the cpu caches' lock state and list metadata.
-pub proof fn merge_2m_commit_eol_step_caches(pre: KernelK, cur: KernelK, mid: KernelK, post: KernelK, allocator_4k: RwLockPageAllocatorPtr, candidate: Merge2mCandidate,
-    offset: usize, source: u8, node_perm: PointsTo<Node<PagePtr>>, head_node_addr: usize, head_node_perm: Option<PointsTo<Node<PagePtr>>>, tail_perms: Map<usize, PagePerm4k>,
-    post_head_node_addr: usize, post_head_node_perm: Option<PointsTo<Node<PagePtr>>>, post_tail_perms: Map<usize, PagePerm4k>)
+pub proof fn merge_2m_commit_eol_step_caches(pre: KernelK, cur: KernelK, mid: KernelK, allocator_4k: RwLockPageAllocatorPtr, candidate: Merge2mCandidate,
+    offset: usize, source: u8, node_perm: PointsTo<Node<PagePtr>>, head_node_addr: usize, head_node_perm: Option<PointsTo<Node<PagePtr>>>, tail_perms: Map<usize, PagePerm4k>)
     requires
         pre.inv(),
         pre.allc_4k_mp.dom().contains(allocator_4k),
@@ -364,8 +360,6 @@ pub proof fn merge_2m_commit_eol_step_pages(pre: KernelK, cur: KernelK, mid: Ker
         (offset + 1) as usize > 0 ==> post_head_node_addr == pre.pg_arr.spec_index(candidate.head).view().view().free_list_node_storage.addr(),
         post_head_node_perm.is_some() ==> post_head_node_perm.unwrap().is_init() && post_head_node_perm.unwrap().addr() == post_head_node_addr && post_head_node_perm.unwrap().value().view() == spec_page_index2page_ptr(candidate.head),
         forall|i: usize| #![trigger post_tail_perms.spec_index(i)] 1 <= i < (offset + 1) as usize ==> {
-            &&& pre.pg_arr.spec_index((candidate.head + i) as usize).view().view().state is Free4k
-            &&& pre.pg_arr.spec_index((candidate.head + i) as usize).view().view().perm_4k.view().is_some()
             &&& post_tail_perms.spec_index(i) == pre.pg_arr.spec_index((candidate.head + i) as usize).view().view().perm_4k.view().unwrap()
             &&& post_tail_perms.spec_index(i).is_init()
             &&& post_tail_perms.spec_index(i).addr() == (candidate.head + i) * PAGE_SZ_4K
@@ -389,13 +383,11 @@ pub proof fn merge_2m_commit_eol_step_pages(pre: KernelK, cur: KernelK, mid: Ker
             &&& post.pg_arr.spec_index(index).view().killer_info() == pre.pg_arr.spec_index(index).view().killer_info()
             &&& post.pg_arr.lock_id_by_index(index) == pre.pg_arr.lock_id_by_index(index)
         },
-        forall|index: PageIndex| #![trigger pre.pg_arr.spec_index(index).view().view().owning_container] candidate.head <= index < candidate.head + offset + 1 ==>
-            pre.pg_arr.spec_index(index).view().view().owning_container == pre.allc_4k_mp.spec_index(allocator_4k).owning_container,
 {
     let index = (candidate.head + offset) as usize;
     reveal(merge_2m_commit_eol_loop_framing);
     assert(pre.pg_arr.spec_index(index).view().view().perm_4k.view().is_some()) by { page_array_wf_at(pre.pg_arr, index); };
-    assert(post_tail_perms.dom() =~= Set::<usize>::range(1, (offset + 1) as usize));
+    assert_sets_equal!(post_tail_perms.dom(), Set::<usize>::range(1, (offset + 1) as usize));
     allocator_perms_wf_map(pre.allc_4k_mp); allocator_perms_wf_at(pre.allc_4k_mp, allocator_4k);
     allocator_free_4k_pages_wf_at(pre.allc_4k_mp, pre.pg_arr, index);
 }
@@ -469,10 +461,8 @@ pub proof fn merge_2m_commit_eol_step(pre: KernelK, cur: KernelK, mid: KernelK, 
         merge_2m_commit_eol_loop_framing(pre, post, allocator_4k, candidate, (offset + 1) as usize, post_head_node_addr, post_head_node_perm, post_tail_perms),
 {
     reveal(merge_2m_commit_eol_loop_framing);
-    merge_2m_commit_eol_step_source_lists(pre, cur, mid, post, allocator_4k, candidate, offset, source, node_perm, head_node_addr, head_node_perm, tail_perms,
-        post_head_node_addr, post_head_node_perm, post_tail_perms);
-    merge_2m_commit_eol_step_caches(pre, cur, mid, post, allocator_4k, candidate, offset, source, node_perm, head_node_addr, head_node_perm, tail_perms,
-        post_head_node_addr, post_head_node_perm, post_tail_perms);
+    merge_2m_commit_eol_step_source_lists(pre, cur, mid, allocator_4k, candidate, offset, source, node_perm, head_node_addr, head_node_perm, tail_perms);
+    merge_2m_commit_eol_step_caches(pre, cur, mid, allocator_4k, candidate, offset, source, node_perm, head_node_addr, head_node_perm, tail_perms);
     merge_2m_commit_eol_step_pages(pre, cur, mid, post, allocator_4k, candidate, offset, source, node_perm, head_node_addr, head_node_perm, tail_perms,
         post_head_node_addr, post_head_node_perm, post_tail_perms);
 }
@@ -482,7 +472,14 @@ pub proof fn merge_2m_commit_eol_step(pre: KernelK, cur: KernelK, mid: KernelK, 
 pub proof fn merge_2m_commit_eol_exit(pre: KernelK, cur: KernelK, allocator_4k: RwLockPageAllocatorPtr, candidate: Merge2mCandidate,
     head_node_addr: usize, head_node_perm: Option<PointsTo<Node<PagePtr>>>, tail_perms: Map<usize, PagePerm4k>)
     requires
+        pre.inv(),
         page_index_2m_valid(candidate.head),
+        forall|index: PageIndex| #![trigger pre.pg_arr.spec_index(index)] candidate.head <= index < candidate.head + 512 ==> {
+            let source = candidate.sources.view().spec_index(index as int - candidate.head as int) as usize;
+            &&& index_valid(NUM_PAGES, index)
+            &&& pre.pg_arr.spec_index(index).view().view().state == PageState::Free4k { allocator_ptr: Ghost(allocator_4k), state:
+                if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }
+        },
         merge_2m_commit_eol_loop_framing(pre, cur, allocator_4k, candidate, 512, head_node_addr, head_node_perm, tail_perms),
     ensures
         cur.pg_arr.spec_index(candidate.head) == pre.pg_arr.spec_index(candidate.head),
@@ -499,5 +496,5 @@ pub proof fn merge_2m_commit_eol_exit(pre: KernelK, cur: KernelK, allocator_4k: 
         head_node_perm.unwrap().addr() == head_node_addr,
         head_node_perm.unwrap().value().view() == spec_page_index2page_ptr(candidate.head),
         head_node_addr == pre.pg_arr.spec_index(candidate.head).view().view().free_list_node_storage.addr(),
-{ reveal(merge_2m_commit_eol_loop_framing); }
+{ reveal(merge_2m_commit_eol_loop_framing); reveal(page_array_wf); }
 }

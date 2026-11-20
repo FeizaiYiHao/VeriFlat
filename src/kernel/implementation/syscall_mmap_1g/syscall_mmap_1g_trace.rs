@@ -59,12 +59,14 @@ pub(super) proof fn mmap_1g_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
         if ret is Success || ret is ErrorVaInUse {
             let prc_ptr = thread.owning_proc;
             let root = krnl.prc_mp.spec_index(prc_ptr).view().pagetable;
-            kernel_l4_end_projection_at(krnl, root); kernel_process_projection_at(krnl, prc_ptr); kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
+            kernel_l4_end_projection_at(krnl, root); kernel_process_projection_at(krnl, prc_ptr);
             let va_range = spec_va_range_1g(va, range);
             assert(spec_v2l4index(va_range.covering_4k_range().start) >= kernel_k_to_kernel_u(*krnl).kernel_l4_end) by { spec_va_1g_valid_index_roundtrip(va); };
             if ret is ErrorVaInUse {
                 let u_pt = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
-                assert(!mmap_1g_slot_unmapped(u_pt, va_range.view()[at]));
+                assert(!mmap_1g_slot_unmapped(u_pt, va_range.view()[at])) by { kernel_pagetable_mappings_projection_at(krnl, prc_ptr); };
+            } else {
+                kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
             }
         }
     }

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::unmap_2m_present_in_window_eof::*;
@@ -80,7 +81,8 @@ pub fn clear_2m_mapping_present_in_window(
             == (Thread { syscall_progress: Ghost(Some(SyscallProgress::Unmap2m { range, unmapped: (unmapped + 1) as usize, flushed: false })), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         ret.0@.pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable, ret.0@.pt_lower.view().spec_index(pagetable)),
         whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).mapping_2m()
-            == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va) }),
+            == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(),
+                pagetable).mapping_2m().spec_index(va) }),
         whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k(),
         whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
         whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks,
@@ -103,8 +105,8 @@ pub fn clear_2m_mapping_present_in_window(
     let indices = va2index(va);
     proof {
         broadcast use spec_va_2m_valid_index_roundtrip;
-        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va));
-        assert(window_of(va).va == va);
+        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va)) by { spec_va_2m_valid_index_roundtrip(va); };
+        assert(window_of(va).va == va) by { spec_va_2m_valid_index_roundtrip(va); };
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_2m_at(indices.0, indices.1, indices.2);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
@@ -128,7 +130,7 @@ pub fn clear_2m_mapping_present_in_window(
     let ghost leaf_k = *krnl;
     let ghost leaf_lctx = *lctx;
     proof {
-        assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(krnl.pt_lower.view(), old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(kernel_process_2m_mapping_changed(&steps.snapshot_k(), &*krnl, prc_ptr, pagetable, va)) by { reveal(kernel_process_2m_mapping_changed); };
         krnl.kernel_step_boundary_process_2m_mapping_changed_windowed(&mut *lctx, &mut *steps, prc_ptr, pagetable, va, prc_ptr, pagetable, thrd_ptr, thrd_ptr);
     }

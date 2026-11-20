@@ -144,7 +144,8 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
         }
         krnl.unlock_pagetable_range_existing_windows::<false>(pagetable, &cover, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
         proof {
-            assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks);
+            assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(),
+                pagetable).lower.pagetable_window_locks);
         }
     }
     proof {

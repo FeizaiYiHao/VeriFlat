@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// Moves the direct pending 2M quota `amount` of `thrd_ptr` into its 2M quota; every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn refund_unmap_2m_quota_to_thread_eof_transition_framing(pre: KernelK, post: KernelK, thrd_ptr: RwLockThreadPtr, amount: usize) -> bool {
     let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
@@ -36,6 +37,7 @@ proof fn refund_unmap_2m_quota_to_thread_eof_memory_quota_2m(pre: KernelK, post:
     thread_pending_2m_change_at_one_thread_implies_folds_change_by(thrd_ptr, -(amount as int), 0int, 0int);
 }
 
+/// EOF closure: the memory-management invariant after the refund.
 proof fn refund_unmap_2m_quota_to_thread_eof_memory(pre: KernelK, post: KernelK, thrd_ptr: RwLockThreadPtr, amount: usize)
     requires
         pre.inv(),
@@ -56,8 +58,10 @@ proof fn refund_unmap_2m_quota_to_thread_eof_memory(pre: KernelK, post: KernelK,
             thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
         };
         refund_unmap_2m_quota_to_thread_eof_memory_quota_2m(pre, post, thrd_ptr, amount);
-        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp); };
-        assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp); };
+        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp,
+            post.thrd_mp, post.allc_4k_mp); };
+        assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp,
+            post.thrd_mp, post.allc_1g_mp); };
     };
 }
 

@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal, assert_sets_equal_internal};
 use super::syscall_mmap_1g_map_owned::map_owned_1g_page;
 #[cfg(verus_keep_ghost)]
 use super::syscall_mmap_1g_spec::*;
@@ -149,11 +151,11 @@ pub(super) fn mmap_1g_map_one_leaf(
             broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
         };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        assert(krnl.pt_lower.view() =~= section_start.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(krnl.pt_lower.view(), section_start.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(kernel_process_1g_mapping_changed(&steps.snapshot_k(), &*krnl, prc_ptr, pagetable, va)) by { reveal(kernel_process_1g_mapping_changed); };
         krnl.kernel_step_boundary_process_1g_mapping_changed(&mut *lctx, &mut *steps, prc_ptr, pagetable, va);
         mmap_1g_leaf_step_from_k(&section_start, &unlocked_k, &unlocked_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable, va, range, mapped, directory, hidden, flushed);
-        assert(krnl.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g.view() =~= old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g.view());
+        assert_sets_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g.view(), old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g.view());
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }

@@ -27,18 +27,6 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), allocator),
             final(self).spec_index(allocator).wf(),
-            final(self).spec_index(allocator).merge_2m_source_list(source as usize).map() == old(self).spec_index(allocator).merge_2m_source_list(source as usize).map(),
-            final(self).spec_index(allocator).merge_2m_source_list(source as usize).dom() == old(self).spec_index(allocator).merge_2m_source_list(source as usize).dom(),
-            final(self).spec_index(allocator).merge_2m_source_list(source as usize).length == old(self).spec_index(allocator).merge_2m_source_list(source as usize).length,
-            final(self).spec_index(allocator).merge_2m_source_list(source as usize).view().len() == old(self).spec_index(allocator).merge_2m_source_list(source as usize).view().len(),
-            final(self).spec_index(allocator).merge_2m_source_list(source as usize).view().to_set() == old(self).spec_index(allocator).merge_2m_source_list(source as usize).view().to_set(),
-            forall|value: PagePtr| #![trigger final(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value)]
-                #![trigger old(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value)]
-                final(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value) == old(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value),
-            LinkedList::<PagePtr, 233>::values_sorted(final(self).spec_index(allocator).merge_2m_source_list(source as usize).view()),
-            final(self).spec_index(allocator).total_free_pages == old(self).spec_index(allocator).total_free_pages,
-            final(self).spec_index(allocator).quota == old(self).spec_index(allocator).quota,
-            final(self).spec_index(allocator).owning_container == old(self).spec_index(allocator).owning_container,
             Self::merge_2m_sort_source_eof_transition_framing(*old(self), *final(self), allocator, source),
             final(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
             final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
@@ -106,10 +94,6 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
                 &&& after.dom().contains(key) == (before.dom().contains(key) && (other != source as usize || before.spec_index(key) != ret.1.view().value().view()))
                 &&& after.dom().contains(key) ==> after.spec_index(key) == before.spec_index(key)
             },
-            forall|other: usize| #![trigger final(self).spec_index(allocator).merge_2m_source_list(other)] other <= NUM_CPUS ==>
-                final(self).spec_index(allocator).merge_2m_source_list(other).map() == if other == source as usize {
-                    old(self).spec_index(allocator).merge_2m_source_list(other).map().remove(node)
-                } else { old(self).spec_index(allocator).merge_2m_source_list(other).map() },
             forall|other: usize, value: PagePtr| #![trigger final(self).spec_index(allocator).merge_2m_source_list(other).view().contains(value)]
                 #![trigger old(self).spec_index(allocator).merge_2m_source_list(other).view().contains(value)] other <= NUM_CPUS ==>
                 final(self).spec_index(allocator).merge_2m_source_list(other).view().contains(value)
@@ -119,12 +103,6 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
                     LinkedList::<PagePtr, 233>::values_sorted(final(self).spec_index(allocator).merge_2m_source_list(other).view()),
             forall|other: usize| #![trigger final(self).spec_index(allocator).merge_2m_source_list(other)] other <= NUM_CPUS && other != source as usize ==>
                 final(self).spec_index(allocator).merge_2m_source_list(other) == old(self).spec_index(allocator).merge_2m_source_list(other),
-            forall|value: PagePtr| #![trigger final(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value)]
-                #![trigger old(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value)]
-                final(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value)
-                    == (old(self).spec_index(allocator).merge_2m_source_list(source as usize).view().contains(value) && value != ret.1.view().value().view()),
-            LinkedList::<PagePtr, 233>::values_sorted(old(self).spec_index(allocator).merge_2m_source_list(source as usize).view())
-                ==> LinkedList::<PagePtr, 233>::values_sorted(final(self).spec_index(allocator).merge_2m_source_list(source as usize).view()),
             final(self).spec_index(allocator).total_free_pages.view() == old(self).spec_index(allocator).total_free_pages.view() - 1,
             final(self).spec_index(allocator).quota == old(self).spec_index(allocator).quota,
             final(self).spec_index(allocator).owning_container == old(self).spec_index(allocator).owning_container,

@@ -20,7 +20,6 @@ pub(super) open spec fn map_owned_2m_page_eof_transition_framing(pre: KernelK, p
     &&& forall|other_pagetable: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable)]
         pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
-    &&& new_pt.wf()
     &&& new_pt.mapping_2m() == old_pt.mapping_2m().insert(va, MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
     &&& new_pt.mapping_4k() == old_pt.mapping_4k()
     &&& new_pt.mapping_1g() == old_pt.mapping_1g()
@@ -71,6 +70,7 @@ proof fn map_owned_2m_page_eof_subsystems_inv(pre: KernelK, post: KernelK, pg_pt
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -115,6 +115,7 @@ proof fn map_owned_2m_page_eof_page_mappings_4k(pre: KernelK, post: KernelK, pg_
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -154,6 +155,7 @@ proof fn map_owned_2m_page_eof_page_mappings_2m(pre: KernelK, post: KernelK, pg_
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -199,6 +201,7 @@ proof fn map_owned_2m_page_eof_page_mappings_1g(pre: KernelK, post: KernelK, pg_
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -238,6 +241,7 @@ proof fn map_owned_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -333,6 +337,7 @@ proof fn map_owned_2m_page_eof_process_management_inv(pre: KernelK, post: Kernel
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -379,6 +384,7 @@ proof fn map_owned_2m_page_eof_tlb_caches(pre: KernelK, post: KernelK, pg_ptr: P
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -428,6 +434,7 @@ pub(super) proof fn map_owned_2m_page_eof(pre: KernelK, post: KernelK, pg_ptr: P
     requires
         pre.inv(),
         map_owned_2m_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
         page_ptr_valid(pg_ptr),
         va_2m_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),

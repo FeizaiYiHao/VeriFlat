@@ -4,7 +4,7 @@ use crate::*;
 verus! {
 /// User-visible and physical result of a successful anonymous 1G mmap.
 pub open spec fn mmap_1g_syscall_range_mapped(pagetable: WholePageTable<PT_TYPE>, va: VAddr, len: usize) -> bool {
-    let range = mmap_1g_syscall_va_range(va, len);
+    let range = spec_va_range_1g(va, len);
     forall|j: int| #![trigger range.view()[j]] 0 <= j < len ==> {
         let mapped_va = range.view()[j];
         &&& pagetable.mapping_1g().dom().contains(mapped_va)
@@ -13,9 +13,6 @@ pub open spec fn mmap_1g_syscall_range_mapped(pagetable: WholePageTable<PT_TYPE>
         &&& !pagetable.mapping_1g().spec_index(mapped_va).execute_disable
     }
 }
-
-/// The 1G-aligned VA sequence requested by `syscall_mmap_1g`.
-pub open spec fn mmap_1g_syscall_va_range(va: VAddr, len: usize) -> VaRange1G { spec_va_range_1g(va, len) }
 
 /// No 1G leaf maps the 1G slot at `va`, and no 2M or 4K leaf maps a VA inside it.
 pub open spec fn mmap_1g_slot_unmapped(pagetable: PageTableU, va: VAddr) -> bool {
@@ -32,7 +29,7 @@ pub open spec fn mmap_1g_slot_unmapped(pagetable: PageTableU, va: VAddr) -> bool
 pub open spec fn mmap_1g_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let pagetable = pre.process_map[thread.owning_proc].pagetable->Some_0;
-    let va_range = mmap_1g_syscall_va_range(va, range);
+    let va_range = spec_va_range_1g(va, range);
     if range == 0 || range > usize::MAX / 0x40000000 || !spec_va_1g_valid(va) || va >= usize::MAX - range * 0x40000000 || !spec_va_1g_range_valid(va, range) { RetValueType::Error }
     else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if thread.killed { RetValueType::ErrorThreadKilled }
@@ -210,13 +207,13 @@ pub open spec fn mmap_1g_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     })
 }
 
-/// Exiting happens under the three mmap locks after every page of the recorded range has been mapped.
+/// Exiting happens under the three mmap locks, this cpu write-holding the pagetable, after every page of the recorded range has been mapped.
 #[verifier::opaque]
 pub open spec fn mmap_1g_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let progress = thread.syscall_progress->Some_0;
     &&& thread_pagetable_op_in_progress(old_u, cpu_id)
-    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
+    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& progress is Mmap1g
     &&& progress->Mmap1g_mapped == progress->Mmap1g_range.len
     &&& !progress->Mmap1g_directory
@@ -271,7 +268,7 @@ pub open spec fn mmap_1g_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId
 /// The full trace of a successful mmap: one enter step, one range step per recorded mutation, and one exit step.
 #[verifier::opaque]
 pub open spec fn mmap_1g_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
-    let va_range = mmap_1g_syscall_va_range(va, range);
+    let va_range = spec_va_range_1g(va, range);
     // The range-trace bound plus the exit step.
     &&& range + 2 <= trace.len() <= 516 * range + NUM_CPUS + 3
     &&& mmap_1g_enter_step_pre(trace[0].old_u, cpu_id, va_range)

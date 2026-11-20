@@ -20,10 +20,9 @@ pub proof fn merge_2m_exchange_thread_quotas_eof_implies_thread_inv(pre: Thread,
 {}
 
 pub proof fn merge_2m_commit_eof_implies_container_owned_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
@@ -56,16 +55,17 @@ pub proof fn merge_2m_commit_eof_implies_container_owned_pages_wf(pre: KernelK, 
         page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
         assert(container_owned_pages_forward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_forward_wf); };
         assert(container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_backward_wf); };
-        assert(container_owned_pages_2m_region_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_2m_region_wf); };
+        assert(container_owned_pages_2m_region_wf(post.ctn_mp, post.pg_arr)) by {
+            reveal(container_owned_pages_2m_region_wf); reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf);
+        };
         assert(container_owned_pages_1g_region_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_1g_region_wf); };
     };
 }
 
 pub proof fn merge_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
@@ -92,14 +92,15 @@ pub proof fn merge_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre: Kernel
     ensures
         mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid(); };
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+    };
 }
 
 pub proof fn merge_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
@@ -126,7 +127,9 @@ pub proof fn merge_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre: Kernel
     ensures
         mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid(); };
+    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+    };
 }
 
 pub proof fn merge_2m_commit_eof_implies_typed_lock_maps_aligned(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,

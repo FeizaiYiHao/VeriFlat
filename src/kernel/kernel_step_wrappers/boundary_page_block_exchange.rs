@@ -4,7 +4,8 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    pub proof fn kernel_step_boundary_free_4k_block_merged(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thread: RwLockThreadPtr, allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr)
+    pub proof fn kernel_step_boundary_free_4k_block_merged(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps,
+        thread: RwLockThreadPtr, allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr)
         requires
             old(self).inv(),
             old(self).allc_4k_mp.dom().contains(allocator_4k),
@@ -77,8 +78,7 @@ impl KernelK {
             kernel_thread_projection_at(&steps.snapshot_k(), thread); kernel_thread_projection_at(&*self, thread);
         };
         self.kernel_step_boundary_raw(lctx, steps);
-        assert(forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
-            ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        reveal(LockedMap::typed_lock_map_aligned);
         reveal(allocator_free_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf);
         reveal(page_array_wf); reveal(LockedArray::lock_id_by_index);
         page_ptr_roundtrip(); page_index_roundtrip();
@@ -96,7 +96,8 @@ impl KernelK {
         if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
 
-    pub proof fn kernel_step_boundary_free_2m_block_split(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thread: RwLockThreadPtr, allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr)
+    pub proof fn kernel_step_boundary_free_2m_block_split(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps,
+        thread: RwLockThreadPtr, allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr)
         requires
             old(self).inv(),
             old(self).allc_2m_mp.dom().contains(allocator_2m),
@@ -169,8 +170,7 @@ impl KernelK {
             kernel_thread_projection_at(&steps.snapshot_k(), thread); kernel_thread_projection_at(&*self, thread);
         };
         self.kernel_step_boundary_raw(lctx, steps);
-        assert(forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
-            ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        reveal(LockedMap::typed_lock_map_aligned);
         reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf);
         reveal(page_array_wf); reveal(LockedArray::lock_id_by_index);
         page_ptr_roundtrip(); page_index_roundtrip();
