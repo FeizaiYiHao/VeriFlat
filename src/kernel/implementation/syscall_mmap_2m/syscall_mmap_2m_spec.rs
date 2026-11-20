@@ -13,11 +13,6 @@ pub open spec fn mmap_2m_syscall_range_mapped(pagetable: WholePageTable<PT_TYPE>
     }
 }
 
-/// The 2M-aligned VA sequence requested by `syscall_mmap_2m`.
-pub open spec fn mmap_2m_syscall_va_range(va: VAddr, len: usize) -> VaRange2M {
-    VaRange2M { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_2m(va, i as usize))) }
-}
-
 /// No 1G leaf covers the 2M window at `va`, it holds no 2M leaf, and no 4K leaf maps a VA inside it.
 pub open spec fn mmap_2m_window_unmapped(pagetable: PageTableU, va: VAddr) -> bool {
     let idx = spec_va2index(va);
@@ -34,7 +29,7 @@ pub open spec fn mmap_2m_window_unmapped(pagetable: PageTableU, va: VAddr) -> bo
 pub open spec fn mmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let pagetable = pre.process_map[thread.owning_proc].pagetable->Some_0;
-    let va_range = mmap_2m_syscall_va_range(va, range);
+    let va_range = spec_va_range_2m(va, range);
     if range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range) { RetValueType::Error }
     else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if thread.killed { RetValueType::ErrorThreadKilled }
@@ -338,7 +333,7 @@ pub open spec fn mmap_2m_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId
 /// an enter step to fill; one range step per recorded mutation; and one exit step.
 #[verifier::opaque]
 pub open spec fn mmap_2m_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, range: usize, phase: Mmap2mPhase) -> bool {
-    let va_range = mmap_2m_syscall_va_range(va, range);
+    let va_range = spec_va_range_2m(va, range);
     let e: int = if phase is Fill { 1 } else { 0 };
     // The range-trace bound plus the exit step.
     &&& e + range + 2 <= trace.len() <= e + 4 * range + NUM_CPUS + 4
@@ -356,7 +351,7 @@ pub open spec fn mmap_2m_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va
 #[verifier::opaque]
 pub open spec fn mmap_2m_syscall_failure_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
     &&& trace.len() == 2
-    &&& mmap_2m_hold_step_pre(trace[0].old_u, cpu_id, mmap_2m_syscall_va_range(va, range))
+    &&& mmap_2m_hold_step_pre(trace[0].old_u, cpu_id, spec_va_range_2m(va, range))
     &&& mmap_4k_hold_step(trace[0].old_u, trace[0].new_u, cpu_id)
     &&& mmap_4k_release_step_pre(trace[1].old_u, cpu_id)
     &&& mmap_4k_release_step(trace[1].old_u, trace[1].new_u, cpu_id)

@@ -22,7 +22,7 @@ pub(super) fn mmap_2m_unlock_range_and_finish(
         old(steps).snapshot_k() == *old(krnl),
         range > 0,
         va_4k_valid(va),
-        *va_range == mmap_2m_syscall_va_range(va, range),
+        *va_range == spec_va_range_2m(va, range),
         va_range.wf(),
         enter_phase is Read || enter_phase is Fill,
         mmap_2m_trace_after_range(old(steps).view(), cpu_id, *va_range, enter_phase),

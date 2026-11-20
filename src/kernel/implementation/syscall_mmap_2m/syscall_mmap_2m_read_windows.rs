@@ -3,7 +3,6 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_mmap_2m_map_range::mmap_2m_map_leaves_and_finish;
 use super::syscall_mmap_2m_precheck::{mmap_2m_precheck, Mmap2mPrecheck};
-use super::syscall_mmap_2m_read_enter::mmap_2m_unlock_read_rejected;
 use super::syscall_mmap_2m_spec::*;
 use super::syscall_mmap_2m_trace::*;
 
@@ -31,7 +30,7 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, pre_k.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), &pre_k),
         !(range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range)),
-        *va_range == mmap_2m_syscall_va_range(va, range),
+        *va_range == spec_va_range_2m(va, range),
         va_range.wf(),
         va_range.len > 0,
         *cover == va_range.covering_4k_range(),
@@ -143,7 +142,7 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
     if !ready {
         krnl.unlock_pagetable_range_windows::<false>(pagetable_ptr, cover, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
         proof { assert_maps_equal!(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, unlocked_windows); }
-        mmap_2m_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),
+        mmap_4k_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),
             Tracked(cpu_lock_perm));
         proof { mmap_2m_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::ErrorVaInUse, Some(checked), found, at); }
         return RetValueType::ErrorVaInUse;

@@ -28,7 +28,7 @@ pub(super) fn mmap_2m_fill_enter(
         mmap_2m_trace_after_hold(old(steps).view(), cpu_id, *va_range),
         old(steps).view().len() == 1,
         !(range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range)),
-        *va_range == mmap_2m_syscall_va_range(va, range),
+        *va_range == spec_va_range_2m(va, range),
         va_range.wf(),
         va_range.len > 0,
         *cover == va_range.covering_4k_range(),

@@ -71,7 +71,7 @@ pub use kernel::implementation::map_4k::map_iommu_4k_directory::install_staged_4
 use kernel::implementation::map_4k::unmap_4k_range::unmap_4k_range;
 use kernel::implementation::map_4k::refund_unmap_4k_quota_to_thread::refund_unmap_4k_quota_to_thread;
 use kernel::implementation::map_4k::unmap_4k_lock_running_thread::{unmap_4k_lock_current_thread, unmap_4k_lock_running_thread, Unmap4kLocked};
-use kernel::implementation::map_4k::mmap_4k_lock_current_thread::mmap_4k_lock_current_thread;
+use kernel::implementation::map_4k::mmap_4k_lock_current_thread::{mmap_4k_lock_current_thread, mmap_4k_range_l2_bounds, mmap_4k_unlock_and_finish, mmap_4k_unlock_read_rejected};
 use kernel::implementation::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 pub use kernel::implementation::map_4k::mmap_4k_install_one::install_one_mmap_2m_directory_page;
 use kernel::implementation::map_4k::hide_empty_l1_in_window::hide_empty_l1_in_window;
