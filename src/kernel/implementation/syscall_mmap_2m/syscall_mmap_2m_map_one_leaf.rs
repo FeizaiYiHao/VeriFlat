@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_sets_equal, assert_sets_equal_internal};
 use crate::*;
 use super::syscall_mmap_2m_map_owned::map_owned_2m_page;
 use super::syscall_mmap_2m_spec::*;
@@ -74,7 +75,7 @@ pub(super) fn mmap_2m_page(
         held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view().len() == old(steps).view().len() + 1,
-        final(steps).view().drop_last() == old(steps).view(),
+        final(steps).view() == old(steps).view().push(final(steps).view().last()),
         mmap_2m_leaf_step_pre(final(steps).view().last().old_u, cpu_id),
         mmap_2m_leaf_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
@@ -164,31 +165,7 @@ pub(super) fn mmap_2m_page(
             mmap_2m_leaf_step_from_u(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(unlocked_k), cpu_id, prc_ptr, thrd_ptr, va,
                 whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va));
         };
-        assert(krnl.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m.view() =~= Set::empty());
-        assert forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))
-            implies whole_pagetable(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable_ptr).window_view(w) == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).window_view(w)
-                && whole_pagetable(section_start.pt_mp, section_start.pt_lower.view(), pagetable_ptr).window_view(w) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_view(w)
-                && whole_pagetable(section_start.pt_mp, section_start.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
-                && whole_pagetable(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va) == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
-                && (whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
-                    ==> whole_pagetable(section_start.pt_mp, section_start.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va))
-                && (whole_pagetable(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
-                    ==> whole_pagetable(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va) == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va)) by {
-            assert(staged_lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && unlocked_lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)));
-        };
-        assert forall|w: WindowVa, u: VAddr|
-            #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u)]
-            #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u)]
-            old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && spec_v2l4index(u) == spec_v2l4index(w.va) && spec_v2l3index(u) == spec_v2l3index(w.va)
-                && spec_v2l2index(u) == spec_v2l2index(w.va) implies whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u)
-                && (whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u)
-                    ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(u) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(u)) by {
-            assert(staged_lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && unlocked_lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)));
-            assert(whole_pagetable(section_start.pt_mp, section_start.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u)
-                == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u));
-            assert(whole_pagetable(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u)
-                == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(u));
-        };
+        assert_sets_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m.view(), Set::empty());
     }
 }
 } // verus!

@@ -393,7 +393,7 @@ pub(super) proof fn map_pci_bar_2m_reclaim_step_from_k(
         map_pci_bar_2m_trace_after_range(before, cpu_id, slot, index, va),
         before.len() <= NUM_CPUS + 2,
         steps.view().len() == before.len() + 1,
-        steps.view().drop_last() == before,
+        steps.view() == before.push(steps.view().last()),
         steps.view().last().old_u == kernel_k_to_kernel_u(*mid),
         kernel_u_container_quota_4k_increased(steps.view().last().old_u, steps.view().last().new_u, ctn_ptr),
         typed_lock_maps_aligned(mid, lctx),
@@ -415,7 +415,6 @@ pub(super) proof fn map_pci_bar_2m_reclaim_step_from_k(
 {
     map_pci_bar_2m_l1_step_pre_from_k(mid, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, va, Mmap2mDirectory::None, true);
     reveal(map_pci_bar_2m_trace_after_range); reveal(map_pci_bar_2m_range_step);
-    assert(steps.view() =~= before.push(steps.view().last()));
 }
 
 /// The exit step pushed after the partial trace before the exit, which starts at the projection of `entry_k`, completes the syscall

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 
 verus! {
@@ -303,7 +304,7 @@ pub(super) proof fn remove_2m_mapping_without_free_in_window_eof(pre: KernelK, p
     remove_2m_mapping_without_free_in_window_eof_memory_management_inv(pre, post, pagetable, va, pg_ptr, l2_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     reclaim_unmapped_2m_page_in_window_eof_cpu_caches(pre, post, pagetable, va, l2_ptr);
-    assert(new_c.user_view(LockStateU::Unlocked).mapping_2m =~= old_c.user_view(LockStateU::Unlocked).mapping_2m);
+    assert_maps_equal!(new_c.user_view(LockStateU::Unlocked).mapping_2m, old_c.user_view(LockStateU::Unlocked).mapping_2m);
     broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, group_kernel_endpoint_nonlock_fields_unchanged_transitive;
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
@@ -389,7 +390,8 @@ pub(super) open spec fn remove_last_2m_mapping_to_allocator_in_window_eof_transi
     &&& new_counter == old_counter + 1
     &&& new_thread.view().free_quota_pending_2m_at_depth(depth) == new_counter
     &&& new_thread.view().direct_free_quota_pending_2m.view() == old_thread.view().direct_free_quota_pending_2m.view() + if depth == old_thread.view().container_depth { 1int } else { 0int }
-    &&& new_thread.view().indirect_free_quota_pending_2m.view() == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_2m.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_2m.view() }
+    &&& new_thread.view().indirect_free_quota_pending_2m.view()
+        == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_2m.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_2m.view() }
     &&& forall|t: RwLockThreadPtr|
         #![trigger pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_4k]
         #![trigger post.thrd_mp.spec_index(t).view().direct_free_quota_pending_4k]

@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal, assert_sets_equal_internal};
 use crate::*;
 use super::syscall_mmap_2m_fill_enter::mmap_2m_fill_enter;
 use super::syscall_mmap_2m_read_windows::mmap_2m_read_lock_windows_and_map;
@@ -46,7 +46,8 @@ pub(super) fn mmap_2m_unlock_read_rejected(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_1g(),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks
+            == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
         pagetable_lock_perm.state() is ReadLock,
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
@@ -100,10 +101,10 @@ pub(super) fn mmap_2m_unlock_read_rejected(
 {
     proof {
         if old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is Read {
-            assert(old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id())
-                =~= old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map);
+            assert_maps_equal!(old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.insert(lctx.thread_id(), pagetable_lock_perm.lock_id())
+                .remove(lctx.thread_id()), old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map);
         } else {
-            assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
+            assert_sets_equal!(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()).dom(), Set::empty());
         }
     }
     krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));

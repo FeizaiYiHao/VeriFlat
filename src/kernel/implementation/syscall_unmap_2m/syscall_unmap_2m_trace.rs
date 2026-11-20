@@ -153,7 +153,8 @@ pub(super) proof fn unmap_2m_exit_step_from_u(
             &&& post == (KernelU {
                 cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
-                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: process.pagetable->Some_0.lock_state.without_reader(cpu_id), pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process }),
+                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: process.pagetable->Some_0.lock_state.without_reader(cpu_id), pagetable_window_locks: windows,
+                    ..process.pagetable->Some_0 }), ..process }),
                 ..pre
             })
         }),
@@ -624,15 +625,6 @@ pub(super) proof fn unmap_2m_range_steps_from_refund(
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_2m_range_step(steps.view()[j], cpu_id),
 { reveal(unmap_2m_range_step); reveal(unmap_2m_exit_step_pre); reveal(unmap_2m_refund_step); }
-
-/// Changing the 2M quota of thread `thrd_ptr` from `pre` to `post` changes the user view.
-pub(super) proof fn unmap_2m_thread_refund_step_pre_from_k(pre: &KernelK, post: &KernelK, thrd_ptr: RwLockThreadPtr)
-    requires
-        pre.thrd_mp.dom().contains(thrd_ptr),
-        post.thrd_mp.dom().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view().quota_2m != post.thrd_mp.spec_index(thrd_ptr).view().quota_2m,
-    ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-{ kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr); }
 
 /// Moving the direct pending 2M quota of the running thread `thrd_ptr` into its 2M quota, which stays at most
 /// `THREAD_QUOTA_2M_REFUND_CAP`, from `pre` to `post` after the flush is recorded and under the unmap locks, and recording it after
