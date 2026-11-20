@@ -9,8 +9,8 @@ pub open spec fn in_domain(u: KernelU, root: RwLockContainerPtr, c: RwLockContai
 
 /// What the domain rooted at `root` observes, including lock modes: its containers; every process,
 /// thread, and endpoint one of its containers owns; whether DMA translation is attached for each PCI
-/// function in its processes' page-table function arrays; every endpoint its threads hold, per descriptor; its cpus; and the first
-/// kernel L4 index, which bounds every user range.
+/// function in its processes' page-table function arrays; every endpoint its threads hold, per descriptor; its cpus; the first
+/// kernel L4 index, which bounds every user range; and the public BAR table, fixed at boot.
 #[verifier::ext_equal]
 pub ghost struct DomainView {
     pub containers: Map<RwLockContainerPtr, ContainerU>,
@@ -21,6 +21,7 @@ pub ghost struct DomainView {
     pub held_endpoints: Map<RwLockThreadPtr, Seq<Option<EndpointU>>>,
     pub cpus: Seq<Option<CpuU>>,
     pub kernel_l4_end: usize,
+    pub pci_bars: Seq<PciBarEntry>,
 }
 
 /// The PCI functions in the page-table function array of `process`; a zombie, which has no page table, holds none.
@@ -42,6 +43,7 @@ pub open spec fn domain_view(u: KernelU, root: RwLockContainerPtr) -> DomainView
         held_endpoints: Map::new(threads, |t: RwLockThreadPtr| Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| match u.thread_map[t].endpoint_descriptors[i] { Some(e) => Some(u.endpoint_map[e]), None => None })),
         cpus: Seq::new(NUM_CPUS as nat, |i: int| if in_domain(u, root, u.cpu_array[i].owning_container) { Some(u.cpu_array[i]) } else { None }),
         kernel_l4_end: u.kernel_l4_end,
+        pci_bars: u.pci_bars,
     }
 }
 

@@ -622,15 +622,13 @@ pub proof fn unmap_pci_bar_2m_exit_step_iso(old_u: KernelU, new_u: KernelU, cpu_
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
-/// The 4K and 2M BAR map and unmap results of a running cpu of `b` read only the view of `b` and the BAR table. The BAR table is
-/// constant after boot, but it is not in the view: `kernel_u_new_thread_changed` does not state that it is unchanged.
+/// The 4K and 2M BAR map and unmap results of a running cpu of `b` read only the view of `b`, which includes the BAR table.
 pub proof fn pci_bar_syscall_results_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, slot: usize, index: usize, va: VAddr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
         steps_in_domain(u1, cpu_id, b),
         u1.cpu_array[cpu_id as int].state is Running,
         domain_view(u1, b) =~~= domain_view(u2, b),
-        u1.pci_bars == u2.pci_bars,
     ensures
         map_pci_bar_4k_syscall_result(u1, cpu_id, slot, index, va) == map_pci_bar_4k_syscall_result(u2, cpu_id, slot, index, va),
         map_pci_bar_2m_syscall_result(u1, cpu_id, slot, index, va) == map_pci_bar_2m_syscall_result(u2, cpu_id, slot, index, va),
@@ -645,6 +643,7 @@ pub proof fn pci_bar_syscall_results_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId,
         &&& v1.cpus[cpu_id as int] == Some(cpu)
         &&& v1.threads.dom().contains(cpu.current_thread->Some_0) && v1.threads[cpu.current_thread->Some_0] == v2.threads[cpu.current_thread->Some_0]
         &&& v1.processes.dom().contains(thread.owning_proc) && v1.processes[thread.owning_proc] == v2.processes[thread.owning_proc]
+        &&& v1.pci_bars == v2.pci_bars
     }) by { reveal(kernel_u_cpu_ownership_wf); };
 }
 } // verus!

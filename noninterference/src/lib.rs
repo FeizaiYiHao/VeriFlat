@@ -22,9 +22,8 @@
 //! head's payload for the acceptance result, and the peer thread with the handed-over cpu or its process
 //! for a PCI function, its payload endpoint or container, or its process and container for the
 //! rendezvous, endpoint transfer, and pages check results. The PCI claim result needs B disjoint from some
-//! other domain, which keeps the root container out of B, and the BAR map and unmap results also read the
-//! boot-time BAR table, which is not in the view because `kernel_u_new_thread_changed` does not state that it
-//! is unchanged. With `trace_ni_at`, steps of A between two states leave B's results unchanged.
+//! other domain, which keeps the root container out of B. With `trace_ni_at`, steps of A between two states
+//! leave B's results unchanged.
 //!
 //! PCI functions and device memory: a function sits in the page-table function array of the process that owns
 //! it, so `domain_view` holds the attach state of exactly the domain's functions. A BAR mapping maps a page or 2M
