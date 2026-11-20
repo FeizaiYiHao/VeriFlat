@@ -265,8 +265,6 @@ impl PciFunctionArray {
         proof { broadcast use vstd::set::lemma_set_insert_len; }
         self.entries.set(i, PciFunctionEntry { count: e.count + 1, ..e });
         self.owned = Ghost(self.owned.view().insert(f, (i as int, self.owned.view()[f].1.insert(m))));
-        proof {
-        }
     }
 
     /// The function of the used entry `i` loses its BAR mapping `m`; its count drops by one.
@@ -292,8 +290,6 @@ impl PciFunctionArray {
         proof { broadcast use vstd::set::lemma_set_remove_len, vstd::set::lemma_set_contains_len; }
         self.entries.set(i, PciFunctionEntry { count: e.count - 1, ..e });
         self.owned = Ghost(self.owned.view().insert(f, (i as int, self.owned.view()[f].1.remove(m))));
-        proof {
-        }
     }
 
     /// The used entry `i` becomes unused; its function and that function's BAR mappings leave the array.

@@ -418,7 +418,6 @@ pub fn pagetable_map_insert_2m_wlocked(
     pagetable.higher.map_2m_page(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, target_entry, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         pagetable.lower_backup = Ghost(*lower);
-        let post_c = WholePageTable { higher: pagetable.higher, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
             old(pagetable_map).typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
         };
@@ -2031,7 +2030,6 @@ pub fn pagetable_map_hide_l1_page(
     pagetable.higher.hide_l1_page(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         pagetable.lower_backup = Ghost(*lower);
-        let post_c = WholePageTable { higher: pagetable.higher, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
             old(pagetable_map).typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
         };
@@ -2143,7 +2141,6 @@ pub fn pagetable_map_unlink_hidden_l1_page(
     let ret = pagetable.higher.unlink_hidden_l1_page(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         pagetable.lower_backup = Ghost(*lower);
-        let post_c = WholePageTable { higher: pagetable.higher, lower: *lower };
         assert(pagetable_map_unlink_hidden_l1_page_eof_transition_framing(*old(pagetable_map), *old(pt_lower), *pagetable_map, *pt_lower, pagetable_ptr)) by {
             reveal(pagetable_map_unlink_hidden_l1_page_eof_transition_framing);
         };

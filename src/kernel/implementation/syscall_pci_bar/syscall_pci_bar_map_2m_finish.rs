@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_pci_bar_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -32,7 +33,34 @@ pub(super) fn map_pci_bar_2m_map_and_finish(
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         va_2m_valid(va),
-        map_pci_bar_2m_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, slot, index, va) is Success,
+        ({
+            let s = old(steps).snapshot_k();
+            let cpu = s.cpu_arr.spec_index(cpu_id).view();
+            let thread = s.thrd_mp.spec_index(thrd_ptr);
+            let table = whole_pagetable(s.pt_mp, s.pt_lower.view(), pagetable);
+            let idx = spec_va2index(va);
+            &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
+            &&& cpu.view().view().current_thread == Some(thrd_ptr)
+            &&& cpu.view().view().current_process == Some(prc_ptr)
+            &&& s.thrd_mp.dom().contains(thrd_ptr)
+            &&& !thread.being_killed()
+            &&& thread.view().owning_proc == prc_ptr
+            &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& s.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& s.prc_mp.dom().contains(prc_ptr)
+            &&& !s.prc_mp.spec_index(prc_ptr).view().zombie
+            &&& s.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable
+            &&& s.pt_mp.dom().contains(pagetable)
+            &&& table.leaves_present()
+            &&& slot < s.pci_bars.view().len() && s.pci_bars.view()[slot as int].spec_chunk_2m(index) is Some
+            &&& table.higher.pci.view().dom().contains(s.pci_bars.view()[slot as int].bdf)
+            &&& !table.mapping_1g().dom().contains(spec_index2va((idx.0, idx.1, 0, 0)))
+            &&& !table.mapping_2m().dom().contains(va)
+            &&& forall|l1i: L1Index| #![trigger table.mapping_4k().dom().contains(spec_index2va((idx.0, idx.1, idx.2, l1i)))] pei_valid(l1i)
+                ==> !table.mapping_4k().dom().contains(spec_index2va((idx.0, idx.1, idx.2, l1i)))
+            &&& thread.view().quota_4k >= 2
+        }),
         slot < old(krnl).pci_bars.view().len(),
         old(krnl).pci_bars.view()[slot as int].spec_chunk_2m(index) == Some(addr),
         pci_bar_2m_chunk_of(old(krnl).pci_bars.view(), addr, old(krnl).pci_bars.view()[slot as int].bdf),
@@ -192,15 +220,14 @@ pub(super) fn map_pci_bar_2m_map_and_finish(
     proof {
         let entered = *krnl;
         let c = whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable);
-        assert(entered.pt_lower.view() =~= entry.pt_lower.view().insert(pagetable, entered.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(entered.pt_lower.view(), entry.pt_lower.view().insert(pagetable, entered.pt_lower.view().spec_index(pagetable)));
         if !l3_present && c.lower.pagetable_window_locks.dom().contains(window_of(va)) { pagetable_lower_wf_at(entry.pt_mp, entry.pt_lower.view(), pagetable); c.wf_window_locks_va_at(window_of(va)); }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_cpu_wf_at(entry.prc_mp, entry.cpu_arr, cpu_id); process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
         kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed_implies_u_step(&entry, &entered, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
-        pagetable_unlocked_implies_projected_window_unlocked(&entry, prc_ptr, window_of(va));
-        map_pci_bar_2m_enter_step_from_u(&entry, kernel_k_to_kernel_u(entered), whole_pagetable(entered.pt_mp, entered.pt_lower.view(), pagetable).lower.pagetable_window_locks, cpu_id,
-            prc_ptr, thrd_ptr, pagetable, slot, index, va);
+        map_pci_bar_2m_enter_step_from_k(&entry, kernel_k_to_kernel_u(entered), whole_pagetable(entered.pt_mp, entered.pt_lower.view(), pagetable).lower.pagetable_window_locks, cpu_id, prc_ptr,
+            thrd_ptr, pagetable, slot, index, va);
         map_pci_bar_2m_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(entered), cpu_id, slot, index, va);
     }
     if linked {
@@ -217,25 +244,13 @@ pub(super) fn map_pci_bar_2m_map_and_finish(
         // directory steps: the missing L4 and L3 entries, in increasing rank
         if !l4_present {
             let ghost before = steps.view();
-            proof {
-                kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-                process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-                process_perms_wf_at(krnl.prc_mp, prc_ptr); process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
-                container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-            }
             let _ = install_one_mmap_2m_directory_page(krnl, MissingPageTableLevel::L4, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable, (indices.0, indices.1, indices.2),
                 indices.2, indices.2, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm), Tracked(&pagetable_perm));
             proof { map_pci_bar_2m_trace_directory_step(&*steps, before, cpu_id, slot, index, va); }
         }
         if !l3_present {
             let ghost before = steps.view();
-            proof {
-                kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.wf_mapping_1g_at(indices.0, indices.1);
-                process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-                process_perms_wf_at(krnl.prc_mp, prc_ptr); process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
-                container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-            }
+            proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.wf_mapping_1g_at(indices.0, indices.1); }
             let Tracked(minted) = install_one_mmap_2m_directory_page(krnl, MissingPageTableLevel::L3, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable,
                 (indices.0, indices.1, indices.2), indices.2, indices.2, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm), Tracked(&pagetable_perm));
             proof {

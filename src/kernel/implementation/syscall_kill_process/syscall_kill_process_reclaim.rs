@@ -456,8 +456,9 @@ pub(crate) fn kill_reclaim_unown_functions(
                             pci_function_ownership_wf_function_at(locked.irt.view(), locked.prc_mp, locked.pt_mp, anchor.0, anchor.1, anchor.2);
                         }
                     };
-                    assert(kill_unown_detach_eof_transition_framing(locked, *krnl, pagetable, it)) by { reveal(kill_unown_detach_eof_transition_framing); };
-                    assert(krnl.it_mp.spec_index(it).view().leaves_present()) by { reveal(kill_unown_detach_eof_transition_framing); };
+                    assert(kill_unown_detach_eof_transition_framing(locked, *krnl, pagetable, it) && krnl.it_mp.spec_index(it).view().leaves_present()) by {
+                        reveal(kill_unown_detach_eof_transition_framing);
+                    };
                     kill_unown_detach_eof(locked, *krnl, pagetable, it);
                 }
                 Tracked(Some(perm))
@@ -490,7 +491,6 @@ pub(crate) fn kill_reclaim_unown_functions(
         if let Some(it) = iommu_table {
             iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it); krnl.it_mp.spec_index(it).view().kernel_entries_wf_iommu_l4_end_at();
         }
-        kill_unown_eof_pagetable_walks(whole_pagetable(before.pt_mp, before.pt_lower.view(), pagetable), whole_pagetable(after.pt_mp, after.pt_lower.view(), pagetable));
         kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
         kill_reclaim_pre_from_k(&before, &before_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, iommu_table);
         kill_unown_step_from_k(&before, &mid, &after, &*lctx, cpu_id, target, pagetable, iommu_table);

@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_pci_spec::{ipc_pci_rendezvous_eof_pagetable_frame, ipc_pci_rendezvous_eof_pci_handoff, ipc_pci_rendezvous_eof_transition_framing};
 #[cfg(verus_keep_ghost)]
@@ -70,6 +71,12 @@ proof fn ipc_pci_detach_eof_root_table(
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is Some,
         pre.pt_mp.spec_index(sender_pt).view().higher.pci.view().dom().contains(bdf),
+        pre.it_mp.spec_index(table).view().proc_ptr == sender_proc,
+        pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == Some(sender_proc),
+        pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == Some(pre.it_mp.spec_index(table).view().cr3),
+        pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2) == pre.it_mp.spec_index(table).view().did,
+        pre.it_mp.spec_index(table).view().did is Some,
+        vtd_domain_id_valid(pre.it_mp.spec_index(table).view().did->Some_0),
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),
@@ -77,17 +84,6 @@ proof fn ipc_pci_detach_eof_root_table(
 {
     let t = pre.it_mp.spec_index(table).view();
     let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
-    assert({
-        &&& t.proc_ptr == sender_proc
-        &&& pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == Some(sender_proc)
-        &&& pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == Some(t.cr3)
-        &&& old_did == t.did
-        &&& t.did is Some
-        &&& vtd_domain_id_valid(t.did->Some_0)
-    }) by {
-        process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc); pci_function_ownership_wf_pagetable_at(pre.irt.view(), pre.prc_mp, pre.pt_mp, sender_pt, bdf);
-        reveal(iommu_root_table_process_wf);
-    };
     assert(pci_bdf_of_did(pci_bdf_did(bdf.0, bdf.1, bdf.2)) == bdf) by (nonlinear_arith) requires pci_bdf_valid(bdf.0, bdf.1, bdf.2);
     assert(pci_bdf_valid(pci_bdf_of_did(t.did->Some_0).0, pci_bdf_of_did(t.did->Some_0).1, pci_bdf_of_did(t.did->Some_0).2)
         && pci_bdf_did(pci_bdf_of_did(t.did->Some_0).0, pci_bdf_of_did(t.did->Some_0).1, pci_bdf_of_did(t.did->Some_0).2) == t.did->Some_0) by (nonlinear_arith)
@@ -125,22 +121,17 @@ proof fn ipc_pci_detach_eof_iotlb(
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),
+        pre.it_mp.spec_index(table).view().proc_ptr == sender_proc,
+        pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == Some(sender_proc),
+        pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == Some(pre.it_mp.spec_index(table).view().cr3),
+        pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2) == pre.it_mp.spec_index(table).view().did,
+        pre.it_mp.spec_index(table).view().did is Some,
+        vtd_domain_id_valid(pre.it_mp.spec_index(table).view().did->Some_0),
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
     ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     let t = pre.it_mp.spec_index(table).view();
     let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
-    assert({
-        &&& t.proc_ptr == sender_proc
-        &&& pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == Some(sender_proc)
-        &&& pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == Some(t.cr3)
-        &&& old_did == t.did
-        &&& t.did is Some
-        &&& vtd_domain_id_valid(t.did->Some_0)
-    }) by {
-        process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc); pci_function_ownership_wf_pagetable_at(pre.irt.view(), pre.prc_mp, pre.pt_mp, sender_pt, bdf);
-        reveal(iommu_root_table_process_wf);
-    };
     assert(pci_bdf_of_did(pci_bdf_did(bdf.0, bdf.1, bdf.2)) == bdf) by (nonlinear_arith) requires pci_bdf_valid(bdf.0, bdf.1, bdf.2);
     assert(pci_bdf_valid(pci_bdf_of_did(t.did->Some_0).0, pci_bdf_of_did(t.did->Some_0).1, pci_bdf_of_did(t.did->Some_0).2)
         && pci_bdf_did(pci_bdf_of_did(t.did->Some_0).0, pci_bdf_of_did(t.did->Some_0).1, pci_bdf_of_did(t.did->Some_0).2) == t.did->Some_0) by (nonlinear_arith)
@@ -238,12 +229,6 @@ proof fn ipc_pci_rendezvous_eof_endpoint_wf(
         mid.thrd_mp.spec_index(peer_thrd_ptr).view().blocking_endpoint_ptr == Some(ep_ptr),
         mid.ep_mp.spec_index(ep_ptr).view().queue.view().len() > 0,
         mid.ep_mp.spec_index(ep_ptr).view().queue.view().spec_index(0) == peer_thrd_ptr,
-        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        mid.prc_mp.dom().contains(sender_proc),
-        mid.prc_mp.dom().contains(receiver_proc),
-        sender_proc != receiver_proc,
-        !mid.prc_mp.spec_index(sender_proc).view().zombie,
-        !mid.prc_mp.spec_index(receiver_proc).view().zombie,
         !mid.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(mid.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
         ipc_pci_rendezvous_eof_transition_framing(pre, mid, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.subsystems_inv(),
@@ -283,12 +268,6 @@ proof fn ipc_pci_rendezvous_eof_process_management_inv(
         mid.thrd_mp.spec_index(peer_thrd_ptr).view().blocking_endpoint_ptr == Some(ep_ptr),
         mid.ep_mp.spec_index(ep_ptr).view().queue.view().len() > 0,
         mid.ep_mp.spec_index(ep_ptr).view().queue.view().spec_index(0) == peer_thrd_ptr,
-        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        mid.prc_mp.dom().contains(sender_proc),
-        mid.prc_mp.dom().contains(receiver_proc),
-        sender_proc != receiver_proc,
-        !mid.prc_mp.spec_index(sender_proc).view().zombie,
-        !mid.prc_mp.spec_index(receiver_proc).view().zombie,
         !mid.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(mid.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
         ipc_pci_rendezvous_eof_transition_framing(pre, mid, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.subsystems_inv(),
@@ -447,12 +426,6 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         mid.thrd_mp.spec_index(peer_thrd_ptr).view().blocking_endpoint_ptr == Some(ep_ptr),
         mid.ep_mp.spec_index(ep_ptr).view().queue.view().len() > 0,
         mid.ep_mp.spec_index(ep_ptr).view().queue.view().spec_index(0) == peer_thrd_ptr,
-        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        mid.prc_mp.dom().contains(sender_proc),
-        mid.prc_mp.dom().contains(receiver_proc),
-        sender_proc != receiver_proc,
-        !mid.prc_mp.spec_index(sender_proc).view().zombie,
-        !mid.prc_mp.spec_index(receiver_proc).view().zombie,
         !mid.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(mid.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
         ipc_pci_rendezvous_eof_transition_framing(pre, mid, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.ep_mp.spec_index(ep_ptr).view().queue.wf(),
@@ -665,6 +638,10 @@ pub(super) proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
         reveal(scheduler_shards_of);
     };
     ipc_pci_rendezvous_eof_handoff(pre, mid, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, thread_id, iommu_table, anchor);
+    if transferred {
+        assert_maps_equal!(mid.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts(), pre.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts().remove(bdf));
+        assert_maps_equal!(mid.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts(), pre.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts().insert(bdf, 0));
+    }
     assert(transferred ==> {
         let sender_table = snapshot.prc_mp.spec_index(sender_proc).view().iommu_table;
         &&& sender_table == pre.prc_mp.spec_index(sender_proc).view().iommu_table
@@ -680,7 +657,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
     };
     assert(kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, None, if transferred { Some((bdf, sender_proc, receiver_proc)) } else { None })) by {
         running_thread_not_in_endpoint_queue(&pre, ep_ptr, current_thrd_ptr); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc);
-        reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf); reveal(ipc_pci_rendezvous_eof_pci_handoff);
+        reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf);
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
         reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
@@ -709,7 +686,7 @@ pub(super) proof fn ipc_pci_transfer_eof_within_may_cache(pre: KernelK, locked: 
     ensures
         iommu_tlb_within_may_cache(KernelK { irt: post.irt, ..pre }, did, tlb),
 {
-    assert(vtd_domain_id_valid(did)) by { reveal(iommu_root_table_process_wf); };
+    assert(vtd_domain_id_valid(did)) by { pre.irt.view().wf_context_entry_at(bdf.0, bdf.1, bdf.2); };
     let a = pci_bdf_of_did(did);
     assert(pci_bdf_valid(a.0, a.1, a.2)) by (nonlinear_arith) requires vtd_domain_id_valid(did), a == pci_bdf_of_did(did);
     if detached.irt.view().spec_index_iommu_did(a.0, a.1, a.2) == Some(did) {
@@ -735,8 +712,6 @@ pub(super) proof fn ipc_pci_transfer_eof_pagetable_frame(pre: KernelK, post: Ker
     ensures
         ipc_pci_rendezvous_eof_pagetable_frame(pre, post, sender_pt, receiver_pt, bdf, true),
 {
-    assert(post.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts() =~= pre.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts().remove(bdf));
-    assert(post.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts() =~= pre.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts().insert(bdf, 0));
     reveal(ipc_pci_rendezvous_eof_pagetable_frame);
 }
 }

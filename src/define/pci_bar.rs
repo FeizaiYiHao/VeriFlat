@@ -105,7 +105,7 @@ impl PciBarTable {
             decreases len - i,
         {
             let e = self.get(i);
-            proof { pci_bar_table_wf_at(self.view(), i as int, i as int, p); assert(MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute); }
+            proof { pci_bar_table_wf_at(self.view(), i as int); assert(MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute); }
             if p % PAGE_SZ_4K == 0 && e.base / PAGE_SZ_4K * PAGE_SZ_4K <= p && p < e.base + e.size {
                 proof {
                     let b = self.view();
@@ -113,7 +113,7 @@ impl PciBarTable {
                     assert(b[i as int].envelope_contains(p)) by {
                         assert(e.base as int / PAGE_SZ_4K as int * PAGE_SZ_4K as int <= p as int) by (nonlinear_arith) requires e.base / 4096 * 4096 <= p, PAGE_SZ_4K == 4096;
                     };
-                    assert(pci_bar_entry_of_page(b, p) is Some && b[k].bdf == e.bdf) by { pci_bar_table_wf_at(b, i as int, k, p); };
+                    assert(pci_bar_entry_of_page(b, p) is Some && b[k].bdf == e.bdf) by { pci_bar_table_wf_pair_at(b, i as int, k, p); };
                 }
                 return Some(e.bdf);
             }
@@ -132,7 +132,7 @@ impl PciBarTable {
             ret matches Some(p) ==> pci_bar_function_of_page(self.view(), p) == Some(self.view()[i as int].bdf) && io_page_range_valid(p, PAGE_SZ_4K),
     {
         let e = self.get(i);
-        proof { pci_bar_table_wf_at(self.view(), i as int, i as int, 0); assert(PAGE_SZ_4K == 4096 && MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute); }
+        proof { pci_bar_table_wf_at(self.view(), i as int); assert(PAGE_SZ_4K == 4096 && MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute); }
         let start = e.base / PAGE_SZ_4K * PAGE_SZ_4K;
         let end = e.base + e.size;
         assert(start <= e.base) by (nonlinear_arith) requires start == e.base / 4096 * 4096;
@@ -147,7 +147,7 @@ impl PciBarTable {
                 assert(e.base as int / PAGE_SZ_4K as int * PAGE_SZ_4K as int <= p as int) by (nonlinear_arith)
                     requires p == e.base / 4096 * 4096 + page_index * 4096, PAGE_SZ_4K == 4096;
             };
-            assert(pci_bar_entry_of_page(b, p) is Some && b[pci_bar_entry_of_page(b, p)->0].bdf == e.bdf) by { pci_bar_table_wf_at(b, i as int, pci_bar_entry_of_page(b, p)->0, p); };
+            assert(pci_bar_entry_of_page(b, p) is Some && b[pci_bar_entry_of_page(b, p)->0].bdf == e.bdf) by { pci_bar_table_wf_pair_at(b, i as int, pci_bar_entry_of_page(b, p)->0, p); };
             assert(io_page_range_valid(p, PAGE_SZ_4K)) by {
                 reveal(io_page_range_valid);
                 assert(p & (!MEM_MASK) as usize == 0) by (bit_vector) requires p % 4096 == 0, p < 0x0001_0000_0000_0000usize;
@@ -167,7 +167,7 @@ impl PciBarTable {
             ret matches Some(p) ==> pci_bar_2m_chunk_of(self.view(), p, self.view()[i as int].bdf) && io_page_range_valid(p, PAGE_SZ_2M),
     {
         let e = self.get(i);
-        proof { pci_bar_table_wf_at(self.view(), i as int, i as int, 0); assert(PAGE_SZ_4K == 4096 && PAGE_SZ_2M == 0x200000 && MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute); }
+        proof { pci_bar_table_wf_at(self.view(), i as int); assert(PAGE_SZ_4K == 4096 && PAGE_SZ_2M == 0x200000 && MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute); }
         let end = e.base + e.size;
         let start = (e.base + (PAGE_SZ_2M - 1)) / PAGE_SZ_2M * PAGE_SZ_2M;
         assert(e.base <= start && start < e.base + 0x200000) by (nonlinear_arith) requires start == (e.base + 0x1fffff) / 0x200000 * 0x200000;
@@ -182,8 +182,9 @@ impl PciBarTable {
             assert(b[i as int].envelope_contains(p));
             let k = pci_bar_entry_of_page(b, p)->0;
             assert(pci_bar_entry_of_page(b, p) is Some && k == i) by {
-                pci_bar_table_wf_at(b, i as int, k, p);
-                pci_bar_table_wf_at(b, k, i as int, p);
+                pci_bar_table_wf_at(b, k);
+                pci_bar_table_wf_pair_at(b, i as int, k, p);
+                pci_bar_table_wf_pair_at(b, k, i as int, p);
                 assert(b[k].base / 4096 * 4096 <= p ==> b[k].base < p + 4096) by (nonlinear_arith);
             };
             assert(io_page_range_valid(p, PAGE_SZ_2M)) by {

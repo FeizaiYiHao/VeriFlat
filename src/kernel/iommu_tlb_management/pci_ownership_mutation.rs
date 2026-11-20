@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use vstd::{assert_sets_equal, assert_sets_equal_internal};
 #[cfg(verus_keep_ghost)]
 use super::pci_ownership_mutation_eof::*;
 
@@ -83,9 +84,8 @@ impl KernelK {
                 let owner = if update is Claim { Some(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr) } else { None };
                 &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
                 &&& final(self).irt.view().owners() == seq3_update(old(self).irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, owner)
-                &&& forall|b: usize, d: usize, f: usize| #![trigger final(self).irt.view().spec_index_owner(b, d, f)] #![trigger final(self).irt.view().spec_index_iommu_root(b, d, f)]
-                    #![trigger final(self).irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                    &&& final(self).irt.view().spec_index_owner(b, d, f) == if (b, d, f) == bdf { owner } else { old(self).irt.view().spec_index_owner(b, d, f) }
+                &&& forall|b: usize, d: usize, f: usize| #![trigger final(self).irt.view().spec_index_iommu_root(b, d, f)] #![trigger final(self).irt.view().spec_index_iommu_did(b, d, f)]
+                    pci_bdf_valid(b, d, f) ==> {
                     &&& final(self).irt.view().spec_index_iommu_root(b, d, f) == old(self).irt.view().spec_index_iommu_root(b, d, f)
                     &&& final(self).irt.view().spec_index_iommu_did(b, d, f) == old(self).irt.view().spec_index_iommu_did(b, d, f)
                 }
@@ -143,16 +143,8 @@ impl KernelK {
             PciEntryUpdate::Release => { self.irt.borrow_mut(Tracked(lctx), Tracked(irt_perm)).release(bus, device, function); },
         }
         proof {
-            match update {
-                PciEntryUpdate::Claim { .. } => {
-                    assert(update_pci_entry_eof_transition_framing(*old(self), *self, pagetable_ptr, index as int, update)) by { reveal(update_pci_entry_eof_transition_framing); };
-                    assert(update_pci_entry_eof_owner_update(*old(self), *self, pagetable_ptr, index as int, update)) by { reveal(update_pci_entry_eof_owner_update); };
-                },
-                PciEntryUpdate::Release => {
-                    assert(update_pci_entry_eof_transition_framing(*old(self), *self, pagetable_ptr, index as int, update)) by { reveal(update_pci_entry_eof_transition_framing); };
-                    assert(update_pci_entry_eof_owner_update(*old(self), *self, pagetable_ptr, index as int, update)) by { reveal(update_pci_entry_eof_owner_update); };
-                },
-            }
+            assert(update_pci_entry_eof_transition_framing(*old(self), *self, pagetable_ptr, index as int, update)) by { reveal(update_pci_entry_eof_transition_framing); };
+            assert(update_pci_entry_eof_owner_update(*old(self), *self, pagetable_ptr, index as int, update)) by { reveal(update_pci_entry_eof_owner_update); };
             update_pci_entry_eof(*old(self), *self, pagetable_ptr, index as int, update);
             assert(iommu_root_table_typed_lock_map_aligned(self.irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); };
             assert(typed_lock_maps_aligned(self, lctx)) by {
@@ -196,8 +188,6 @@ impl KernelK {
             final(self).irt.view().table_base() == old(self).irt.view().table_base(),
             final(self).irt.view().iommu_roots() == old(self).irt.view().iommu_roots(),
             final(self).irt.view().iommu_dids() == old(self).irt.view().iommu_dids(),
-            forall|b: usize, d: usize, f: usize| #![trigger final(self).irt.view().spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> final(self).irt.view().spec_index_owner(b, d, f)
-                == if old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((b, d, f)) { None } else { old(self).irt.view().spec_index_owner(b, d, f) },
             final(self).pt_mp.unchanged_except(&old(self).pt_mp, pagetable_ptr),
             forall|k: RwLockPageTableRoot| #![trigger final(self).pt_mp.lock_id_by_key(k)] old(self).pt_mp.dom().contains(k) ==> final(self).pt_mp.lock_id_by_key(k) == old(self).pt_mp.lock_id_by_key(k),
             final(self).pt_mp.spec_index(pagetable_ptr).locking_thread() == old(self).pt_mp.spec_index(pagetable_ptr).locking_thread(),
@@ -213,22 +203,37 @@ impl KernelK {
                 && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i)
                     == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i),
             final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
+            old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom() == Set::<PciBdf>::empty() ==> final(self).irt.view().owners() == old(self).irt.view().owners(),
             old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom() != Set::<PciBdf>::empty()
                 ==> final(self).irt.view().owners() == pci_owners_released(old(self).irt.view().owners(), old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom()),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).lower == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).lower,
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).kernel_l4_end() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).kernel_l4_end(),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).mapping_4k(),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).mapping_2m(),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).mapping_1g(),
+            forall|l4i: L4Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4i)]
+                whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_held_1g_l3(l4i, l3i)]
+                whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).spec_held_1g_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+                whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)
+                    == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i),
     {
         broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
         proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
         let ghost pci = old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci;
-        let ghost mut released = false;
         let mut i: usize = 0;
+        proof { assert_sets_equal!(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < 0), Set::<PciBdf>::empty()); }
         while i < PCI_FUNCTIONS_PER_PROCESS
             invariant
                 self.inv(),
                 old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.wf(),
                 pci == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci,
-                released ==> self.irt.view().owners() == pci_owners_released(old(self).irt.view().owners(), pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i)),
-                !released ==> self.irt.view().owners() == old(self).irt.view().owners(),
-                !released ==> forall|j: int| #![trigger pci.spec_entry(j)] 0 <= j < i ==> !pci.spec_entry(j).used,
+                pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) == Set::<PciBdf>::empty() ==> self.irt.view().owners() == old(self).irt.view().owners(),
+                pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) != Set::<PciBdf>::empty()
+                    ==> self.irt.view().owners() == pci_owners_released(old(self).irt.view().owners(), pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i)),
                 whole_pagetable(self.pt_mp, self.pt_lower.view(), pagetable_ptr).mapping_4k().dom() == Set::<VAddr>::empty(),
                 whole_pagetable(self.pt_mp, self.pt_lower.view(), pagetable_ptr).mapping_2m().dom() == Set::<VAddr>::empty(),
                 typed_lock_maps_aligned(self, lctx),
@@ -248,9 +253,6 @@ impl KernelK {
                 self.irt.view().table_base() == old(self).irt.view().table_base(),
                 self.irt.view().iommu_roots() == old(self).irt.view().iommu_roots(),
                 self.irt.view().iommu_dids() == old(self).irt.view().iommu_dids(),
-                forall|b: usize, d: usize, f: usize| #![trigger self.irt.view().spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> self.irt.view().spec_index_owner(b, d, f)
-                    == if old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((b, d, f))
-                        && old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.index_of((b, d, f)) < i { None } else { old(self).irt.view().spec_index_owner(b, d, f) },
                 old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().iommu_table is Some
                     ==> forall|b: usize, d: usize, f: usize| #![trigger self.irt.view().spec_index_iommu_root(b, d, f)]
                     old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((b, d, f)) ==> self.irt.view().spec_index_iommu_root(b, d, f) is None,
@@ -273,25 +275,22 @@ impl KernelK {
             if used {
                 let ghost cur = self.irt.view().owners();
                 self.update_pci_entry(pagetable_ptr, i, PciEntryUpdate::Release, Tracked(lctx), Tracked(pagetable_perm), Tracked(irt_perm));
-                proof {
-                    let done = pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i);
-                    if !released { assert(done =~= Set::<PciBdf>::empty()); }
-                    release_pci_functions_eol_owners(old(self).irt.view().owners(), cur, self.irt.view().owners(), done, pci.spec_entry(i as int).bdf, released);
-                    released = true;
-                }
+                proof { release_pci_functions_eol_owners(old(self).irt.view().owners(), cur, self.irt.view().owners(), pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i), pci.spec_entry(i as int).bdf); }
             }
             let ghost done = pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i);
             let ghost g = pci.spec_entry(i as int).bdf;
             i = i + 1;
             proof {
-                if used { assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) =~= done.insert(g)); }
+                if used {
+                    assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) =~= done.insert(g));
+                    assert(done.insert(g).contains(g)) by { vstd::set::lemma_set_insert_same(done, g); };
+                }
                 else { assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) =~= done); }
             }
         }
         proof {
             pagetable_perms_wf_map(self.pt_mp);
             pagetable_perms_wf_at(self.pt_mp, pagetable_ptr);
-            if !released { assert(pci.view().dom() =~= Set::<PciBdf>::empty()); }
             assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < PCI_FUNCTIONS_PER_PROCESS) =~= pci.view().dom());
         }
     }

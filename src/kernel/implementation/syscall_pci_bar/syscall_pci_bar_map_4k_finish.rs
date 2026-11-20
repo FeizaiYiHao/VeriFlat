@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_pci_bar_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -29,7 +30,33 @@ pub(super) fn map_pci_bar_4k_map_and_finish(
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         va_4k_valid(va),
-        map_pci_bar_4k_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, slot, page_index, va) is Success,
+        ({
+            let s = old(steps).snapshot_k();
+            let cpu = s.cpu_arr.spec_index(cpu_id).view();
+            let thread = s.thrd_mp.spec_index(thrd_ptr);
+            let table = whole_pagetable(s.pt_mp, s.pt_lower.view(), pagetable);
+            let idx = spec_va2index(va);
+            &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
+            &&& cpu.view().view().current_thread == Some(thrd_ptr)
+            &&& cpu.view().view().current_process == Some(prc_ptr)
+            &&& s.thrd_mp.dom().contains(thrd_ptr)
+            &&& !thread.being_killed()
+            &&& thread.view().owning_proc == prc_ptr
+            &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& s.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& s.prc_mp.dom().contains(prc_ptr)
+            &&& !s.prc_mp.spec_index(prc_ptr).view().zombie
+            &&& s.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable
+            &&& s.pt_mp.dom().contains(pagetable)
+            &&& table.leaves_present()
+            &&& slot < s.pci_bars.view().len() && s.pci_bars.view()[slot as int].spec_page_4k(page_index) is Some
+            &&& table.higher.pci.view().dom().contains(s.pci_bars.view()[slot as int].bdf)
+            &&& !table.mapping_1g().dom().contains(spec_index2va((idx.0, idx.1, 0, 0)))
+            &&& !table.mapping_2m().dom().contains(spec_index2va((idx.0, idx.1, idx.2, 0)))
+            &&& !table.mapping_4k().dom().contains(va)
+            &&& thread.view().quota_4k >= 4
+        }),
         slot < old(krnl).pci_bars.view().len(),
         old(krnl).pci_bars.view()[slot as int].spec_page_4k(page_index) == Some(addr),
         pci_bar_function_of_page(old(krnl).pci_bars.view(), addr) == Some(old(krnl).pci_bars.view()[slot as int].bdf),
@@ -177,21 +204,18 @@ pub(super) fn map_pci_bar_4k_map_and_finish(
         let Tracked(w) = krnl.lock_pagetable_window::<true>(pagetable, indices.0, indices.1, indices.2, Tracked(&pagetable_perm), Tracked(&mut *lctx));
         proof { held_window = Some(w); }
     }
-    let ghost locked = *krnl;
-    let ghost locked_lctx = *lctx;
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::MapPciBar4k { va, directory: Mmap4kDirectory::None })), Tracked(&*lctx), Tracked(&thread_perm));
     proof {
         let entered = *krnl;
         let c = whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable);
-        assert(entered.pt_lower.view() =~= entry.pt_lower.view().insert(pagetable, entered.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(entered.pt_lower.view(), entry.pt_lower.view().insert(pagetable, entered.pt_lower.view().spec_index(pagetable)));
         if !l3_present && c.lower.pagetable_window_locks.dom().contains(window_of(va)) { pagetable_lower_wf_at(entry.pt_mp, entry.pt_lower.view(), pagetable); c.wf_window_locks_va_at(window_of(va)); }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_cpu_wf_at(entry.prc_mp, entry.cpu_arr, cpu_id); process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
         kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed_implies_u_step(&entry, &entered, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
-        pagetable_unlocked_implies_projected_window_unlocked(&entry, prc_ptr, window_of(va));
-        map_pci_bar_4k_enter_step_from_u(&entry, kernel_k_to_kernel_u(entered), whole_pagetable(entered.pt_mp, entered.pt_lower.view(), pagetable).lower.pagetable_window_locks, cpu_id,
-            prc_ptr, thrd_ptr, pagetable, slot, page_index, va);
+        map_pci_bar_4k_enter_step_from_k(&entry, kernel_k_to_kernel_u(entered), whole_pagetable(entered.pt_mp, entered.pt_lower.view(), pagetable).lower.pagetable_window_locks, cpu_id, prc_ptr,
+            thrd_ptr, pagetable, slot, page_index, va);
         map_pci_bar_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(entered), cpu_id, slot, page_index, va);
     }
     // directory steps: the missing L4, L3, and L2 entries, in increasing rank

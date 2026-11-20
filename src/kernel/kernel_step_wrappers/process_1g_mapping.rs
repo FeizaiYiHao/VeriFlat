@@ -136,11 +136,7 @@ broadcast proof fn kernel_owned_1g_page_implies_u_2m_mapping_outside_its_frame_a
         let idx = page_ptr2page_index(a);
         if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io && addr <= a < addr + 0x40000000 {
             assert(pci_bar_page(k.pci_bars.view(), a)) by {
-                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
-                k.default_pagetable_wf_at(pt); spec_va_2m_valid_index_roundtrip(v);
-                c.wf_mapping_2m_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-                c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-                pagetable_pci_mappings_wf_held_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k, pt, v);
             };
             hugepage_1g_wf_head_at(k.pg_arr, head);
             assert(head <= idx < head + 0x40000 && idx < NUM_PAGES) by (nonlinear_arith)
@@ -186,11 +182,7 @@ broadcast proof fn kernel_owned_1g_page_implies_u_4k_mapping_outside_its_frame_a
         let idx = page_ptr2page_index(a);
         if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).is_io && addr <= a < addr + 0x40000000 {
             assert(pci_bar_page(k.pci_bars.view(), a)) by {
-                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
-                pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_4k_valid_index_roundtrip(v);
-                c.wf_mapping_4k_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-                c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-                pagetable_pci_mappings_wf_held_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+                kernel_io_4k_mapping_implies_pci_bar_page_at(k, pt, v);
             };
             hugepage_1g_wf_head_at(k.pg_arr, head);
             assert(head <= idx < head + 0x40000 && idx < NUM_PAGES) by (nonlinear_arith)

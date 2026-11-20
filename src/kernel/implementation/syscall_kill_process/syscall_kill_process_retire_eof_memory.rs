@@ -486,12 +486,7 @@ proof fn kill_retire_eof_bar_pages(
         kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
         forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
             &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
-            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
-                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().higher.cr3)
-                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
-                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
             &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
-            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == ctn_ptr
         },
     ensures
         pci_bar_table_wf(post.pci_bars.view()),

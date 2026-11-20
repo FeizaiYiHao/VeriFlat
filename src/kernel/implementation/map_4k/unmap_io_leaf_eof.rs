@@ -546,8 +546,6 @@ pub(super) proof fn remove_io_2m_mapping_eof(pre: KernelK, post: KernelK, pageta
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     remove_io_2m_mapping_eof_page_tables(pre, post, pagetable, va, l2_ptr, f);
     remove_io_2m_mapping_eof_pagetable_pci_mappings_wf(pre, post, pagetable, va, l2_ptr, f);
-    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); spec_va_2m_valid_index_roundtrip(va);
-    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
@@ -557,7 +555,10 @@ pub(super) proof fn remove_io_2m_mapping_eof(pre: KernelK, post: KernelK, pageta
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        broadcast use spec_va_2m_valid_index_roundtrip; reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match);
+        broadcast use spec_va_2m_valid_index_roundtrip;
+        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+        reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match);
     };
     assert(kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)) by { kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp); };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
