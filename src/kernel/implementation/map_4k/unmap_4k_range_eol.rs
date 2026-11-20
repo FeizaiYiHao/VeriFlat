@@ -52,6 +52,7 @@ pub(super) open spec fn unmap_4k_range_eol_loop_framing(pre: KernelK, cur: Kerne
             && spec_v2l4index(range.view().spec_index(j)) == spec_v2l4index(w.va) && spec_v2l3index(range.view().spec_index(j)) == spec_v2l3index(w.va) && spec_v2l2index(range.view().spec_index(j)) == spec_v2l2index(w.va) ==> {
         &&& c.mapping_4k().dom().contains(range.view().spec_index(j)) == (i <= j)
         &&& i <= j ==> !c.mapping_4k().spec_index(range.view().spec_index(j)).present
+        &&& i <= j ==> !c.mapping_4k().spec_index(range.view().spec_index(j)).is_io
     }
     &&& forall|w: WindowVa, v: VAddr|
         #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((pagetable, w)), c.mapping_4k().dom().contains(v)]
@@ -93,6 +94,7 @@ pub(super) proof fn unmap_4k_range_eol_iteration_pre(pre: KernelK, cur: KernelK,
             let c = whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable);
             &&& c.mapping_4k().dom().contains(va)
             &&& !c.mapping_4k().spec_index(va).present
+            &&& !c.mapping_4k().spec_index(va).is_io
             &&& c.window_view(window_of(va)).stale_cpus is None
             &&& c.lower.l2_owner(c.window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)) == e.lower.l2_owner(e.window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
         }),

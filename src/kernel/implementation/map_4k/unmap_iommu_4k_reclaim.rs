@@ -31,7 +31,6 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
         page_ptr_valid(pg_ptr),
         old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count == 1,
-        !old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
         old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == owner,
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).allc_4k_mp.dom().contains(allc_ptr),

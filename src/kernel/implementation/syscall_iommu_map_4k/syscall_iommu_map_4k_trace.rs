@@ -22,7 +22,8 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
                 || iova >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(iova, range);
             let checked = !malformed && !(ret is CpuIdle) && !(ret is ErrorProcessKilled) && !(ret is ErrorThreadKilled);
             let tabled = checked && !(ret is ErrorPciNoIommuTable);
-            let mapped = forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present;
+            let mapped = forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
+                ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present && !table.mapping_4k()[va_range.view()[j]].is_io;
             let free = forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < range ==> !it.mapping_4k().dom().contains(iova_range.view()[j]);
             &&& malformed ==> ret is Error
             &&& !malformed && ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
@@ -276,7 +277,7 @@ pub(super) proof fn iommu_map_4k_leaf_step_from_k(
             &&& progress is Some && progress->Some_0 is IommuMap4k
             &&& progress->Some_0->IommuMap4k_mapped < progress->Some_0->IommuMap4k_iova_range.len
             &&& progress->Some_0->IommuMap4k_iova_range.len == progress->Some_0->IommuMap4k_va_range.len
-            &&& table.mapping_4k().dom().contains(va) && table.mapping_4k()[va].present
+            &&& table.mapping_4k().dom().contains(va) && table.mapping_4k()[va].present && !table.mapping_4k()[va].is_io
             &&& !pre.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(iova)
             &&& mid.it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().insert(iova, table.mapping_4k()[va])
         }),

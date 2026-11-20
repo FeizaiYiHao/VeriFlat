@@ -76,6 +76,7 @@ pub(crate) fn iommu_page_map_set_published(page_map_ptr: PageMapPtr, Tracked(pag
         mem_valid(value.addr),
         !value.perm.ps,
         !value.perm.user,
+        !value.perm.is_io,
         value.perm.write ==> value.perm.present,
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
@@ -114,6 +115,7 @@ pub(crate) fn iommu_page_map_set_published_in_map(page_map_ptr: PageMapPtr, Trac
         mem_valid(value.addr),
         !value.perm.ps,
         !value.perm.user,
+        !value.perm.is_io,
         value.perm.write ==> value.perm.present,
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures

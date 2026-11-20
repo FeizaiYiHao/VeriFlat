@@ -139,7 +139,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         ({
             let old_h = old(krnl).pt_mp.spec_index(pagetable).view().higher;
             let new_h = final(krnl).pt_mp.spec_index(pagetable).view().higher;
-            &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
+            &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.pci == old_h.pci && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
             &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
             &&& new_h.l3_tables == old_h.l3_tables && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
         }),
@@ -159,7 +159,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
                 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_l4(i4)
                     == if whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4) is Some {
                         Some(PageEntry { addr: whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_l4(i4)->0.addr,
-                            perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+                            perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
                     } else {
                         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_l4(i4)
                     },
@@ -236,7 +236,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             ({
                 let old_h = old(krnl).pt_mp.spec_index(pagetable).view().higher;
                 let new_h = krnl.pt_mp.spec_index(pagetable).view().higher;
-                &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
+                &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.pci == old_h.pci && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
                 &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
                 &&& new_h.l3_tables == old_h.l3_tables && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
             }),
@@ -251,7 +251,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             forall|i4: L4Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l4(i4)]
                 e.kernel_l4_end() <= i4 && pei_valid(i4) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l4(i4)
                     == if i4 < l4i && e.spec_resolve_mapping_l4(i4) is Some {
-                        Some(PageEntry { addr: e.spec_held_l4(i4)->0.addr, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+                        Some(PageEntry { addr: e.spec_held_l4(i4)->0.addr, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
                     } else {
                         e.spec_held_l4(i4)
                     },

@@ -351,6 +351,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
         whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_1g(),
+        post.pt_mp.spec_index(table).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(table).view().higher.pci.mapping_counts(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);

@@ -7,6 +7,7 @@ pub mod merge_2m_sources;
 pub mod merge_2m_commit_spec;
 pub mod merge_2m_commit;
 mod merge_2m_commit_eof;
+mod merge_2m_commit_eol;
 mod merge_2m_commit_eof_kernel_inv;
 mod merge_2m_commit_eof_allocator;
 pub mod merge_2m_thread_quotas;

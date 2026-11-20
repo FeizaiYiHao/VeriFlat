@@ -18,8 +18,6 @@ pub ghost enum ProcessState {
 }
 
 pub struct Process {
-    /// The killed, threadless process has finished returning its PCI functions.
-    pub pci_cleared: Ghost<bool>,
     /// The ancestor processes, indexed by depth from the container's root process.
     pub uppertree_seq: Ghost<Seq<RwLockProcessPtr>>,
     // Independent of the lock's kill state. Resource identifiers are historical when zombie.
@@ -42,8 +40,6 @@ pub struct Process {
 pub struct ProcessGhost {
     /// The descendant processes.
     pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
-    // Reverse index of the root table's owner slots; serialized by the root-table lock, not this process's lock.
-    pub owned_pci_functions: Ghost<Set<PciBdf>>,
 }
 
 pub type ProcessRwLock = LockCell<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
@@ -55,7 +51,6 @@ pub ghost struct ProcessU {
     pub iommu_table: Option<PageTableU>,
     pub pcid: Pcid,
     pub owning_container: RwLockContainerPtr,
-    pub owned_pci_functions: Set<PciBdf>,
     pub quota_4k: usize,
     pub quota_2m: usize,
     pub quota_1g: usize,
@@ -105,7 +100,6 @@ impl Process {
             ret.inv(),
             ret.uppertree_seq.view() == Seq::<RwLockProcessPtr>::empty(),
             !ret.zombie,
-            !ret.pci_cleared.view(),
             ret.state.view() == ProcessState::Running,
             ret.pcid == 1,
             ret.pagetable == pagetable,
@@ -134,7 +128,6 @@ impl Process {
             ret.inv(),
             ret.uppertree_seq.view() == Seq::<RwLockProcessPtr>::empty(),
             !ret.zombie,
-            !ret.pci_cleared.view(),
             ret.state.view() == ProcessState::Creating,
             ret.pcid == pcid,
             ret.pagetable == pagetable,
@@ -151,7 +144,7 @@ impl Process {
     {
         let children = LinkedList::new(Some(container_depth), Some(depth));
         let owned_threads = LinkedList::new(Some(container_depth), Some(depth));
-        Self { uppertree_seq: Ghost(Seq::empty()), pci_cleared: Ghost(false), zombie: false, state: Ghost(ProcessState::Creating), pcid, pagetable, iommu_table: None,
+        Self { uppertree_seq: Ghost(Seq::empty()), zombie: false, state: Ghost(ProcessState::Creating), pcid, pagetable, iommu_table: None,
             quota_4k: 0, quota_2m: 0, quota_1g: 0, parent_linkedlist_node, children, owned_threads }
     }
 

@@ -34,7 +34,7 @@ use core::slice;
 use x86::cpuid::cpuid;
 
 use aelf::ElfHandle;
-use astd::boot::{BootInfo, DomainMapping, Payload, PhysicalMemoryType, MAX_PAGES, PCI_BAR_WINDOW_BASE};
+use astd::boot::{BootInfo, DomainMapping, Payload, PhysicalMemoryType, MAX_PAGES};
 use astd::heapless::Vec as ArrayVec;
 use astd::io::{Cursor, Read, Seek, SeekFrom};
 use astd::memory::{USERSPACE_BASE, USERSPACE_PAYLOAD_BASE};
@@ -98,7 +98,8 @@ pub extern "C" fn main() -> ! {
         }
     }
     // ACPI tables sit at the top of RAM, which the final page tables may not cover: read them now.
-    let iommu_units = acpi::probe_iommu();
+    check_pat();
+    let (iommu_units, iommu_address_width) = acpi::probe_iommu();
     let mut apic_ids = acpi::probe_cpus();
     if let Some(n) = boot::get_max_cpus() {
         if n <= apic_ids.len() {
@@ -113,6 +114,7 @@ pub extern "C" fn main() -> ! {
         memory::get_physical_memory_map().regions.iter().map(|(r, _)| (r.base(), r.size())).collect();
     let pci_devices = pci::probe_devices(&e820, &mmconfig);
     let dma_test_device = pci::dma_test_device(&pci_devices);
+    let bar_slots = pci::bar_slots();
     unsafe {
         kernel_space.map(bootstrap_allocator, LAPIC_BASE, LAPIC_BASE, false, false, true);
         kernel_space.map(bootstrap_allocator, IOAPIC_BASE, IOAPIC_BASE, false, false, true);
@@ -121,6 +123,16 @@ pub extern "C" fn main() -> ! {
         }
         if let Some(device) = dma_test_device {
             kernel_space.map(bootstrap_allocator, device.mmio, device.mmio, false, false, true);
+        }
+        // The kernel's identity map of [0, 4 GiB) is cacheable; a BAR page there gets an uncached kernel mapping, so
+        // no cacheable alias of device memory exists, whatever the MTRRs say.
+        for slot in bar_slots.iter() {
+            let (start, end) = slot.envelope().expect("BAR range overflows");
+            let mut page = start;
+            while page < end.min(MAX_PHYSICAL_MEMORY as u64) {
+                kernel_space.map_kernel_uc(bootstrap_allocator, page);
+                page += PAGE_SIZE as u64;
+            }
         }
         // The kernel and dom0 images are still read after the switch to these tables; the
         // firmware may have placed them above the managed memory (below 4 GiB, as multiboot
@@ -175,6 +187,10 @@ pub extern "C" fn main() -> ! {
     boot_info.iommu_units = iommu_units;
     boot_info.dma_test_device = dma_test_device;
     boot_info.pci_devices = pci_devices;
+    boot_info.bar_slots = bar_slots;
+    boot_info.ram_ranges = memory::ram_ranges();
+    boot_info.mmconfig = mmconfig;
+    boot_info.iommu_address_width = iommu_address_width;
     boot_info.apic_ids = apic_ids;
     log::info!("Processors (APIC IDs): {:?}", boot_info.apic_ids);
 
@@ -251,37 +267,8 @@ pub extern "C" fn main() -> ! {
         }
     }
 
-    // Every recorded BAR0 page in dom0's BAR0 window: user, writable, execute-disabled, no PCD (the MTRRs make it UC).
-    // A high BAR0 (above 4 GiB, outside the kernel's page array) goes into its own L4 slot of dom0's table, uncached by
-    // PCD|PWT, with 2M pages where it is 2M aligned; the kernel's boot glue skips that slot.
-    for device in boot_info.pci_devices.iter() {
-        let (base, pages) = (device.bar0_base, device.bar0_pages);
-        if let Some(slot) = high_bar_slot(base, pages * PAGE_SIZE as u64) {
-            let (size, va) = (pages * PAGE_SIZE as u64, PCI_BAR_WINDOW_BASE + base);
-            let huge = base % (2 << 20) == 0 && size % (2 << 20) == 0;
-            let step = if huge { 2u64 << 20 } else { PAGE_SIZE as u64 };
-            let mut off = 0;
-            while off < size {
-                unsafe { dom0_space.map_user_mmio_uc(bootstrap_allocator, va + off, base + off, huge) };
-                off += step;
-            }
-            log::info!(
-                "dom0 high BAR0: {:02x}:{:02x}.{} {:#x}..{:#x} -> PA {:#x} ({} {} pages, uncached, L4 slot {})",
-                device.bdf >> 8, (device.bdf >> 3) & 0x1f, device.bdf & 7, va, va + size, base, size / step, if huge { "2M" } else { "4K" }, slot
-            );
-            continue;
-        }
-        unsafe {
-            for page in 0..pages {
-                let paddr = base + page * PAGE_SIZE as u64;
-                dom0_space.map_user_mmio(bootstrap_allocator, PCI_BAR_WINDOW_BASE + paddr, paddr);
-            }
-        }
-        log::info!(
-            "dom0 BAR0 window: {:02x}:{:02x}.{} {:#x}..{:#x} -> PA {:#x} ({} pages)",
-            device.bdf >> 8, (device.bdf >> 3) & 0x1f, device.bdf & 7, PCI_BAR_WINDOW_BASE + base, PCI_BAR_WINDOW_BASE + base + pages * PAGE_SIZE as u64, base, pages
-        );
-    }
+    // The BAR slots are reported, not mapped: dom0 maps a BAR page of a function it owns with `map_pci_bar_4k/2m`.
+    log::info!("{} BAR slots reported to the kernel", boot_info.bar_slots.len());
 
     log::info!("Physical memory map after loading:");
     memory::dump_physical_memory_map();
@@ -461,15 +448,10 @@ fn panic(info: &PanicInfo) -> ! {
     }
 }
 
-/// The dom0 L4 slot of a high BAR0 at `base` (`size` bytes): `Some` when the BAR lies at or above 4 GiB (outside the
-/// kernel's page array) and its window `PCI_BAR_WINDOW_BASE + base` fits one L4 slot of user space other than slot 0
-/// (the kernel) and the slot of `PCI_BAR_WINDOW_BASE` itself (dom0's image, heap, test windows and low BARs).
-pub fn high_bar_slot(base: u64, size: u64) -> Option<usize> {
-    if base < 1 << 32 || size == 0 {
-        return None;
-    }
-    let (first, last) = (PCI_BAR_WINDOW_BASE + base, PCI_BAR_WINDOW_BASE + base + size - 1);
-    let slot = (first >> 39) as usize;
-    let ok = slot == (last >> 39) as usize && slot >= 2 && slot < 256 && slot != (PCI_BAR_WINDOW_BASE >> 39) as usize;
-    ok.then_some(slot)
+/// Panics unless the processor has PAT and PAT entry 3, which PCD|PWT select on a 4K leaf, is UC (its reset value):
+/// dom0's IO leaves and the kernel's uncached device mappings rely on it.
+fn check_pat() {
+    assert!(cpuid!(0x1).edx & (1 << 16) != 0, "no PAT: uncached IO mappings need it");
+    let pat = unsafe { x86::msr::rdmsr(0x277) };
+    assert!((pat >> 24) & 0x7 == 0, "PAT entry 3 is {} (PAT {:#x}), not UC", (pat >> 24) & 0x7, pat);
 }

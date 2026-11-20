@@ -75,11 +75,14 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         assert(self.page_closure() =~= set![self.cr3()]) by { reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::tables_reachable_wf); reveal(WholePageTable::tables_reachable_wf); };
         assert(TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end() == 0) by { self.higher.kernel_entries_wf_iommu_l4_end_at(); };
-        assert(self.kernel_l4_end() <= KERNEL_MEM_END_L4INDEX ==> self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty()
-            && self.mapping_1g().dom() =~= Set::<VAddr>::empty()) by {
-            broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip, iova_2m_valid_index_roundtrip,
-                iova_1g_valid_index_roundtrip;
-            reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g);
+        assert(self.kernel_l4_end() <= KERNEL_MEM_END_L4INDEX ==> self.mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
+            broadcast use spec_va_4k_valid_index_roundtrip, iova_4k_valid_index_roundtrip; reveal(WholePageTable::wf_mapping_4k);
+        };
+        assert(self.kernel_l4_end() <= KERNEL_MEM_END_L4INDEX ==> self.mapping_2m().dom() =~= Set::<VAddr>::empty()) by {
+            broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; reveal(WholePageTable::wf_mapping_2m);
+        };
+        assert(self.kernel_l4_end() <= KERNEL_MEM_END_L4INDEX ==> self.mapping_1g().dom() =~= Set::<VAddr>::empty()) by {
+            broadcast use spec_va_1g_valid_index_roundtrip, iova_1g_valid_index_roundtrip; reveal(PageTableHigher::wf_mapping_1g);
         };
     }
 }
@@ -151,6 +154,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
+            final(self).pci == old(self).pci,
             !(scan is L2) ==> final(lower).pagetable_window_locks == old(lower).pagetable_window_locks,
             scan is L2 ==> final(lower).pagetable_window_locks == old(lower).pagetable_window_locks.remove_keys(old(lower).pagetable_window_locks.dom().filter(|w: WindowVa| spec_v2l4index(w.va) == scan->L2_l4i && spec_v2l3index(w.va) == scan->L2_l3i)),
             scan is L2 ==> final(lower).window_stale_cpus == old(lower).window_stale_cpus.filter_keys(|k: (PageMapPtr, L2Index)| k.0 != scan->L2_l2_p),

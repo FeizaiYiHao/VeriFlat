@@ -101,6 +101,8 @@ pub(crate) open spec fn kill_reclaim_held_2m_page_scoped_eof_transition_framing(
     &&& new_table.locking_thread() is Write
     &&& new_table.being_killed() == old_table.being_killed()
     &&& new_c.higher == old_c.higher
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+        pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
@@ -268,6 +270,13 @@ pub(crate) open spec fn kill_retire_table_page_scoped_eof_transition_framing(
         &&& new_c.mapping_4k() == old_c.mapping_4k()
         &&& new_c.mapping_2m() == old_c.mapping_2m()
         &&& new_c.mapping_1g() == old_c.mapping_1g()
+        &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
+                ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+        &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
+            old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && new_c.spec_held_2m_l2(l4i, l3i, l2i) is Some ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+        &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
+            old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && new_c.spec_held_1g_l3(l4i, l3i) is Some ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
         &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             old_table.view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
         &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)]
@@ -277,6 +286,7 @@ pub(crate) open spec fn kill_retire_table_page_scoped_eof_transition_framing(
         &&& new_table.view().higher.cr3 == old_table.view().higher.cr3
         &&& new_table.view().higher.pcid == old_table.view().higher.pcid
         &&& new_table.view().higher.proc_ptr == old_table.view().higher.proc_ptr
+        &&& new_table.view().higher.pci == old_table.view().higher.pci
     }
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]

@@ -10,7 +10,6 @@ verus! {
 pub struct Page {
     pub addr: PagePtr,
     pub state: PageState,
-    pub is_io_page: bool,
     pub ref_count: usize,
     pub owning_container: RwLockContainerPtr,
     /// Reverse map of the page tables that map this page, keyed by VA.
@@ -164,8 +163,6 @@ impl LockInvTrait for Page {
         &&& self.node_storage_inv()
         &&& self.free_cache_cpu_valid()
         &&& self.perm_inv()
-        // An IO page is only mapped 4K or unavailable.
-        &&& self.is_io_page ==> (self.state is Mapped4k || self.state is Unavailable)
     }
 }
 
@@ -200,7 +197,6 @@ pub fn set_4k_staging_next(page: &mut Page, next: PagePtr)
         final(page).free_list == next,
         final(page).addr == old(page).addr,
         final(page).state == old(page).state,
-        final(page).is_io_page == old(page).is_io_page,
         final(page).ref_count == old(page).ref_count,
         final(page).owning_container == old(page).owning_container,
         final(page).mappings == old(page).mappings,
@@ -227,7 +223,6 @@ pub fn convert_owned_4k_to_free_global(page: &mut Page, allc_ptr: RwLockPageAllo
         ret.1.view().addr() == ret.0,
         final(page).free_list_node_storage.addr() == ret.0,
         final(page).addr == old(page).addr,
-        final(page).is_io_page == old(page).is_io_page,
         final(page).ref_count == old(page).ref_count,
         final(page).mappings == old(page).mappings,
         final(page).iommu_mappings == old(page).iommu_mappings,
@@ -257,7 +252,6 @@ pub fn take_perm_4k(page: &mut Page) -> (ret: Tracked<PagePerm4k>)
         // All other fields unchanged.
         final(page).addr == old(page).addr,
         final(page).state == old(page).state,
-        final(page).is_io_page == old(page).is_io_page,
         final(page).ref_count == old(page).ref_count,
         final(page).owning_container == old(page).owning_container,
         final(page).mappings.view() == old(page).mappings.view(),
@@ -385,7 +379,6 @@ pub fn take_perm_2m(page: &mut Page) -> (ret: Tracked<PagePerm2m>)
         ret.view().addr() == final(page).addr,
         final(page).addr == old(page).addr,
         final(page).state == old(page).state,
-        final(page).is_io_page == old(page).is_io_page,
         final(page).ref_count == old(page).ref_count,
         final(page).owning_container == old(page).owning_container,
         final(page).mappings.view() == old(page).mappings.view(),
@@ -414,7 +407,6 @@ pub fn add_4k_mapping(page: &mut Page, pagetable_ptr: RwLockPageTableRoot, va: V
         final(page).ref_count == old(page).ref_count + 1,
         final(page).addr == old(page).addr,
         final(page).state == old(page).state,
-        final(page).is_io_page == old(page).is_io_page,
         final(page).owning_container == old(page).owning_container,
         final(page).free_list_node_storage == old(page).free_list_node_storage,
         final(page).free_list == old(page).free_list,
@@ -442,7 +434,6 @@ pub fn add_4k_iommu_mapping(page: &mut Page, iommu_table_ptr: RwLockPageTableRoo
         final(page).ref_count == old(page).ref_count + 1,
         final(page).addr == old(page).addr,
         final(page).state == old(page).state,
-        final(page).is_io_page == old(page).is_io_page,
         final(page).owning_container == old(page).owning_container,
         final(page).free_list_node_storage == old(page).free_list_node_storage,
         final(page).free_list == old(page).free_list,

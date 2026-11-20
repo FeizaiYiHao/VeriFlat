@@ -140,6 +140,7 @@ impl KernelK {
             final(self).pt_mp.spec_index(target_pagetable).view().higher == old(self).pt_mp.spec_index(target_pagetable).view().higher,
             final(self).pt_mp.spec_index(source_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(source_pagetable),
             final(self).pt_mp.spec_index(target_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(target_pagetable),
+            final(self).pt_mp.dom() == old(self).pt_mp.dom(),
             forall|p: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(p)] old(self).pt_mp.dom().contains(p) && p != source_pagetable && p != target_pagetable ==> final(self).pt_mp.spec_index(p) == old(self).pt_mp.spec_index(p),
             pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, source_pagetable, whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), source_pagetable)),
             pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, target_pagetable, whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), target_pagetable)),

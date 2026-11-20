@@ -76,6 +76,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_2m(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_1g(),
+        final(krnl).pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts() == old(krnl).pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks,
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i)]
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i),
@@ -112,15 +113,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
         source_entry = source.higher.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
-    let pg_ptr = source_entry.addr;
-    let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
-        assert({
-            &&& index_valid(NUM_PAGES, pg_idx)
-            &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
-            &&& !lctx.page_lock_map().dom().contains(pg_idx)
-            &&& krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR
-        }) by { page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va); };
         assert(KERNEL_MEM_END_L4INDEX <= target_indices.0 && spec_index2va(target_indices) == target_va) by { spec_va_4k_index_roundtrip_at(target_va, target_indices.0, target_indices.1, target_indices.2, target_indices.3); };
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).window_locked_by_thread(target_indices.0, target_indices.1, target_indices.2, lctx.thread_id())) by {
             pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable, window_of(target_va));
@@ -137,6 +130,24 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         target_l2_ptr = target_l3_entry.addr;
         target_l1_ptr = target.higher.get_entry_l2(Tracked(target_lower), target_indices.0, target_indices.1, target_indices.2, &target_l3_entry).unwrap().addr;
     }
+    proof {
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_held_4k_l1(target_indices.0, target_indices.1, target_indices.2, target_indices.3) is None) by {
+            let target_c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+            target_c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(target_indices.0, target_indices.1);
+            target_c.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(target_indices.0, target_indices.1, target_indices.2);
+            target_c.wf_mapping_4k_at(target_indices.0, target_indices.1, target_indices.2, target_indices.3);
+        };
+    }
+    let pg_ptr = source_entry.addr;
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    proof {
+        assert({
+            &&& index_valid(NUM_PAGES, pg_idx)
+            &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
+            &&& !lctx.page_lock_map().dom().contains(pg_idx)
+            &&& krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR
+        }) by { page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va); };
+    }
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     let ghost locked_k = *krnl;
     proof {
@@ -144,12 +155,6 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
             &&& krnl.pg_arr.inv()
             &&& krnl.pg_arr.spec_index(pg_idx).view().inv()
         }) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_held_4k_l1(target_indices.0, target_indices.1, target_indices.2, target_indices.3) is None) by {
-            let target_c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
-            target_c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(target_indices.0, target_indices.1);
-            target_c.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(target_indices.0, target_indices.1, target_indices.2);
-            target_c.wf_mapping_4k_at(target_indices.0, target_indices.1, target_indices.2, target_indices.3);
-        };
         assert({
             &&& !krnl.pg_arr.spec_index(pg_idx).view().view().mappings().contains((target_pagetable, target_va))
             &&& krnl.pg_arr.spec_index(pg_idx).view().view().ref_count < usize::MAX

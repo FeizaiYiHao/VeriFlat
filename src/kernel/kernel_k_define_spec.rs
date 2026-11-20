@@ -22,7 +22,7 @@ pub type CpuSetRwLock = LockCell<CpuSet, (), (), CPU_SET_HAS_KILL_STATE, PerCpuR
 pub type PcidAllocatorRwLock = LockCell<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
 pub type EndpointRwLock = LockCell<Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
 /// The kernel state: the lock maps and lock arrays of every kernel object, the root container, the default page table,
-/// and four ghost parts.
+/// the PCI BAR table, and the ghost parts below.
 /// `pt_lower` is the part of each page table of `pt_mp` under small (window) locks: its L2 pages, whose entries are the
 /// 2M-window locks that each own the L1 page they link, the L1 pages, and the 4K and 2M leaves; `pt_mp` holds the L4
 /// and L3 levels and the 1G leaves under the big lock.
@@ -63,6 +63,8 @@ pub struct KernelK{
     pub rt_ctn: RwLockContainerPtr, // Never dies
 
     pub dflt_pt: &'static ReadOnlyNode<PageTable<PT_TYPE>>, // Read only, in its own static cell
+
+    pub pci_bars: &'static PciBarTable, // Read only, in the boot glue's static cell
 }
 
 impl KernelK{
@@ -110,6 +112,10 @@ impl KernelK{
 
     /// Pages, allocators, page tables, and IOMMU tables agree on each page's owner, state, and mappings.
     pub open spec fn memory_management_inv(&self) -> bool {
+        // device BAR pages: the BAR table is well formed, its pages are never kernel-managed, and every IO leaf maps them
+        &&& pci_bar_table_wf(self.pci_bars.view())
+        &&& pci_bar_pages_unavailable_wf(self.pci_bars.view(), self.pg_arr)
+        &&& pagetable_pci_mappings_wf(self.pci_bars.view(), self.pt_mp, self.pt_lower.view())
         // allocator pages, page owners, and huge pages
         &&& allocator_pages_wf(self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp, self.pg_arr)
         &&& container_owned_pages_wf(self.ctn_mp, self.pg_arr)
@@ -197,7 +203,7 @@ impl KernelK{
         &&& self.process_management_inv()
         // IOMMU root table, PCI function ownership, and IOTLB
         &&& iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)
-        &&& process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)
+        &&& pci_function_ownership_wf(self.irt.view(), self.prc_mp, self.pt_mp)
         &&& iommu_tlb_wf(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)
         // Each cpu's dirty PCIDs, CPU TLBs, and paging-structure caches
         &&& cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)
@@ -376,10 +382,11 @@ pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx:
             &&& post.pt_mp.lock_id_by_key(pagetable_ptr) == pre.pt_mp.lock_id_by_key(pagetable_ptr)
         }
     // Deliberately omitted: root-container equality across interleaving, and rodata of objects that are neither held
-    // nor owners of held objects, whose pointers may be freed and reused. The default page table is read-only and is
+    // nor owners of held objects, whose pointers may be freed and reused. The default page table and the BAR table are read-only and are
     // framed directly. Final lock-id alignment remains explicit because it is a common next-section framing fact.
     &&& typed_lock_maps_aligned(&post, &lctx)
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& held_owner_rodata_unchanged(pre, post, lctx)
     // Held objects remain present; their relations preserve the protected state while allowing lock-free changes.
     &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, &lctx)

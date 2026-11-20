@@ -19,7 +19,6 @@ pub(crate) proof fn kill_retire_eof_container_relations(
         pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent == parent,
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         parent is Some ==> {
@@ -74,7 +73,6 @@ pub(crate) proof fn kill_retire_eof_process_relations(
         pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent == parent,
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         parent is Some ==> {
@@ -136,7 +134,6 @@ pub(crate) proof fn kill_retire_eof_iommu(
         pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
         pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
@@ -145,12 +142,15 @@ pub(crate) proof fn kill_retire_eof_iommu(
         pre.ctn_mp.dom().contains(ctn_ptr),
     ensures
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
-        process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(kill_retire_eof_transition_framing);
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_pci_function_ownership_wf); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, target); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by {
+        reveal(pci_function_ownership_wf); reveal(process_pagetable_wf); process_perms_wf_at(pre.prc_mp, target);
+        process_emptied_tables_wf_at(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr, target);
+    };
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(pci_function_ownership_wf); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, target); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
 }
 

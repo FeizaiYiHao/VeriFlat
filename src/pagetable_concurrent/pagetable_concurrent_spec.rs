@@ -29,6 +29,8 @@ pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub kernel_entries: Ghost<Seq<PageEntry>>,
     pub proc_ptr: RwLockProcessPtr,
     pub table_stale_cpus: Ghost<Set<CpuId>>,
+    /// The PCI functions the process owns; serialized by this big lock.
+    pub pci: PciFunctionArray,
 }
 
 /// The part of a page table the big lock protects: its upper half and the window-half snapshot.
@@ -336,6 +338,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                     ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
                     && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
                     && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
+                    && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).is_io == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.is_io
                     && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present
             }
     }
@@ -368,6 +371,7 @@ impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableHigher<TABLE_TYPE> {
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
         &&& self.did_wf()
+        &&& self.pci.wf()
     }
 }
 
@@ -443,6 +447,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
             pagetable_window_locks: self.lower.pagetable_window_locks,
+            pci_functions: self.higher.pci.mapping_counts(),
         }
     }
 
@@ -801,12 +806,12 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             #![trigger self.lower.mapping_4k.dom().contains(va), page_ptr_valid(self.lower.mapping_4k.spec_index(va).addr)]
             #![trigger self.lower.mapping_4k.dom().contains(va)]
             #![trigger page_ptr_valid(self.lower.mapping_4k.spec_index(va).addr)]
-            self.lower.mapping_4k.dom().contains(va) ==> page_table_key_4k_valid::<TABLE_TYPE>(va) && page_ptr_valid(self.lower.mapping_4k.spec_index(va).addr)
+            self.lower.mapping_4k.dom().contains(va) ==> page_table_key_4k_valid::<TABLE_TYPE>(va) && mapping_4k_target_valid(self.lower.mapping_4k.spec_index(va).addr, self.lower.mapping_4k.spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.lower.mapping_2m.dom().contains(va)]
             #![trigger self.lower.mapping_2m.dom().contains(va), page_ptr_2m_valid(self.lower.mapping_2m.spec_index(va).addr)]
             #![trigger self.lower.mapping_2m.dom().contains(va)]
-            self.lower.mapping_2m.dom().contains(va) ==> page_table_key_2m_valid::<TABLE_TYPE>(va) && page_ptr_2m_valid(self.lower.mapping_2m.spec_index(va).addr)
+            self.lower.mapping_2m.dom().contains(va) ==> page_table_key_2m_valid::<TABLE_TYPE>(va) && mapping_2m_target_valid(self.lower.mapping_2m.spec_index(va).addr, self.lower.mapping_2m.spec_index(va).is_io)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.
@@ -821,6 +826,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                     ==> self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
                     && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
                     && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
+                    && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).is_io == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
                     && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
             }
     }
@@ -837,6 +843,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                     ==> self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
                     && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
                     && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
+                    && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).is_io == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.is_io
                     && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present
             }
     }

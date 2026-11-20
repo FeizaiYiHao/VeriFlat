@@ -43,10 +43,10 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_page_tables(
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).is_io
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -101,10 +101,10 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_free_4k_pages(
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).is_io
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -147,10 +147,10 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).is_io
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -278,10 +278,10 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).is_io
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -299,6 +299,15 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
+    assert(pci_bar_table_wf(post.pci_bars.view())) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
+        let c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
+        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); pre.default_pagetable_wf_at(pagetable); spec_va_4k_valid_index_roundtrip(va);
+        c.wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+        c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+        reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip;
+    };
     reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
@@ -330,11 +339,11 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).is_io
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -372,6 +381,7 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().remove(va),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g(),
+        post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).page_closure() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).page_closure(),
         post.pt_mp.spec_index(pagetable).view().higher.kernel_entries == pre.pt_mp.spec_index(pagetable).view().higher.kernel_entries,
         post.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,
@@ -428,5 +438,6 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
     };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 }

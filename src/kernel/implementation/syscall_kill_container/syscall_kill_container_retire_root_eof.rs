@@ -75,7 +75,6 @@ pub(crate) proof fn kill_container_retire_root_eof(
         pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent is None,
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         0 < pre.prc_mp.spec_index(target).view_rodata().view().container_depth,

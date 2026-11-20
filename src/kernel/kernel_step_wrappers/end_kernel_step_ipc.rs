@@ -309,7 +309,7 @@ impl KernelSteps {
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, caller_thrd_ptr: RwLockThreadPtr,
         ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, peer_thrd_ptr: RwLockThreadPtr,
         peer_result: RetValueType, cpu_transfer: Option<(CpuId, RwLockThreadPtr)>, pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, payload: IPCPayLoad,
-        cpu_sets_locked: bool,
+        cpu_sets_locked: bool, pagetables_locked: bool,
     )
         requires
             krnl.inv(),
@@ -326,6 +326,18 @@ impl KernelSteps {
                 let snap = old(self).snapshot_k();
                 &&& snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(snap.thrd_mp.spec_index(caller_thrd_ptr).view().owning_container).view_rodata().view().cpu_set).locking_thread() is None
                 &&& snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(snap.thrd_mp.spec_index(peer_thrd_ptr).view().owning_container).view_rodata().view().cpu_set).locking_thread() is None
+            },
+            pagetables_locked ==> {
+                let snap = old(self).snapshot_k();
+                let caller_proc = snap.thrd_mp.spec_index(caller_thrd_ptr).view().owning_proc;
+                let peer_proc = snap.thrd_mp.spec_index(peer_thrd_ptr).view().owning_proc;
+                &&& snap.thrd_mp.dom().contains(caller_thrd_ptr) && snap.thrd_mp.dom().contains(peer_thrd_ptr)
+                &&& snap.prc_mp.dom().contains(caller_proc) && !snap.prc_mp.spec_index(caller_proc).view().zombie
+                &&& snap.pt_mp.dom().contains(snap.prc_mp.spec_index(caller_proc).view().pagetable)
+                &&& snap.pt_mp.spec_index(snap.prc_mp.spec_index(caller_proc).view().pagetable).locking_thread() is None
+                &&& snap.prc_mp.dom().contains(peer_proc) && !snap.prc_mp.spec_index(peer_proc).view().zombie
+                &&& snap.pt_mp.dom().contains(snap.prc_mp.spec_index(peer_proc).view().pagetable)
+                &&& snap.pt_mp.spec_index(snap.prc_mp.spec_index(peer_proc).view().pagetable).locking_thread() is None
             },
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
                 old(self).snapshot_k().ctn_mp.dom().contains(p) && krnl.ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).locking_thread() == old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread()
@@ -390,6 +402,7 @@ impl KernelSteps {
                 &&& cpu_transfer matches Some((transfer, _)) ==> old_u.cpu_array[transfer as int].lock_state is Unlocked
                 &&& pci_transfer matches Some((bdf, sender, _)) ==> old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_u.process_map[sender].iommu_table is Some
                     ==> old_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
+                &&& pagetables_locked ==> old_u.process_map[caller.owning_proc].pagetable->Some_0.lock_state is Unlocked && old_u.process_map[peer.owning_proc].pagetable->Some_0.lock_state is Unlocked
             },
     {
         reveal(kernel_u_ipc_rendezvous_changed);
@@ -409,6 +422,12 @@ impl KernelSteps {
             &&& pci_transfer matches Some((bdf, sender, _)) ==> pre_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && pre_u.process_map[sender].iommu_table is Some
                 ==> pre_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
         }) by { reveal(kernel_k_to_kernel_u); reveal(kernel_ipc_rendezvous_fields); reveal(IommuRootTable::user_view); };
+        if pagetables_locked {
+            let snap = self.snapshot_k();
+            kernel_pagetable_mappings_projection_at(&snap, snap.thrd_mp.spec_index(caller_thrd_ptr).view().owning_proc);
+            kernel_pagetable_mappings_projection_at(&snap, snap.thrd_mp.spec_index(peer_thrd_ptr).view().owning_proc);
+            kernel_thread_projection_at(&snap, caller_thrd_ptr); kernel_thread_projection_at(&snap, peer_thrd_ptr);
+        }
         assert(self.snapshot_k().prc_mp.dom().contains(self.snapshot_k().thrd_mp.spec_index(peer_thrd_ptr).view().owning_proc)) by {
             reveal(kernel_ipc_rendezvous_fields); reveal(kernel_process_nonlock_fields_unchanged); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, peer_thrd_ptr);
         };

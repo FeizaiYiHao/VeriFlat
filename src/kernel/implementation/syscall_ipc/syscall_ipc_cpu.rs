@@ -205,11 +205,12 @@ verus! {
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, None)
                 && krnl.cpu_regs.view().view() == steps.snapshot_k().cpu_regs.view().view() && krnl.cpu_trap_frame.view().view() == steps.snapshot_k().cpu_trap_frame.view().view()) by { reveal(kernel_ipc_rendezvous_fields); };
             reveal(ipc_cpu_rendezvous_eof_transition_framing);
-            steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, None, payload, true);
+            steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, None, payload, true, false);
             assert({
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload)
             }) by {
-                ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, None, payload, true, old(steps).snapshot_k());
+                ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state,
+                    peer_thrd_ptr, peer_result, cpu_transfer, None, payload, true, false, old(steps).snapshot_k());
             };
         }
     }

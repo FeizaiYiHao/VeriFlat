@@ -155,8 +155,7 @@ pub open spec fn thread_exit_release_step(old_u: KernelU, new_u: KernelU, cpu_id
 }
 
 /// Reclaiming starts once the running thread, its process's last thread, has released every descriptor and has no
-/// caller: the cpu, the container, the process, and the thread are write-locked and the process's page table and IOMMU
-/// table are unlocked.
+/// caller: the cpu, the container, the process, and the thread are write-locked and the process's page table is unlocked.
 #[verifier::opaque]
 pub open spec fn thread_exit_lock_table_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -176,37 +175,21 @@ pub open spec fn thread_exit_lock_table_step_pre(old_u: KernelU, cpu_id: CpuId) 
     &&& process.owned_threads.len() == 1
     &&& process.pagetable is Some
     &&& process.pagetable->Some_0.lock_state is Unlocked
-    &&& process.iommu_table is Some ==> process.iommu_table->Some_0.lock_state is Unlocked
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
 }
 
-/// The attached flags after exit detaches every attached function that `prc_ptr` owns.
-pub open spec fn thread_exit_detached_attached(table: IommuRootTableU, prc_ptr: RwLockProcessPtr) -> Seq3<bool> {
-    Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| table.attached[bus][device][function] && table.owners[bus][device][function] != prc_ptr)))
-}
-
-/// Locking the process's page table starts reclaiming and the thread records that nothing is flushed yet. A process
-/// with an IOMMU table write-locks it and detaches it: every attached function the process owns is detached, the
-/// table drops its DID, and the IOTLB domain of that DID, if any, is emptied; owners stay.
+/// Locking the process's page table starts reclaiming and the thread records that nothing is flushed yet.
 #[verifier::opaque]
 pub open spec fn thread_exit_lock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    let table = old_u.iommu_root_table;
     new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..process.pagetable->Some_0 }),
-            iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..t }), None => None },
-            ..process
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..process.pagetable->Some_0 }), ..process
         }),
-        iommu_root_table: if process.iommu_table is Some { IommuRootTableU { attached: thread_exit_detached_attached(table, thread.owning_proc), ..table } } else { table },
-        iommu_tlb: if process.iommu_table is Some && process.iommu_table->Some_0.did is Some {
-            old_u.iommu_tlb.insert(process.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-        } else { old_u.iommu_tlb },
         ..old_u
     })
 }
@@ -282,6 +265,55 @@ pub open spec fn thread_exit_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
+/// Unowning runs after the flush is recorded, once the page table has no user 4K mapping, 2M or 1G mapping, or window lock, while the
+/// process's IOMMU table, if any, is unlocked.
+#[verifier::opaque]
+pub open spec fn thread_exit_unown_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let process = old_u.process_map.spec_index(thread.owning_proc);
+    let pagetable = process.pagetable->Some_0;
+    &&& thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true })
+    &&& process.iommu_table is Some ==> process.iommu_table->Some_0.lock_state is Unlocked
+    &&& process_user_4k_unmapped(old_u, pagetable)
+    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
+    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
+    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+}
+
+/// The attached flags after exit detaches every function in `functions`.
+pub open spec fn thread_exit_detached_attached(table: IommuRootTableU, functions: Set<PciBdf>) -> Seq3<bool> {
+    Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat,
+        |function: int| table.attached[bus][device][function] && !functions.contains((bus as usize, device as usize, function as usize)))))
+}
+
+/// The process gives up its PCI functions: a process with an IOMMU table write-locks it, every function of its page
+/// table's array is detached, the table drops its DID, and the IOTLB domain of that DID, if any, is emptied; then every
+/// function of the array becomes unowned and the array is emptied.
+#[verifier::opaque]
+pub open spec fn thread_exit_unown_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let prc_ptr = old_u.thread_map.spec_index(thrd_ptr).owning_proc;
+    let process = old_u.process_map.spec_index(prc_ptr);
+    let pagetable = process.pagetable->Some_0;
+    let functions = pagetable.pci_functions.dom();
+    let table = old_u.iommu_root_table;
+    new_u == (KernelU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
+            pagetable: Some(PageTableU { pci_functions: Map::empty(), ..pagetable }),
+            iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..t }), None => None },
+            ..process
+        }),
+        iommu_root_table: IommuRootTableU {
+            owners: if functions == Set::<PciBdf>::empty() { table.owners } else { pci_owners_released(table.owners, functions) },
+            attached: if process.iommu_table is Some { thread_exit_detached_attached(table, functions) } else { table.attached },
+        },
+        iommu_tlb: if process.iommu_table is Some && process.iommu_table->Some_0.did is Some {
+            old_u.iommu_tlb.insert(process.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        } else { old_u.iommu_tlb },
+        ..old_u
+    })
+}
+
 /// The progress a thread records after returning its next size of quota from `progress`: the 4K quota follows the
 /// recorded flush, then the 2M and the 1G quota; nothing follows any other progress.
 pub open spec fn thread_exit_quota_progress_after(progress: SyscallProgress) -> Option<SyscallProgress> {
@@ -341,8 +373,8 @@ pub open spec fn thread_exit_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     })
 }
 
-/// Reclaiming ends once every quota size is returned, the locked page table keeps no 4K, 2M or 1G mapping and no window
-/// lock, and the locked IOMMU table keeps no 4K mapping.
+/// Reclaiming ends once every quota size is returned, the locked page table keeps no 4K, 2M or 1G mapping, no window
+/// lock and no PCI function, and the locked IOMMU table keeps no 4K mapping.
 #[verifier::opaque]
 pub open spec fn thread_exit_unlock_table_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -351,6 +383,7 @@ pub open spec fn thread_exit_unlock_table_step_pre(old_u: KernelU, cpu_id: CpuId
     &&& thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitQuota { returned: PageSize::SZ1g })
     &&& table.mapping_4k == Map::<VAddr, MapEntry>::empty() && table.mapping_2m == Map::<VAddr, MapEntry>::empty() && table.mapping_1g == Map::<VAddr, MapEntry>::empty()
     &&& table.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
+    &&& table.pci_functions == Map::<PciBdf, nat>::empty()
     &&& process.iommu_table is Some ==> process_iommu_4k_unmapped(process.iommu_table->Some_0)
 }
 
@@ -382,10 +415,10 @@ pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id:
 
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
 /// changing or removing only threads of the exiting thread's container, releasing a descriptor, releasing an endpoint with
-/// its last descriptor, or, for a process's last thread, locking the process's tables, hiding one root entry of the page
-/// table, flushing one cpu's TLB for the process's PCID, recording the flush, removing one IOMMU 4K leaf, refunding 4K quota
-/// to the thread's container chain, returning one size of quota, unlocking the tables, or write-locking the container's
-/// PCID allocator.
+/// its last descriptor, or, for a process's last thread, locking the process's page table, hiding one root entry of the page
+/// table, flushing one cpu's TLB for the process's PCID, recording the flush, giving up the process's PCI functions,
+/// removing one IOMMU 4K leaf, refunding 4K quota to the thread's container chain, returning one size of quota, unlocking
+/// the tables, or write-locking the container's PCID allocator.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -398,6 +431,7 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: false }) && process_table_hidden_step(old_u, new_u, thread.owning_proc)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_tlb_flush_step(old_u, new_u, cpu_id)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id)
+    ||| thread_exit_unown_step_pre(old_u, cpu_id) && thread_exit_unown_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, flushed) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, flushed) && thread_exit_refund_step(old_u, new_u, cpu_id)
     ||| thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id)

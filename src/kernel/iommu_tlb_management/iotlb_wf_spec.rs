@@ -22,7 +22,7 @@ pub open spec fn iommu_tlb_wf(iommu_tlb: IommuTLB, root_table: IommuRootTable, p
         #![trigger root_table.spec_index_owner(bus, device, function)]
         #![trigger root_table.spec_index_iommu_root(bus, device, function)]
         pci_bdf_valid(bus, device, function) && root_table.spec_index_iommu_root(bus, device, function) is Some ==> {
-            let proc_ptr = root_table.spec_index_owner(bus, device, function);
+            let proc_ptr = root_table.spec_index_owner(bus, device, function)->Some_0;
             let iommu_table = iommu_table_map.spec_index(process_map.spec_index(proc_ptr).view().iommu_table.unwrap());
             let domain_tlb = iommu_tlb.spec_index(iommu_table.view().did->Some_0);
             &&& single_tlb_subset_of_pagetable(domain_tlb, iommu_table.view())

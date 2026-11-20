@@ -18,7 +18,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|i: usize| #![trigger post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i)]
             pei_valid(i) && i != target_l4i ==> post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i) =~= pre.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i)
         &&& post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(target_l4i) =~= (PageEntry {
-            addr: pre.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(target_l4i).addr, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+            addr: pre.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(target_l4i).addr,
+            perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
         &&& post.higher.mapping_1g.view() == pre.higher.mapping_1g.view().remove_keys(pre.higher.mapping_1g.view().dom().filter(|va: VAddr| spec_v2l4index(va) == target_l4i))
         &&& post.lower.mapping_4k == pre.lower.mapping_4k.remove_keys(pre.lower.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == target_l4i))
         &&& post.lower.mapping_2m == pre.lower.mapping_2m.remove_keys(pre.lower.mapping_2m.dom().filter(|va: VAddr| spec_v2l4index(va) == target_l4i))
@@ -126,10 +127,35 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
+        Self::hide_l4_entry_eof_wf_mapping_4k_entries(pre, post, target_l4i);
+        reveal(WholePageTable::wf_mapping_4k);
+    }
+
+    /// EOF closure of `hide_l4_entry`: the body of `wf_mapping_4k`, stated for each index.
+    proof fn hide_l4_entry_eof_wf_mapping_4k_entries(pre: Self, post: Self, target_l4i: L4Index)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            Self::hide_l4_entry_eof_transition_framing(pre, post, target_l4i),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+                #![trigger post.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i)))]
+                #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> {
+                    &&& post.lower.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
+                    &&& post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
+                        ==> post.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
+                        && post.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
+                        && post.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
+                        && post.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).is_io == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
+                        && post.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
+                },
+    {
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
         reveal(WholePageTable::wf_mapping_4k);
         spec_index2va_injective();
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip, iova_2m_valid_index_roundtrip, iova_1g_valid_index_roundtrip;
+        broadcast use spec_va_4k_valid_index_roundtrip, iova_4k_valid_index_roundtrip;
     }
 
     /// EOF closure of `hide_l4_entry`: `wf_mapping_2m`; every 2M leaf under the root entry leaves the map with its walk.
@@ -142,10 +168,35 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
+        Self::hide_l4_entry_eof_wf_mapping_2m_entries(pre, post, target_l4i);
+        reveal(WholePageTable::wf_mapping_2m);
+    }
+
+    /// EOF closure of `hide_l4_entry`: the body of `wf_mapping_2m`, stated for each index.
+    proof fn hide_l4_entry_eof_wf_mapping_2m_entries(pre: Self, post: Self, target_l4i: L4Index)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            Self::hide_l4_entry_eof_transition_framing(pre, post, target_l4i),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+                #![trigger post.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0)))]
+                #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
+                post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> {
+                    &&& post.lower.mapping_2m.dom().contains(spec_index2va((l4i, l3i, l2i, 0))) == post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some
+                    &&& post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some
+                        ==> post.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
+                        && post.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
+                        && post.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
+                        && post.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).is_io == post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.is_io
+                        && post.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present
+                },
+    {
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
         reveal(WholePageTable::wf_mapping_2m);
         spec_index2va_injective();
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip, iova_2m_valid_index_roundtrip, iova_1g_valid_index_roundtrip;
+        broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip;
     }
 
     /// EOF closure of `hide_l4_entry`: `wf_window_locks`; every window under the root entry leaves the map with its walk, and
@@ -203,7 +254,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
             post.spec_held_l4(target_l4i) == Some(PageEntry { addr: pre.spec_held_l4(target_l4i)->0.addr,
-                perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
+                perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]

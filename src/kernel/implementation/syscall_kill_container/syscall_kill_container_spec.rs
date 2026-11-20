@@ -162,7 +162,6 @@ pub open spec fn kill_container_retire_root_step(old_u: KernelU, new_u: KernelU,
     &&& old_u.process_map.dom().contains(prc_ptr)
     &&& kill_process_target_empty(old_u, cpu_id)
     &&& root.zombie
-    &&& root.owned_pci_functions.is_empty()
     &&& root.parent is None
     &&& root.owning_container == ctn_ptr
     &&& container.quota_4k < quota_4k

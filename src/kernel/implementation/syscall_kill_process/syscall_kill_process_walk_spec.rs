@@ -43,7 +43,6 @@ pub open spec fn kill_walk_state(
     &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) <==> (t == thrd_ptr || Some(t) == victim)
     &&& k.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
     &&& kill_chain_state(k, lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms)
-    &&& chain.len() > 0 && (stage is Reclaim || stage is Quota || stage is Zombie || stage is Retire) ==> k.prc_mp.spec_index(chain[chain.len() - 1]).view().pci_cleared.view()
 }
 
 /// The killer `thrd_ptr` of process `prc_ptr`, running on `cpu_id`, works at `stage` on `chain`, the marked

@@ -3,7 +3,8 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_unmap_4k` from the state at entry, in the implementation's check order: malformed arguments, a
-/// killed caller, and then a range below the first user L4 index or with a page that has no 4K mapping.
+/// killed caller, and then a range below the first user L4 index or with a page that has no 4K mapping or maps device memory,
+/// which is refused as a whole.
 /// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
 pub open spec fn unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
@@ -12,14 +13,14 @@ pub open spec fn unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr,
     if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) { RetValueType::Error }
     else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if thread.killed { RetValueType::ErrorThreadKilled }
-    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) {
+    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && !mapping[va_range.view()[j]].is_io {
         RetValueType::Success
     } else { RetValueType::Error }
 }
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu and the thread are unlocked; the thread's
 /// process and container exist; no thread write-holds the process's pagetable; every 2M window of the range exists and is unlocked;
-/// and every VA of the valid, non-empty user range is mapped.
+/// and every VA of the valid, non-empty user range is mapped to RAM.
 #[verifier::opaque]
 pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -37,7 +38,8 @@ pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
     &&& range.wf()
     &&& range.len > 0
     &&& user_va_range(old_u, range)
-    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(range.view()[i])] 0 <= i < range.len ==> pagetable.mapping_4k.dom().contains(range.view()[i])
+    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(range.view()[i])] 0 <= i < range.len
+        ==> pagetable.mapping_4k.dom().contains(range.view()[i]) && !pagetable.mapping_4k[range.view()[i]].is_io
 }
 
 /// Entering write-locks the cpu, which enters its kernel step, and its running thread, read-locks the pagetable of the

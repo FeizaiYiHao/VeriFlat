@@ -260,7 +260,8 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& process.state.view() is Running || process.state.view() is Zombie
             &&& final(krnl).it_mp.dom().contains(e.iommu_table_ptr) && it.leaves_present()
             &&& pt.kernel_l4_end() <= spec_v2l4index(va_range.start)
-            &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> pt.mapping_4k().dom().contains(va_range.view()[j]) && pt.mapping_4k()[va_range.view()[j]].present
+            &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
+                ==> pt.mapping_4k().dom().contains(va_range.view()[j]) && pt.mapping_4k()[va_range.view()[j]].present && !pt.mapping_4k()[va_range.view()[j]].is_io
             &&& forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < range ==> !it.mapping_4k().dom().contains(iova_range.view()[j])
             &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> va_4k_valid(va_range.view()[j]) && final(lctx).pagetable_window_lock_map().dom().contains((ptp, window_of(va_range.view()[j])))
             &&& forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < range ==> va_4k_valid(iova_range.view()[j])
@@ -391,7 +392,8 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
         proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm));
         let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
-        if !pagetable.higher.mapping_4k_va_range_present(Tracked(lower), &va_range) {
+        let (present, ram) = pagetable.higher.mapping_4k_va_range_present(Tracked(lower), &va_range);
+        if !(present && ram) {
             proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::ErrorIommuVaNotMapped); }
             RetValueType::ErrorIommuVaNotMapped
         } else {

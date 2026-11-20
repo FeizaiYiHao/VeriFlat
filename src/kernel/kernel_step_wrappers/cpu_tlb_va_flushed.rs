@@ -64,6 +64,7 @@ impl KernelK {
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k()
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_2m() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_1g() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
+                &&& old(self).pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == old(steps).snapshot_k().pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
             },
             old(self).inv(),
@@ -122,7 +123,9 @@ impl KernelK {
             ..steps.snapshot_u()
         };
         kernel_cpu_set_lock_mode_changed_implies_u_step(&snap, &mid, ctn_ptr); kernel_container_projection_at(&snap, ctn_ptr);
-        assert(kernel_k_to_kernel_u(*self) == (KernelU { cpu_tlb: self.cpu_tlb.view(), ..locked })) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_cpu_tlb_updated_implies_u_step(&mid, &*self); };
+        assert(kernel_k_to_kernel_u(*self) == (KernelU { cpu_tlb: self.cpu_tlb.view(), ..locked })) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); kernel_cpu_tlb_updated_implies_u_step(&mid, &*self);
+        };
         if flushed { kernel_cpu_tlb_va_flushed_implies_u_step(&mid, &*self, cpu_id, pcid, va, count, stride_2m); } else { kernel_u_domains_projection(&snap); }
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);

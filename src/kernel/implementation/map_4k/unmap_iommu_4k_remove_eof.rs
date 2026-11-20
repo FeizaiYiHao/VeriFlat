@@ -35,10 +35,8 @@ pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_fram
     &&& new_page.view().mappings() == old_page.view().mappings()
     &&& new_page.view().owning_container == old_page.view().owning_container
     &&& new_page.view().ref_count == old_page.view().ref_count - 1
-    &&& new_page.view().state == if old_page.view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable }
-    &&& old_page.view().ref_count > 1 ==> new_page.view() == (Page { iommu_mappings: new_page.view().iommu_mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
-    &&& old_page.view().ref_count == 1 ==> new_page.view() == (Page { state: PageState::Unavailable, iommu_mappings: new_page.view().iommu_mappings, ref_count: 0, perm_4k: new_page.view().perm_4k, ..old_page.view() })
-        && new_page.view().perm_4k.view() is None
+    &&& new_page.view().state == PageState::Mapped4k
+    &&& new_page.view() == (Page { iommu_mappings: new_page.view().iommu_mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
 pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, pg_ptr: PagePtr, was_present: bool)
@@ -52,7 +50,7 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
         pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == pg_ptr,
         pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().iommu_mappings().contains((iommu_table, iova)),
         post.it_mp.perms_wf(),
@@ -72,6 +70,8 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(remove_iommu_4k_mapping_without_free_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };

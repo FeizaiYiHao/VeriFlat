@@ -32,7 +32,7 @@ impl IommuEntry {
     /// The IommuPageMap view is a bit lens, not a CPU encoding operation.
     pub open spec fn bit_view(&self) -> PageEntry {
         PageEntry { addr: self.addr, perm: PageEntryPerm {
-            present: !(self.access is Disabled), ps: false, write: self.access is ReadWrite,
+            is_io: false, present: !(self.access is Disabled), ps: false, write: self.access is ReadWrite,
             execute_disable: self.software_xd, user: false, kernel_present: self.held } }
     }
 
@@ -59,6 +59,7 @@ impl IommuEntry {
             &&& raw & PAGE_ENTRY_USER_MASK as usize == 0
             &&& (raw & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0) == held
             &&& (raw & PAGE_ENTRY_EXECUTE_MASK as usize != 0) == xd
+            &&& raw & PAGE_ENTRY_IO_MASK as usize == 0
             &&& addr == 0 && access == 0 && !held && !xd ==> raw == 0
         }) by (bit_vector)
             requires
@@ -74,6 +75,7 @@ impl IommuEntry {
             !entry.perm.ps,
             !entry.perm.user,
             entry.perm.write ==> entry.perm.present,
+            !entry.perm.is_io,
         ensures ret.bit_view() =~= *entry,
     {
         Self { addr: entry.addr,
@@ -95,6 +97,7 @@ impl IommuEntry {
             &&& raw & PAGE_ENTRY_PS_MASK as usize == 0
             &&& raw & PAGE_ENTRY_USER_MASK as usize == 0
             &&& (raw & PAGE_ENTRY_WRITE_MASK as usize != 0) == (raw & IOMMU_WRITE_MASK != 0)
+            &&& raw & PAGE_ENTRY_IO_MASK as usize == 0
         }) by (bit_vector) requires raw & !IOMMU_WORD_MASK == 0;
         ret
     }

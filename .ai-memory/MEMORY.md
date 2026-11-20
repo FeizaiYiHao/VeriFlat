@@ -15,11 +15,13 @@ captured by the repository instructions or obvious from one implementation.
 ## Current notes
 
 - [Memory model](project_memory_model_core_concepts.md) — page metadata,
-  addresses, indices, and tracked physical-memory permissions.
+  addresses, indices, tracked physical-memory permissions, and IO (PCI BAR)
+  pages: the BAR table, IO leaves, and BAR mapping.
 - [Runtime protocols](project_runtime_protocols.md) — user-view syscall
   contracts, `KernelSteps`, staged allocation, and unlock cleanliness.
-- [IOMMU model](project_iommu_identity_and_static_root_table.md) — BDF-derived
-  identity, the static VT-d root table, ownership, and IOTLB state.
+- [IOMMU model](project_iommu_identity_and_static_root_table.md) — anchor-DID
+  identity, the static VT-d root table, PCI function ownership (per-process
+  arrays, claim, transfer, release at death), and IOTLB state.
 - [NUMA plan](project_numa_plan.md) — single-kernel NUMA design: node tags,
   per-node arrays/pools, per-node RwLock reader counts, lazy page-table replicas.
 

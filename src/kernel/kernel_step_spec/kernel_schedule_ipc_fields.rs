@@ -57,6 +57,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.cpu_tlb.view() == match flushed_pcid {
@@ -262,6 +263,7 @@ pub open spec fn kernel_ipc_block_fields(
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_tlb.view() == if flushed_default_pcid {
         pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
     } else { pre.cpu_tlb.view() }
@@ -379,6 +381,7 @@ pub open spec fn kernel_ipc_call_handoff_fields(
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_tlb.view() == match flushed_pcid {
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
@@ -605,6 +608,7 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_tlb.view() == match flushed_pcid {
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
@@ -692,8 +696,9 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
 /// The live head `peer_thrd_ptr` of the endpoint at `ep_idx`, waiting opposite to the live caller
 /// running on `cpu_id`, is dequeued and scheduled with `peer_result`; with `cpu_transfer == Some((cpu, receiver))`
 /// that Off CPU also moves to the receiver's container, and with `pci_transfer == Some((bdf, sender, receiver))`
-/// that PCI function moves from the sender to the receiver process, detached, while every other function stays attached
-/// exactly when it was; the sender's IOMMU table is unlocked at the start when the function is attached. Detaching an attached function empties
+/// that PCI function moves, detached and without BAR mappings, from the sender's to the receiver's ownership and page-table
+/// PCI function array, while every other function stays attached exactly when it was; both page tables, and the sender's
+/// IOMMU table when the function is attached, are unlocked at the start. Detaching an attached function empties
 /// the sender table's old DID domain; detaching its anchor re-anchors the table as `pci_handoff_table_did` states.
 /// Only that table's DID changes; every IOMMU table keeps its present mappings.
 pub open spec fn kernel_ipc_rendezvous_fields(
@@ -739,8 +744,8 @@ pub open spec fn kernel_ipc_rendezvous_fields(
     &&& pre.ctn_mp.dom().contains(caller.view().owning_container)
     &&& (cpu_transfer is Some ==> index_valid(NUM_CPUS, cpu_transfer.unwrap().0) && pre.thrd_mp.dom().contains(cpu_transfer.unwrap().1))
     &&& cpu_transfer is Some ==> pre.cpu_arr.spec_index(cpu_transfer.unwrap().0).value.locking_thread() is None
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
     &&& pci_transfer is None ==> {
+        &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
         &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
         &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
         &&& post.irt.view().owners() == pre.irt.view().owners()
@@ -751,13 +756,32 @@ pub open spec fn kernel_ipc_rendezvous_fields(
         let sender_table = pre.prc_mp.spec_index(sender).view().iommu_table;
         let attached = iommu_roots_attached(pre.irt.view().iommu_roots());
         let old_did = match sender_table { Some(t) => pre.it_mp.spec_index(t).view().did, None => None };
+        let sender_pt = pre.prc_mp.spec_index(sender).view().pagetable;
+        let receiver_pt = pre.prc_mp.spec_index(receiver).view().pagetable;
         &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
         &&& pre.prc_mp.dom().contains(sender)
         &&& pre.prc_mp.dom().contains(receiver)
         &&& sender != receiver
         &&& !pre.prc_mp.spec_index(sender).view().zombie
+        &&& !pre.prc_mp.spec_index(receiver).view().zombie
+        &&& pre.pt_mp.dom().contains(sender_pt)
+        &&& pre.pt_mp.dom().contains(receiver_pt)
+        &&& sender_pt != receiver_pt
+        &&& pre.pt_mp.spec_index(sender_pt).locking_thread() is None
+        &&& pre.pt_mp.spec_index(receiver_pt).locking_thread() is None
+        &&& post.pt_mp.dom() == pre.pt_mp.dom()
+        &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
+            pre.pt_mp.dom().contains(p) ==> {
+                let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
+                let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), p);
+                let counts = before.higher.pci.mapping_counts();
+                &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+                &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+                &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+                &&& after.higher.pci.mapping_counts() == if p == sender_pt { counts.remove(bdf) } else if p == receiver_pt { counts.insert(bdf, 0) } else { counts }
+            }
         &&& sender_table matches Some(t) ==> attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] ==> pre.it_mp.dom().contains(t) && pre.it_mp.spec_index(t).locking_thread() is None
-        &&& post.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver)
+        &&& post.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, Some(receiver))
         &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
             ==> (post.irt.view().spec_index_iommu_root(b, d, f) is Some) == ((b, d, f) != bdf && pre.irt.view().spec_index_iommu_root(b, d, f) is Some)
         &&& post.iommu_tlb.view() == if attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
@@ -780,11 +804,9 @@ pub open spec fn kernel_ipc_rendezvous_fields(
             pre.prc_mp.dom().contains(p) ==> {
                 let a = pre.prc_mp.spec_index(p);
                 let b = post.prc_mp.spec_index(p);
-                let pci = a.view_ghost().owned_pci_functions.view();
                 &&& b.view().zombie == a.view().zombie
                 &&& b.view().pagetable == a.view().pagetable
                 &&& b.view().iommu_table == a.view().iommu_table
-                &&& b.view_ghost().owned_pci_functions.view() == if p == sender { pci.remove(bdf) } else if p == receiver { pci.insert(bdf) } else { pci }
                 &&& b.view().quota_4k == a.view().quota_4k
                 &&& b.view().quota_2m == a.view().quota_2m
                 &&& b.view().quota_1g == a.view().quota_1g
@@ -802,6 +824,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
     &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))]
         pre.ctn_mp.dom().contains(c) ==> cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))) == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)))
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]

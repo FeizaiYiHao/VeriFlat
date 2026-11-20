@@ -92,7 +92,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
     proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
-    if page.ref_count > 1 || page.is_io_page {
+    if page.ref_count > 1 {
         remove_iommu_4k_mapping_without_free(krnl, iommu_table, indices, pg_ptr, l1_ptr, Ghost(false), Tracked(&mut *lctx), iommu_table_perm, Tracked(&page_perm));
     } else {
         reclaim_last_iommu_4k_mapping(krnl, iommu_table, indices, pg_ptr, l1_ptr, page.owning_container, thrd_ptr, cpu_id, indirect, direct, Ghost(false), Tracked(&mut *lctx), Tracked(&mut *steps),
@@ -212,7 +212,7 @@ pub fn reclaim_detached_iommu_4k_page(
     proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
-    if page.ref_count > 1 || page.is_io_page {
+    if page.ref_count > 1 {
         remove_iommu_4k_mapping_without_free(krnl, iommu_table, indices, pg_ptr, l1_ptr, Ghost(true), Tracked(&mut *lctx), iommu_table_perm, Tracked(&page_perm));
         proof { held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx)); }
     } else {

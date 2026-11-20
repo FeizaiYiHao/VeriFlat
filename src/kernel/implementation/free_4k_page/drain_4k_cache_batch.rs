@@ -45,6 +45,7 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).pci_bars == old(krnl).pci_bars,
         final(krnl).allc_4k_mp.dom().contains(allocator),
         final(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().len() == old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().len() - ALLOCATOR_BATCH,
         final(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().len() == old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().len() + ALLOCATOR_BATCH,
@@ -78,6 +79,7 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
     let mut moved = 0usize;
     while moved < ALLOCATOR_BATCH
         invariant
+            krnl.pci_bars == old(krnl).pci_bars,
             moved == 0 ==> steps.view() == old(steps).view() && *krnl == *old(krnl) && steps.snapshot_u() == old(steps).snapshot_u() && steps.snapshot_k() == old(steps).snapshot_k(),
             moved > 0 ==> old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),

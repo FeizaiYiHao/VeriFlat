@@ -21,7 +21,7 @@ use super::syscall_kill_container_trace::*;
 use super::syscall_kill_container_retire_root_eof::*;
 
 verus! {
-/// Retire the empty zombie root process `target` of the marked container the kill works on, which owns no PCI function,
+/// Retire the empty zombie root process `target` of the marked container the kill works on,
 /// and walk that container again: write-hold its process page, its tables' object pages, and its tables, unlink their
 /// structure pages, then retire the process with its tables and their root pages and clear the container's zombie flag.
 /// The killer write-holds the container with `container_perm`.
@@ -46,7 +46,6 @@ pub(crate) fn kill_container_retire_root(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         container_perm.state() is WriteLock,
         container_perm.thread_id() == old(lctx).thread_id(),
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(scope->Container_container).locking_thread()->Write_lock_id,
@@ -149,7 +148,6 @@ pub(crate) fn kill_container_retire_root_process(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         container_perm.state() is WriteLock,
         container_perm.thread_id() == old(lctx).thread_id(),
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(scope->Container_container).locking_thread()->Write_lock_id,
@@ -251,7 +249,7 @@ pub(crate) fn kill_container_retire_root_process(
         let pre_u = kernel_k_to_kernel_u(base);
         let post_u = kernel_k_to_kernel_u(*krnl);
         kill_step_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Retire, scope);
-        process_pci_cleared_implies_no_owned_pci_functions(base, target); kill_container_retire_root_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, target);
+        kill_container_retire_root_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, target);
         kernel_zombie_root_process_retired_implies_u_step(&base, &retired_k, target, ctn_ptr, allc_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thrd_ptr);
         kill_container_retire_root_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thrd_ptr, ctn_ptr, target,
@@ -285,7 +283,6 @@ pub(crate) fn kill_container_retire_root_commit(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         old(krnl).prc_mp.spec_index(target).view_rodata().view().parent is None,
         old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         0 < old(krnl).prc_mp.spec_index(target).view_rodata().view().container_depth,
@@ -439,7 +436,7 @@ pub(crate) fn kill_container_retire_root_commit(
     proof {
         assert(kill_retire_eof_transition_framing(entry, mid, cpu_id, target, None, ctn_ptr, allc_ptr)) by { reveal(kill_retire_eof_transition_framing); };
         assert(mid.inv() && mid.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()) by {
-            reveal(LockedMap::typed_lock_map_aligned); process_pci_cleared_implies_no_owned_pci_functions(entry, target); kill_container_retire_root_eof(entry, mid, *old(lctx), cpu_id, target, ctn_ptr, allc_ptr);
+            reveal(LockedMap::typed_lock_map_aligned); kill_container_retire_root_eof(entry, mid, *old(lctx), cpu_id, target, ctn_ptr, allc_ptr);
         };
     }
     krnl.wunlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));

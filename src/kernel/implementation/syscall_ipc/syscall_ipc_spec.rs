@@ -18,6 +18,8 @@ pub open spec fn ipc_rendezvous_ret(ret: RetValueType) -> bool {
     ||| ret is ErrorIpcCpuNotOff
     ||| ret is ErrorIpcSameProcess
     ||| ret is ErrorIpcPciOwnerMismatch
+    ||| ret is ErrorIpcPciBarMapped
+    ||| ret is ErrorIpcPciReceiverFull
 }
 
 /// The rejection decided before any rendezvous from the state at entry: a cpu no longer Running or marked by a killer, a killed caller, a receive-call
@@ -116,7 +118,8 @@ pub open spec fn ipc_block_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
 
 /// The unlocked endpoint queue head waits in the opposite direction, so the caller rendezvous with it; a CPU
 /// rendezvous between different containers also needs both containers' cpu sets unlocked, a handover
-/// needs the handed-over CPU unlocked, and a PCI handover of an attached function needs the sender's IOMMU table unlocked.
+/// needs the handed-over CPU unlocked, a PCI handover between different processes needs both processes' page tables unlocked,
+/// and a PCI handover of an attached function needs the sender's IOMMU table unlocked.
 #[verifier::opaque]
 pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -143,6 +146,11 @@ pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: 
     &&& ipc_cpu_transfer(old_u, cpu_id, ep_idx, payload, result) matches Some((transfer, _)) ==> old_u.cpu_array[transfer as int].lock_state is Unlocked
     &&& ipc_pci_transfer(old_u, cpu_id, ep_idx, waiting_state, payload, result) matches Some((bdf, sender, _)) ==> old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int]
         && old_u.process_map[sender].iommu_table is Some ==> old_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
+    // A PCI handover that passes the type and same-process checks reads both processes' page tables.
+    &&& payload is Pci && (result is Success || result is ErrorIpcPciOwnerMismatch || result is ErrorIpcPciBarMapped || result is ErrorIpcPciReceiverFull) ==> {
+        &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is Unlocked
+        &&& old_u.process_map[peer.owning_proc].pagetable->Some_0.lock_state is Unlocked
+    }
 }
 
 /// User-visible rendezvous step: the queue head is scheduled with the peer's side of the rendezvous result,
@@ -368,11 +376,12 @@ pub open spec fn ipc_pages_target_free(table: PageTableU, range: VaRange4K) -> b
     }
 }
 
-/// Every page of `range` in `table` is owned by `container` or one of its ancestors.
+/// Every page of `range` in `table` is a RAM page owned by `container` or one of its ancestors.
 pub open spec fn ipc_pages_owners_compatible(u: KernelU, table: PageTableU, container: RwLockContainerPtr, range: VaRange4K) -> bool {
     forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> {
         let owner = table.mapping_4k[range.view()[i]].owning_container.view();
         &&& u.container_map.dom().contains(container)
+        &&& !table.mapping_4k[range.view()[i]].is_io
         &&& u.container_map.dom().contains(owner)
         &&& (container == owner || u.container_map[container].uppertree_seq.contains(owner))
     }
@@ -381,7 +390,7 @@ pub open spec fn ipc_pages_owners_compatible(u: KernelU, table: PageTableU, cont
 /// The checks a pages rendezvous makes under both locked page tables, in the implementation's order:
 /// the source range lies above the user-VA bound, every source page is mapped, the receiver has 4K quota for
 /// the worst-case target directories, the target range lies above the user-VA bound and is free, and every
-/// source page is owned by the receiver's container or one of its ancestors.
+/// source page is a RAM page owned by the receiver's container or one of its ancestors.
 pub open spec fn ipc_pages_check_result(u: KernelU, cpu_id: CpuId) -> RetValueType {
     let progress = u.thread_map[u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
     let source = progress->IpcPages_source_range;

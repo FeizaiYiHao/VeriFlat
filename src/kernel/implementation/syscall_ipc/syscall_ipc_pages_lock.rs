@@ -1554,6 +1554,8 @@ pub(super) fn ipc_pages_release_tables_and_progress(
         whole_pagetable(ret.view().pt_mp, ret.view().pt_lower.view(), target_pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k(),
         whole_pagetable(ret.view().pt_mp, ret.view().pt_lower.view(), target_pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_2m(),
         whole_pagetable(ret.view().pt_mp, ret.view().pt_lower.view(), target_pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_1g(),
+        ret.view().pt_mp.spec_index(source_pagetable).view().higher.pci.mapping_counts() == old(krnl).pt_mp.spec_index(source_pagetable).view().higher.pci.mapping_counts(),
+        ret.view().pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts() == old(krnl).pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(ret.view().pt_mp, ret.view().pt_lower.view(), source_pagetable).lower.pagetable_window_locks == if user {
             pagetable_window_locks_after_unlocking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range)
         } else { whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks },

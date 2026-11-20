@@ -85,7 +85,7 @@ use super::syscall_mmap_2m_map_owned_eof::{map_owned_2m_page_eof, map_owned_2m_p
             *final(krnl) == (KernelK { pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) }),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m()
                 == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().insert(va,
-                    MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container) }),
+                    MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container) }),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g(),
@@ -149,7 +149,7 @@ use super::syscall_mmap_2m_map_owned_eof::{map_owned_2m_page_eof, map_owned_2m_p
             thread.quota_2m = thread.quota_2m - 1;
             thread.syscall_progress = Ghost(mmap_2m_progress_after_leaf(thread.syscall_progress.view()));
         }
-        let target_entry = MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(page_owner) };
+        let target_entry = MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(page_owner) };
         pagetable_map_insert_2m(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable_ptr, (indices.0, indices.1, indices.2), target_l2_ptr, &target_entry, window_perm, Tracked(&mut *lctx),
             pagetable_lock_perm);
         proof {

@@ -119,10 +119,8 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().pcid == root_pcid,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().pagetable == child_pagetable_ptr,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().iommu_table is None,
-        final(krnl).prc_mp.spec_index(child_prc_ptr).view_ghost().owned_pci_functions.view().is_empty(),
         !final(krnl).prc_mp.spec_index(child_prc_ptr).being_killed(),
         !final(krnl).prc_mp.spec_index(child_prc_ptr).view().zombie,
-        !final(krnl).prc_mp.spec_index(child_prc_ptr).view().pci_cleared.view(),
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().state.view() is Creating,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().quota_4k == process_quota_4k,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().quota_2m == 0,
@@ -143,6 +141,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().higher.cr3 == l4_page,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().higher.kernel_l4_end == old(krnl).dflt_pt.view().kernel_l4_end,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).page_closure() =~= set![l4_page],
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -200,7 +199,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         owning_container: child_ctn_ptr, container_depth: child_depth, parent: None, depth: 0, pagetable: child_pagetable_ptr,
         cr3: l4_ptr, iommu_cr3: None, iommu_table_ptr: None, pcid: root_pcid,
     });
-    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
+    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()) };
     let Tracked(process_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, child_prc_ptr, Allocated4KPageState::AsProcess, Ghost(pagetable_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm));
     let ghost process_page_locks = pagetable_page_locks.insert(process_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(process_index), mode: TypedLockMode::Write });
     let (Tracked(process_region_perm), parent_node) = split_process_page_node_slot(child_prc_ptr, Tracked(process_perm));

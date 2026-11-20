@@ -10,7 +10,7 @@ verus! {
 /// The result of `syscall_new_process` and its endpoint and IOMMU variants from the state at entry, in
 /// the implementation's check order: malformed arguments, a cpu no longer Running or marked by a killer, a killed process or caller, no free PCID in
 /// the caller's container, an empty `ep_idx` descriptor, too little caller 4K quota, and a
-/// range below the first user L4 index or with a page that has no present 4K leaf. `Success` stands for
+/// range below the first user L4 index or with a page that has no present 4K RAM leaf. `Success` stands for
 /// the variant's success value, whose fresh process, IOMMU table, and thread pointers the state does
 /// not determine.
 pub open spec fn new_process_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, ep_idx: Option<EndpointIdx>, with_iommu: bool) -> RetValueType {
@@ -29,7 +29,7 @@ pub open spec fn new_process_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAd
     else if pre.container_map[thread.owning_container].free_pcids.is_empty() { RetValueType::ErrorNoPcid }
     else if ep_idx is Some && thread.endpoint_descriptors[ep_idx->Some_0 as int] is None { RetValueType::Error }
     else if thread.quota_4k < base + 3 * range { RetValueType::ErrorNoQuota }
-    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) {
+    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && !mapping[va_range.view()[j]].is_io {
         RetValueType::Success
     } else { RetValueType::Error }
 }
@@ -65,7 +65,7 @@ pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range
     &&& 0 < range.len <= (usize::MAX - base) / 3
     &&& user_va_range(old_u, range)
     &&& thread.quota_4k >= base + 3 * range.len
-    &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> pagetable.mapping_4k.dom().contains(range.view()[i])
+    &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> pagetable.mapping_4k.dom().contains(range.view()[i]) && !pagetable.mapping_4k[range.view()[i]].is_io
     &&& ep_idx is Some ==> {
         &&& edp_idx_valid(ep_idx->Some_0)
         &&& thread.endpoint_descriptors[ep_idx->Some_0 as int] is Some
@@ -141,7 +141,10 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let child = new_u.process_map[parent].children.last();
     let cp = new_u.process_map[child].pcid;
     let ancestors = old_u.process_map[parent].uppertree_seq.push(parent);
-    let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+    let empty_table = PageTableU {
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(),
+        pagetable_window_locks: Map::empty(), pci_functions: Map::empty(),
+    };
     // The child's process, page-table object, and L4 page, plus the IOMMU table object and its root page with an IOMMU table.
     let cost: usize = if progress->NewProcess_0.with_iommu { 5 } else { 3 };
     let range = progress->NewProcess_0.range;
@@ -160,7 +163,7 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& new_u.process_map[child] == (ProcessU {
         lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false, pagetable: Some(empty_table),
         iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: cp, owning_container: container,
-        owned_pci_functions: Set::empty(), quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
+        quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
         depth: (old_u.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors, subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     })
     &&& new_u == (KernelU {

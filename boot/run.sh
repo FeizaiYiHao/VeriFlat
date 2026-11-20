@@ -7,13 +7,17 @@
 # NO_TIMER=1 builds the kernel with feature `no-timer` (no LAPIC timer); dom0's self-test needs no tick.
 # VERIFLAT_BOOT_2M_BLOCKS=n (default 4) sets the free 2M blocks of the kernel build, the root container's 2M quota;
 # VERIFLAT_BOOT_1G_BLOCKS=0|1 (default 1) sets the free 1G block [1 GiB, 2 GiB) of the kernel build, the root container's
-# 1G quota (0 without CPUID pdpe1gb). The page array covers [0, 4 GiB); `-m 2304` is RAM, the rest stays Unavailable
-# except the BAR0 pages of the recorded PCI functions.
+# 1G quota (0 without CPUID pdpe1gb). The page array covers [0, 4 GiB); `-m 2304` is RAM, the rest stays Unavailable,
+# BAR pages included: device memory is described by the PCI table's BAR slots, not by the page array.
 # Devices: `intel-iommu` (VT-d, required), `edu` (IOMMU self-test), and an NVMe controller behind the PCIe root port
 # rp1 (`-device pcie-root-port,id=rp1,chassis=1 -drive file=$OUT/nvme.img,if=none,id=nvm,format=raw
 # -device nvme,drive=nvm,serial=veriflat0,bus=rp1`), as an SSD sits on a real server, so every boot takes the loader
 # across a PCI-to-PCI bridge; it is backed by a 64 MiB sparse raw image created once in the build output directory.
-# The loader maps the BAR0 of the NVMe and edu functions into dom0 at 0xd0_0000_0000 + physical address.
+# The loader reports every assigned memory BAR, above 4 GiB too, and maps none: dom0 maps BAR pages of functions it
+# owns with map_pci_bar_4k/2m. A high BAR for a test: append
+# `-object memory-backend-ram,id=hm,size=2G -device ivshmem-plain,memdev=hm` (SeaBIOS places the 2 GiB BAR2 above
+# 4 GiB); dom0's `io_high_bar` check then claims ivshmem, maps two 2M chunks of BAR2 with map_pci_bar_2m, and writes
+# and reads them.
 # `+invtsc` makes the TSC rate known to QEMU, which then reports it in the hypervisor leaf 4000_0010H.
 # NVME_BLOCK_SIZE=4096 (default 512) formats the emulated NVMe namespace with that logical block size.
 set -euo pipefail

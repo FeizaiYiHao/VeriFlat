@@ -46,6 +46,7 @@ pub(super) fn iommu_map_4k_map_one_page(
         whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
         whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va_range.view()[i as int]),
         whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).mapping_4k()[va_range.view()[i as int]].present,
+        !whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).mapping_4k()[va_range.view()[i as int]].is_io,
         k0.thrd_mp.dom().contains(thrd_ptr) && !thread_is_dangling(k0.thrd_mp.spec_index(thrd_ptr)),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),

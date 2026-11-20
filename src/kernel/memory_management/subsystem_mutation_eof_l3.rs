@@ -137,6 +137,7 @@ pub(super) open spec fn pagetable_map_remove_l3_entry_eof_transition_framing(
     &&& forall|i4: L4Index, i3: L3Index| #![trigger post_c.spec_held_1g_l3(i4, i3)] #![trigger pre_c.spec_held_1g_l3(i4, i3)]
         pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> post_c.spec_held_1g_l3(i4, i3) == pre_c.spec_held_1g_l3(i4, i3)
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_remove_l3_entry`: the big-lock and window-half invariants after the L2 page of an unresolvable L3 entry is unlinked; every held leaf stays, so the page records keep following the held chains. The unresolvable entry had no window, so the window locks stay.

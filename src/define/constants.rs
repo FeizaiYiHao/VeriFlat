@@ -50,6 +50,10 @@ pub const PAGE_ENTRY_USER_MASK: u64 = 0x1u64 << PAGE_ENTRY_USER_SHIFT;
 pub const PAGE_ENTRY_PS_MASK: u64 = 0x1u64 << PAGE_ENTRY_PS_SHIFT;
 pub const PAGE_ENTRY_EXECUTE_MASK: u64 = 0x1u64 << PAGE_ENTRY_EXECUTE_SHIFT;
 pub const PAGE_ENTRY_KERNEL_PRESENT_MASK: u64 = 0x1u64 << PAGE_ENTRY_KERNEL_PRESENT_SHIFT;
+/// Software bit 53 marks a leaf that maps device (IO) memory rather than system RAM.
+pub const PAGE_ENTRY_IO_MASK: u64 = 1u64 << 53;
+/// PCD and PWT, set with the IO bit so device memory is mapped uncached.
+pub const PAGE_ENTRY_IO_CACHE_MASK: u64 = (1u64 << 4) | (1u64 << 3);
 // Preset on present entries so hardware never performs the Accessed/Dirty read-modify-write on a page-table word the kernel's PointsTo claims.
 pub const PAGE_ENTRY_ACCESSED_MASK: u64 = 0x1u64 << 5;
 pub const PAGE_ENTRY_DIRTY_MASK: u64 = 0x1u64 << 6;

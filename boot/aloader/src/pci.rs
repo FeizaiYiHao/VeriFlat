@@ -1,11 +1,10 @@
 //! PCI configuration space access (legacy 0xCF8/0xCFC mechanism): the scan of every bus, root buses of several host
-//! bridges and buses behind PCI-to-PCI bridges alike, that records the functions whose BAR0 dom0 drives, and the DMA
-//! test device.
+//! bridges and buses behind PCI-to-PCI bridges alike, that records the functions whose BAR0 dom0 drives, the DMA
+//! test device, and the BAR slots: every assigned memory BAR of every function.
 
-use astd::boot::{DmaTestDevice, PciDevice, MAX_PCI_DEVICES};
+use astd::boot::{BarSlot, DmaTestDevice, PciDevice, MAX_BAR_SLOTS, MAX_PCI_DEVICES};
 use astd::heapless::Vec as ArrayVec;
 use x86::io::{inl, outl};
-use x86::msr::rdmsr;
 
 use crate::memory::PAGE_SIZE;
 
@@ -34,14 +33,6 @@ const BAR_TYPE_64: u32 = 0b100;
 const PLATFORM_MMIO_BASE: u64 = 0xfec0_0000;
 const FOUR_GIB: u64 = 1 << 32;
 
-const IA32_MTRRCAP: u32 = 0xfe;
-const IA32_MTRR_DEF_TYPE: u32 = 0x2ff;
-const IA32_MTRR_PHYSBASE0: u32 = 0x200;
-const MTRR_ENABLE: u64 = 1 << 11;
-const MTRR_VALID: u64 = 1 << 11;
-const MTRR_TYPE_UC: u64 = 0;
-const MTRR_ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
-
 /// The most memory ranges (BARs and bridge windows) of bus 0 the relocation search avoids.
 const MAX_BUSY_RANGES: usize = 128;
 
@@ -68,16 +59,19 @@ struct MemoryBar {
     is_64: bool,
 }
 
-/// Sizes the memory BAR at `offset` with memory decoding off; `None` for an I/O or unimplemented BAR.
-unsafe fn memory_bar(bus: u8, device: u8, function: u8, offset: u8) -> Option<MemoryBar> {
+/// Sizes the memory BAR at `offset` with memory decoding off; `None` for an I/O or unimplemented BAR. A 64-bit BAR
+/// in the last register of the header (`last`) has no upper half and panics.
+unsafe fn memory_bar(bus: u8, device: u8, function: u8, offset: u8, last: u8) -> Option<MemoryBar> {
     let low = read(bus, device, function, offset);
     if low & BAR_IO != 0 {
         return None;
     }
     let is_64 = low & BAR_TYPE_MASK == BAR_TYPE_64;
+    assert!(!is_64 || offset < last, "PCI {:02x}:{:02x}.{}: 64-bit BAR at {:#x} has no upper register", bus, device, function, offset);
+    let assigned = low & !0xf != 0 || is_64 && read(bus, device, function, offset + 4) != 0;
     // Decoding goes off while the BAR holds all ones, unless the BAR is unassigned (as on host bridges).
     let command = read(bus, device, function, COMMAND) & 0xffff;
-    if low & !0xf != 0 {
+    if assigned {
         write(bus, device, function, COMMAND, command & !COMMAND_MEMORY);
     }
     write(bus, device, function, offset, 0xffff_ffff);
@@ -92,7 +86,7 @@ unsafe fn memory_bar(bus: u8, device: u8, function: u8, offset: u8) -> Option<Me
     } else {
         (0, 0xffff_ffff)
     };
-    if low & !0xf != 0 {
+    if assigned {
         write(bus, device, function, COMMAND, command);
     }
     let mask = ((high_mask as u64) << 32) | (low_mask & !0xf) as u64;
@@ -113,27 +107,40 @@ fn functions(bus: u8) -> impl Iterator<Item = (u8, u8)> {
     .filter(move |&(device, function)| unsafe { read(bus, device, function, VENDOR_DEVICE) } & 0xffff != 0xffff)
 }
 
+/// The number of BAR registers of a function with header type `header_type`: 6 for a device, 2 for a bridge.
+fn bar_count(header_type: u32) -> u8 {
+    match header_type {
+        0 => 6,
+        1 => 2,
+        _ => 0,
+    }
+}
+
+/// The memory BARs of `(bus, device, function)` as `(index, bar)`, a 64-bit BAR once under its low register.
+fn memory_bars(bus: u8, device: u8, function: u8) -> impl Iterator<Item = (u8, MemoryBar)> {
+    let count = bar_count(unsafe { read(bus, device, function, HEADER_TYPE) } >> 16 & 0x7f);
+    let mut index = 0;
+    core::iter::from_fn(move || {
+        while index < count {
+            let (at, offset) = (index, BAR0 + 4 * index);
+            let bar = unsafe { memory_bar(bus, device, function, offset, BAR0 + 4 * (count - 1)) };
+            index += if bar.is_some_and(|b| b.is_64) { 2 } else { 1 };
+            if let Some(bar) = bar {
+                return Some((at, bar));
+            }
+        }
+        None
+    })
+}
+
 /// The memory ranges decoded on bus 0: every memory BAR below 4 GiB and every bridge memory window.
 fn busy_ranges() -> ArrayVec<(u64, u64), MAX_BUSY_RANGES> {
     let mut ranges = ArrayVec::new();
     for (device, function) in functions(0) {
         let header_type = unsafe { read(0, device, function, HEADER_TYPE) } >> 16 & 0x7f;
-        let bar_count = match header_type {
-            0 => 6,
-            1 => 2,
-            _ => 0,
-        };
-        let mut index = 0;
-        while index < bar_count {
-            let offset = BAR0 + 4 * index;
-            match unsafe { memory_bar(0, device, function, offset) } {
-                Some(bar) => {
-                    if bar.base != 0 && bar.base < FOUR_GIB {
-                        ranges.push((bar.base, bar.size)).expect("too many PCI memory ranges");
-                    }
-                    index += if bar.is_64 { 2 } else { 1 };
-                }
-                None => index += 1,
+        for (_, bar) in memory_bars(0, device, function) {
+            if bar.base != 0 && bar.base < FOUR_GIB {
+                ranges.push((bar.base, bar.size)).expect("too many PCI memory ranges");
             }
         }
         if header_type == 1 {
@@ -170,45 +177,6 @@ fn free_bar_range(size: u64, e820: &[(u64, u64)], mmconfig: &[(u64, u64)], busy:
     panic!("no free range below {:#x} for a {:#x}-byte BAR", PLATFORM_MMIO_BASE, size);
 }
 
-/// The memory type the MTRRs give physical page `page`: `None` when they are disabled (UC).
-fn mtrr_type(page: u64) -> Option<u64> {
-    let def_type = unsafe { rdmsr(IA32_MTRR_DEF_TYPE) };
-    if def_type & MTRR_ENABLE == 0 {
-        return None;
-    }
-    let count = unsafe { rdmsr(IA32_MTRRCAP) } & 0xff;
-    let mut matched: Option<u64> = None;
-    for n in 0..count as u32 {
-        let base = unsafe { rdmsr(IA32_MTRR_PHYSBASE0 + 2 * n) };
-        let mask = unsafe { rdmsr(IA32_MTRR_PHYSBASE0 + 2 * n + 1) };
-        if mask & MTRR_VALID == 0 || page & mask & MTRR_ADDR_MASK != base & mask & MTRR_ADDR_MASK {
-            continue;
-        }
-        let ty = base & 0xff;
-        // UC wins over every other type; WT wins over WB; other overlaps are undefined, so keep the first.
-        matched = Some(match matched {
-            None => ty,
-            Some(m) if m == MTRR_TYPE_UC || ty == MTRR_TYPE_UC => MTRR_TYPE_UC,
-            Some(m) => m.min(ty),
-        });
-    }
-    Some(matched.unwrap_or(def_type & 0xff))
-}
-
-/// Panics unless every page of `[base, base + pages * 4K)` is uncacheable under the MTRRs.
-fn check_uncacheable(bdf: (u8, u8, u8), base: u64, pages: u64) {
-    for page in 0..pages {
-        let addr = base + page * PAGE_SIZE as u64;
-        if let Some(ty) = mtrr_type(addr) {
-            assert!(
-                ty == MTRR_TYPE_UC,
-                "MTRRs give BAR0 page {:#x} of {:02x}:{:02x}.{} memory type {}, not UC: dom0's BAR0 window has no PCD bit",
-                addr, bdf.0, bdf.1, bdf.2, ty
-            );
-        }
-    }
-}
-
 /// Whether dom0 drives this function through its BAR0 window: NVMe, Ethernet, and the `edu` test device.
 fn recorded_kind(vendor: u16, device: u16, class: u8, subclass: u8) -> bool {
     (class, subclass) == (0x01, 0x08) || (class, subclass) == (0x02, 0x00) || (vendor, device) == (EDU_VENDOR, EDU_DEVICE)
@@ -228,18 +196,11 @@ const MAX_BRIDGES: usize = 256;
 
 /// Scans every bus 0..=255, since a server has several root buses that each sit under their own host bridge, and
 /// records every NVMe, Ethernet and `edu` function with a memory BAR0: enables its memory decoding and bus mastering
-/// and those of every bridge whose bus range contains its bus, moves a BAR0 of a bus 0 function at or above 4 GiB to
-/// a free range below, and checks that the MTRRs make BAR0 uncacheable. A function off bus 0 whose BAR0 is
-/// unassigned or not below 4 GiB is skipped with a warning, since a bridge window or another host bridge bounds it.
-/// `e820` are the firmware memory map's ranges below 4 GiB, `mmconfig` the ECAM windows.
+/// and those of every bridge whose bus range contains its bus. An assigned BAR0 stays where the firmware put it, below
+/// or above 4 GiB; an unassigned BAR0 of a bus 0 function goes to a free range below the platform MMIO, and one off
+/// bus 0 is skipped with a warning, since a bridge window bounds it. `e820` are the firmware memory map's ranges below
+/// 4 GiB, `mmconfig` the ECAM windows.
 pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<PciDevice, MAX_PCI_DEVICES> {
-    let def_type = unsafe { rdmsr(IA32_MTRR_DEF_TYPE) };
-    log::info!(
-        "MTRRs {} (default type {}, {} variable ranges)",
-        if def_type & MTRR_ENABLE != 0 { "enabled" } else { "disabled" },
-        def_type & 0xff,
-        unsafe { rdmsr(IA32_MTRRCAP) } & 0xff,
-    );
     let mut busy = busy_ranges();
     let mut devices = ArrayVec::new();
     // The bridges come first, so that the bridges above a function are known whatever bus order the firmware chose.
@@ -284,25 +245,13 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
                 log::warn!("PCI {:02x}:{:02x}.{} not recorded: more than {} PCI functions with a device BAR0", bus, dev, fun, MAX_PCI_DEVICES);
                 continue;
             }
-            let Some(mut bar) = (unsafe { memory_bar(bus, dev, fun, BAR0) }) else { continue };
-            assert!(
-                bar.size >= PAGE_SIZE as u64 || bar.base % PAGE_SIZE as u64 == 0,
-                "BAR0 of {:02x}:{:02x}.{} is not page aligned", bus, dev, fun
-            );
+            let Some(mut bar) = (unsafe { memory_bar(bus, dev, fun, BAR0, BAR0 + 20) }) else { continue };
             let size = bar.size.max(PAGE_SIZE as u64);
-            // A 64-bit BAR0 the firmware placed above 4 GiB behind a bridge stays where it is and is recorded as a high
-            // BAR: the kernel's page array covers only [0, 4 GiB), so the kernel never takes its pages; the loader
-            // maps it into dom0 itself, uncached, at the same `PCI_BAR_WINDOW_BASE + base` (main.rs, `high_bar_slot`).
-            let high = bus != 0 && bar.is_64 && bar.base >= FOUR_GIB && crate::high_bar_slot(bar.base, size).is_some();
-            if !high && (bar.base == 0 || bar.base + size > FOUR_GIB) {
+            if bar.base == 0 {
                 if bus != 0 {
-                    log::warn!(
-                        "PCI {:02x}:{:02x}.{} not recorded: its BAR0 at {:#x} must be assigned below 4 GiB (turn above-4G decoding off)",
-                        bus, dev, fun, bar.base
-                    );
+                    log::warn!("PCI {:02x}:{:02x}.{} not recorded: its BAR0 is unassigned behind a bridge", bus, dev, fun);
                     continue;
                 }
-                assert!(bar.is_64 || bar.base == 0, "32-bit BAR0 above 4 GiB");
                 let base = free_bar_range(size, e820, mmconfig, &busy);
                 log::info!("PCI 00:{:02x}.{} BAR0 relocated {:#x} -> {:#x} ({:#x} bytes)", dev, fun, bar.base, base, size);
                 unsafe {
@@ -318,10 +267,8 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
                 bar.base = base;
                 busy.push((base, size)).expect("too many PCI memory ranges");
             }
-            let pages = size / PAGE_SIZE as u64;
-            if !high {
-                check_uncacheable((bus, dev, fun), bar.base, pages);
-            }
+            let pages = ((bar.base + bar.size + PAGE_SIZE as u64 - 1) & !(PAGE_SIZE as u64 - 1)) / PAGE_SIZE as u64
+                - bar.base / PAGE_SIZE as u64;
             unsafe { enable(bus, dev, fun) };
             // Every bridge that forwards this bus lies above the function; a function on a root bus has none.
             for &((b, d, f), secondary, subordinate) in bridges.iter() {
@@ -330,11 +277,7 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
                 }
             }
             let bdf = ((bus as u16) << 8) | ((dev as u16) << 3) | fun as u16;
-            if high {
-                log::info!("PCI {:02x}:{:02x}.{} recorded: high BAR0 {:#x}, {} pages, mapped uncached by the loader only", bus, dev, fun, bar.base, pages);
-            } else {
-                log::info!("PCI {:02x}:{:02x}.{} recorded: BAR0 {:#x}, {} pages, MTRR type UC", bus, dev, fun, bar.base, pages);
-            }
+            log::info!("PCI {:02x}:{:02x}.{} recorded: BAR0 {:#x}, {} pages", bus, dev, fun, bar.base, pages);
             devices.push(PciDevice { bdf, vendor, device, class, subclass, bar0_base: bar.base, bar0_pages: pages }).unwrap();
         }
     }
@@ -346,4 +289,27 @@ pub fn dma_test_device(devices: &[PciDevice]) -> Option<DmaTestDevice> {
     let edu = devices.iter().find(|d| (d.vendor, d.device) == (EDU_VENDOR, EDU_DEVICE))?;
     log::info!("DMA test device {:02x}:{:02x}.{} BAR0 {:#x}", edu.bdf >> 8, (edu.bdf >> 3) & 0x1f, edu.bdf & 7, edu.bar0_base);
     Some(DmaTestDevice { bdf: edu.bdf, mmio: edu.bar0_base })
+}
+
+/// The BAR slots: every assigned memory BAR (nonzero base) of every function on every bus, devices (6 registers) and
+/// bridges (2) alike, with its exact byte range, in B/D/F and BAR order. Call it after `probe_devices`, which may
+/// assign a BAR0. Panics on more than `MAX_BAR_SLOTS` rather than leave a BAR out.
+pub fn bar_slots() -> ArrayVec<BarSlot, MAX_BAR_SLOTS> {
+    let mut slots = ArrayVec::new();
+    for bus in 0..=255u8 {
+        for (dev, fun) in functions(bus) {
+            let id = unsafe { read(bus, dev, fun, VENDOR_DEVICE) };
+            let bdf = ((bus as u16) << 8) | ((dev as u16) << 3) | fun as u16;
+            for (index, bar) in memory_bars(bus, dev, fun).filter(|(_, bar)| bar.base != 0) {
+                log::info!(
+                    "PCI {:02x}:{:02x}.{} BAR{}: {:#x}..{:#x} ({}-bit)",
+                    bus, dev, fun, index, bar.base, bar.base.wrapping_add(bar.size), if bar.is_64 { 64 } else { 32 }
+                );
+                let slot = BarSlot { bdf, bar: index, vendor: id as u16, device: (id >> 16) as u16, base: bar.base, size: bar.size };
+                slots.push(slot).expect("more assigned memory BARs than MAX_BAR_SLOTS");
+            }
+        }
+    }
+    log::info!("PCI BAR slots: {}", slots.len());
+    slots
 }

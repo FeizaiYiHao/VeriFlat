@@ -84,6 +84,8 @@ pub mod pagetable_l3_hidden;
 pub mod killed_owner_sets_empty;
 /// K->U lemma of a section that exchanges one thread's 4K and 2M quotas while changing only page, allocator, and lock state.
 pub mod thread_quota_exchange;
+/// K->U lemmas of sections that install or remove one IO 4K or 2M leaf together with its BAR mapping record.
+pub mod pci_bar_mapping;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -123,6 +125,7 @@ pub use process_1g_mapping::*;
 pub use pagetable_l3_hidden::*;
 pub use killed_owner_sets_empty::*;
 pub use thread_quota_exchange::*;
+pub use pci_bar_mapping::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.
@@ -205,6 +208,7 @@ impl KernelSteps {
             krnl.cpu_regs.view().view() =~= old(self).snapshot_k().cpu_regs.view().view(),
             krnl.cpu_trap_frame.view().view() =~= old(self).snapshot_k().cpu_trap_frame.view().view(),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
+            krnl.pci_bars == old(self).snapshot_k().pci_bars,
             krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
             krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
             krnl.cpu_arr.spec_index(cpu).value.killer_info() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.killer_info(),
@@ -274,6 +278,7 @@ impl KernelSteps {
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
+                    &&& krnl.pt_mp.spec_index(p).view().higher.pci.mapping_counts() == old(self).snapshot_k().pt_mp.spec_index(p).view().higher.pci.mapping_counts()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
                 None => {
@@ -312,6 +317,7 @@ impl KernelSteps {
             krnl.cpu_regs.view().view() =~= old(self).snapshot_k().cpu_regs.view().view(),
             krnl.cpu_trap_frame.view().view() =~= old(self).snapshot_k().cpu_trap_frame.view().view(),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
+            krnl.pci_bars == old(self).snapshot_k().pci_bars,
             krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
             krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
             krnl.cpu_arr.spec_index(cpu).value.killer_info() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.killer_info(),
@@ -388,6 +394,7 @@ impl KernelSteps {
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
+                    &&& krnl.pt_mp.spec_index(p).view().higher.pci.mapping_counts() == old(self).snapshot_k().pt_mp.spec_index(p).view().higher.pci.mapping_counts()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
                 None => {

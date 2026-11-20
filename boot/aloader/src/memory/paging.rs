@@ -88,17 +88,10 @@ impl AddressSpace {
         self.map_entry(allocator, paddr, paddr, false, 3, false, true, true);
     }
 
-    /// Maps a 4K user page, writable and execute-disabled, for device registers. No PCD: the
-    /// caller checks that the MTRRs make the page uncacheable.
-    pub unsafe fn map_user_mmio(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64) {
-        self.map_entry(allocator, vaddr, paddr, true, 3, false, true, false);
-    }
-
-    /// Maps device registers for the user, writable, execute-disabled and uncached by the page attributes
-    /// (PCD and PWT), whatever the MTRRs say: a 2 MiB page when `huge`, else a 4K page. For a BAR0 above the
-    /// kernel's page array (see `pci.rs`), which the kernel never learns of.
-    pub unsafe fn map_user_mmio_uc(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64, huge: bool) {
-        self.map_entry(allocator, vaddr, paddr, true, if huge { 2 } else { 3 }, true, true, true);
+    /// Maps a 4K kernel-only page identity, writable, execute-disabled and uncached (PCD and PWT, PAT entry 3), over
+    /// the cacheable identity mapping of a device page.
+    pub unsafe fn map_kernel_uc(&mut self, allocator: &mut impl PhysicalAllocator, paddr: u64) {
+        self.map_entry(allocator, paddr, paddr, false, 3, true, true, true);
     }
 
     #[allow(clippy::too_many_arguments)]

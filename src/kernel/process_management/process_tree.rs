@@ -14,10 +14,6 @@ pub open spec fn process_perms_wf(prc_mp: ProcessLockedMap) -> bool {
         #![auto]
         prc_mp.dom().contains(p) ==> {
             &&& prc_mp.spec_index(p).inv()
-            &&& prc_mp.spec_index(p).view().pci_cleared.view() ==> {
-                &&& prc_mp.spec_index(p).being_killed()
-                &&& prc_mp.spec_index(p).view().owned_threads.view().len() == 0
-            }
         }
     &&& forall|p: RwLockProcessPtr|
         #![trigger prc_mp.dom().contains(p)]
@@ -37,8 +33,6 @@ pub proof fn process_perms_wf_at(prc_mp: ProcessLockedMap, prc_ptr: RwLockProces
         prc_mp.view().spec_index(prc_ptr).is_init(),
         prc_mp.view().spec_index(prc_ptr).addr() == prc_ptr,
         prc_mp.spec_index(prc_ptr).inv(),
-        prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).being_killed(),
-        prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0,
         prc_mp.spec_index(prc_ptr).is_init(),
         prc_mp.spec_index(prc_ptr).view().inv(),
         prc_mp.spec_index(prc_ptr).view().owned_threads.view().no_duplicates(),
@@ -546,8 +540,6 @@ pub proof fn process_insert_child_into_ancestor_subtree_sets(tracked prc_mp: &mu
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_rodata() == old(prc_mp).spec_index(p).view_rodata(),
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view().uppertree_seq]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view().uppertree_seq == old(prc_mp).spec_index(p).view().uppertree_seq,
-        forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_ghost().owned_pci_functions]
-            old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_ghost().owned_pci_functions == old(prc_mp).spec_index(p).view_ghost().owned_pci_functions,
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).locking_thread()]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).locking_thread() == old(prc_mp).spec_index(p).locking_thread(),
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).being_killed()]
@@ -562,7 +554,7 @@ pub proof fn process_insert_child_into_ancestor_subtree_sets(tracked prc_mp: &mu
         let p0 = ancestors.spec_index(0);
         assert(ancestors.to_set().contains(p0)) by { ancestors.to_set_ensures(); };
         prc_mp.update_ghost(p0, ProcessGhost {
-            subtree_set: Ghost(prc_mp.spec_index(p0).view_ghost().subtree_set.view().insert(child_ptr)), owned_pci_functions: prc_mp.spec_index(p0).view_ghost().owned_pci_functions });
+            subtree_set: Ghost(prc_mp.spec_index(p0).view_ghost().subtree_set.view().insert(child_ptr)) });
         assert(prc_mp.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(ancestors.drop_first().to_set().subset_of(prc_mp.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
         process_insert_child_into_ancestor_subtree_sets(prc_mp, ancestors.drop_first(), child_ptr, held_locks, thread_id);
@@ -596,8 +588,6 @@ pub proof fn process_remove_child_from_ancestor_subtree_sets(tracked prc_mp: &mu
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_rodata() == old(prc_mp).spec_index(p).view_rodata(),
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view().uppertree_seq]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view().uppertree_seq == old(prc_mp).spec_index(p).view().uppertree_seq,
-        forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_ghost().owned_pci_functions]
-            old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_ghost().owned_pci_functions == old(prc_mp).spec_index(p).view_ghost().owned_pci_functions,
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).locking_thread()]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).locking_thread() == old(prc_mp).spec_index(p).locking_thread(),
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).being_killed()]
@@ -612,7 +602,7 @@ pub proof fn process_remove_child_from_ancestor_subtree_sets(tracked prc_mp: &mu
         let p0 = ancestors.spec_index(0);
         assert(ancestors.to_set().contains(p0)) by { ancestors.to_set_ensures(); };
         prc_mp.update_ghost(p0, ProcessGhost {
-            subtree_set: Ghost(prc_mp.spec_index(p0).view_ghost().subtree_set.view().remove(child_ptr)), owned_pci_functions: prc_mp.spec_index(p0).view_ghost().owned_pci_functions });
+            subtree_set: Ghost(prc_mp.spec_index(p0).view_ghost().subtree_set.view().remove(child_ptr)) });
         assert(prc_mp.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(ancestors.drop_first().to_set().subset_of(prc_mp.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
         process_remove_child_from_ancestor_subtree_sets(prc_mp, ancestors.drop_first(), child_ptr, held_locks, thread_id);

@@ -176,6 +176,7 @@ pub fn pagetable_map_remove_l3_entry(
         pagetable_table_stale_cpus_only_when_write_locked(*final(pagetable_map)),
         page_mappings_pagetable_wf(*final(pagetable_map), *final(pt_lower), *page_array),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_entries == old(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_entries,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.cr3 == old(pagetable_map).spec_index(pagetable_ptr).view().higher.cr3,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.pcid == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pcid,

@@ -51,13 +51,14 @@ metadata:
   (`SyscallProgress::ThreadExit { next }`), for the process's last thread the
   reclaim steps, then finish (thread removed, quota absorbed by the process,
   cpu Idle on the default page table).
-- Reclaim runs inside the same exit call: lock `PT(P)`, then under the root
-  table detach every attached function `P` owns (emptying its IOTLB domain)
-  and lock `IT(P)`; clear every user 4K leaf (present bit only), flush `P`'s
-  PCID once on every cpu, unmap the cleared leaves and refund their pages,
-  then hide every IOMMU 4K leaf, flush the whole IOTLB once
-  (`ThreadExitIommuFlush`; `IT(P)`'s write lock is the dirty marker), and
-  remove and refund the hidden leaves, return all
+- Reclaim runs inside the same exit call: lock `PT(P)`, hide every user L4
+  entry, flush `P`'s PCID once on every cpu, then release `P`'s PCI functions
+  (only when its array is non-empty, under the root table, with `IT(P)`
+  write-locked and detached, its DID dropped and its IOTLB domain emptied;
+  otherwise `IT(P)`, if any, is only write-locked), reclaim every held CPU
+  leaf of any size (IO leaves without bookkeeping) and refund the pages,
+  remove the present IOMMU 4K leaves of the DID-less `IT(P)` directly, with no
+  hide and no flush, and refund them, return all
   4K/2M/1G quota of the thread and process to the container
   (`ThreadExitReclaim`/`ThreadExitQuota`), unlock `IT(P)` and `PT(P)`
   (`ThreadExitZombie`). Finish of the last thread locks the container's PCID
@@ -66,9 +67,9 @@ metadata:
 - The thread's page goes back to the 4K allocator cache of the page's owning
   container through the authorized TCB `retype_thread_rwlock_to_4k_page_perm`
   (inverse of the thread mint); the owner's quota_4k grows by one.
-- A zombie has no thread, no quota, no user or IOMMU 4K mapping, no attached
-  function, and no PCID; it keeps its table structures and owns its PCI
-  functions (U projects its
+- A zombie has no thread, no quota, no user leaf of any size, no IOMMU 4K
+  mapping, no PCI function (`process_emptied_tables_wf`), and no PCID; it
+  keeps its table structures (U projects its
   `pagetable`/`iommu_table` as `None`). A zombie root process marks its
   container. Only the container-locking syscalls stutter `ErrorContainerZombie`;
   exit itself does not. Freeing the remaining structures is left to kill/reap.

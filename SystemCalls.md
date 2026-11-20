@@ -16,6 +16,14 @@ The `noninterference/` paths cited below live on branch `proofs`.
   tables, plus each container's dynamic lock owner `lock_process_owner`
   (R9), but no other lock owners, reader counts, or allocator internals. The
   process PCID and the global `kernel_l4_end` are in U (§15).
+- PCI ownership (§15, phase 2): every PCI function is owned by at most one
+  process. `iommu_root_table.owners[b][d][f]` is `Some(p)` or `None`, and a
+  process's page table lists the functions it owns in
+  `PT(p).pci_functions: Map<PciBdf, nat>` (each function's number of BAR
+  mappings in that table, one per 4K or 2M IO leaf, §13a). Every function starts unowned at boot;
+  only the root process of the root container claims one (§4e); IPC moves one
+  between processes (§11); a process that exits (§17) or is killed (§18, §19)
+  leaves its functions unowned.
 - A `KernelStep` is `{ old_u, new_u }`. An atomic section whose U projection
   does not change records no step (it stutters). Every recorded step is one
   transition of the whole machine and may interleave with steps of other CPUs.
@@ -417,19 +425,19 @@ non-empty; every other shard is empty; the head `Q[v][0]` is killed.
 Status: conforms with anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167).
 
 Issued by a running thread for its process `P` (`cpu.current_process`);
-the B/D/F `(bus, device, function)` must name a PCI function `P` owns, and
-`P` must have an IOMMU table. There is no detach syscall: a transfer (§11)
-detaches.
+the B/D/F `(bus, device, function)` must name a PCI function `P` owns (it is
+in `PT(P).pci_functions`), and `P` must have an IOMMU table. There is no
+detach syscall: a transfer (§11), exit (§17), and kill (§18) detach.
 
 - Arguments: `bus`, `device`, `function`; the trap layer guarantees
   `pci_bdf_valid`.
-- U locks acquired and released in the step: `cpu`, `P`, and, after the
-  checks pass, `IT(P)` (10006). Non-U: the root table lock (10005), taken
-  after `P` and held across the checks and the attach; `IT(P)` is
-  write-locked under it.
+- U locks acquired and released in the step: `cpu`, `P`, `PT(P)` read-locked
+  (10004) to look the function up in its array, and, after the checks pass,
+  `IT(P)` (10006). Non-U: the root table lock (10005), taken after `PT(P)`
+  and held across the checks and the attach; `IT(P)` is write-locked under it.
 - Pre: `index_valid(cpu_id)`, `cpu.state is Running`, `P` present,
   `Unlocked(cpu)`, `Unlocked(P)`, `!P.killed`,
-  `P.owned_pci_functions.contains((bus, device, function))`,
+  `PT(P).pci_functions.dom().contains((bus, device, function))`,
   `P.iommu_table is Some`, `Unlocked(IT(P))`,
   `!iommu_root_table.attached[bus][device][function]`.
 - Effect: `iommu_root_table.attached[bus][device][function] = true`, and
@@ -443,6 +451,31 @@ detaches.
 
 Stutters (in this order): CpuIdle (cpu not Running or killed), ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
 PciAlreadyAttached.
+
+## 4e. pci_claim — one step
+
+Status: implemented and verified (phase 2, 2026-11-19; `syscall_pci_claim`, syscall 57).
+
+Issued by a running thread for its process `P`; `P` must be the root process
+of the root container (`P.parent is None` and the container of `P` has no
+parent: the same statement in exec, which reads both from read-only data, and
+in U). It makes the unowned function `(bus, device, function)` `P`'s.
+
+- Arguments: `bus`, `device`, `function`; the trap layer guarantees
+  `pci_bdf_valid` (the same check as `pci_attach_dma`).
+- U locks acquired and released in the step: `cpu`, `P`, and `PT(P)`
+  write-locked (10004). Non-U: the root table lock (10005), taken under
+  `PT(P)` once the array has a free entry.
+- Pre (`pci_claim_step_pre`): `Unlocked` for `cpu`, `P`, and `PT(P)`,
+  `!P.killed`, `P` the root process of the root container,
+  `PT(P).pci_functions.dom().len() < PCI_FUNCTIONS_PER_PROCESS` (8), and
+  `iommu_root_table.owners[bus][device][function] is None`.
+- Effect (`kernel_u_pci_claim_changed`): `PT(P).pci_functions` gains the
+  function with count 0 and its root-table owner becomes `Some(P)`. Nothing
+  is attached; `pci_attach_dma` (§4d) attaches.
+- Result (`pci_claim_syscall_result`), stutters in this order: CpuIdle (cpu
+  not Running or killed), ProcessKilled, PciNotRootProcess, PciFunctionArrayFull,
+  PciAlreadyOwned; otherwise Success.
 
 ## 5. new_thread, new_thread_with_endpoint — enter, finish
 
@@ -725,8 +758,8 @@ as share_4k (§8) maps a page a second time.
 - Pre: `Caller`, `prog is None`, `!thr.killed`, `!P.killed`, `C` present;
   `Unlocked` for `cpu`, `T`, `P`, and `IT(P)`; `PT(P)` not write-locked;
   `VR.wf()`, `IR.wf()`, `VR.len > 0`, `IR.len == VR.len`, `UserVa(u, VR)`;
-  every VA of `VR` is in `PT(P).mapping_4k`, and no IOVA of `IR` is in
-  `IT(P).mapping_4k`.
+  every VA of `VR` is a RAM leaf (`!is_io`) of `PT(P).mapping_4k`, and no IOVA
+  of `IR` is in `IT(P).mapping_4k`.
 - Effect: write-locks `cpu`, `T`, `P`, and `IT(P)`, read-locks `PT(P)`;
   `prog = IommuMap4k { VR, IR, 0, None }`.
 
@@ -740,7 +773,7 @@ as share_4k (§8) maps a page a second time.
 **Leaf** (`iommu_map_4k_leaf_step_pre`, `iommu_map_4k_leaf_step`)
 
 - Pre: `iommu_map_4k_locked`, `prog is IommuMap4k`, `mapped < IR.len`,
-  `VR[mapped]` mapped in `PT(P)`, `IR[mapped]` unmapped in `IT(P)`.
+  `VR[mapped]` mapped in `PT(P)` by a RAM leaf, `IR[mapped]` unmapped in `IT(P)`.
 - Effect: `IT(P).mapping_4k[IR[mapped]] = PT(P).mapping_4k[VR[mapped]]`;
   `mapped + 1`, `directory = None`; no quota is consumed. In K the page
   gains `(IT(P), IR[mapped])` in `iommu_mappings` and `ref_count + 1`. The
@@ -916,7 +949,8 @@ finish.
   `cpu`, `P`, `PT(P)`, `T`, `PA(C)`, and the endpoint; `R.wf()`, `R.len > 0`,
   `R.len <= (usize::MAX - base) / 3`, `UserVa(u, R)`; `C.free_pcids` is
   nonempty; the endpoint descriptor is present when requested;
-  `thr.quota_4k >= base + 3 * R.len`; every VA of `R` is mapped in `PT(P)`.
+  `thr.quota_4k >= base + 3 * R.len`; every VA of `R` is mapped in `PT(P)` by a
+  RAM leaf.
 - Effect: write-locks those objects; records `NewProcess`.
 
 **Publish**
@@ -970,7 +1004,7 @@ Status: conforms, including R9 (Batch 2 validation, §2).
   `process_quota <= funding <= usize::MAX - 9 - 3 * R.len`;
   `C.depth < MAX_CONTAINER_TREE_DEPTH`;
   `thr.quota_4k >= 9 + funding + 3 * R.len` and `thr.quota_2m >= 2`; every VA
-  of `R` is mapped in `PT(P)`; `cpu_array[transfer_cpu]` is Off and owned by `C`.
+  of `R` is mapped in `PT(P)` by a RAM leaf; `cpu_array[transfer_cpu]` is Off and owned by `C`.
   For the endpoint variant, `edp_idx_valid(endpoint_index)`, the descriptor
   is present, and `Unlocked(E(endpoint_index))`.
 - Effect: write-locks those objects; records `NewContainer`.
@@ -1039,8 +1073,10 @@ The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterf
   `E(i)`, and its container is present; `Unlocked(peer)`. A Cpu payload whose
   result is neither TypeMismatch nor SameContainer also needs `Unlocked(CS)`
   for the caller's and the peer's containers, a successful CPU transfer
-  needs `Unlocked` for the transferred Off CPU, and a successful PCI transfer
-  of an attached B/D/F needs `Unlocked` for the sender's IOMMU table.
+  needs `Unlocked` for the transferred Off CPU. A Pci payload whose result is
+  neither TypeMismatch nor SameProcess needs `Unlocked` for both processes'
+  page tables, and a successful PCI transfer of an attached B/D/F needs
+  `Unlocked` for the sender's IOMMU table.
 - Result (`ipc_rendezvous_result`): TypeMismatch unless `peer` waits in the
   opposite direction with a matching payload kind; for Cpu, SameContainer,
   CpuOwnerMismatch (the CPU is not the sender container's), CpuNotOff, then
@@ -1048,7 +1084,9 @@ The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterf
   EndpointSourceInvalid, EndpointTargetInUse; for Pages, TypeMismatch on
   unequal lengths and SameProcess; for Pci, TypeMismatch unless both sides
   name the same B/D/F, SameProcess, IpcPciOwnerMismatch (the B/D/F is not in
-  the sender process's `owned_pci_functions`), then Success for both sides.
+  the sender's `PT.pci_functions`), IpcPciBarMapped (the sender maps BAR
+  pages of it: its count is not 0), IpcPciReceiverFull (the receiver already
+  owns 8 functions), then Success for both sides.
   Success on an Endpoint or Pages payload
   takes no step here and enters §12 or §13; otherwise the syscall returns
   this result.
@@ -1058,8 +1096,8 @@ The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterf
   the tail of `scheduler[w]` of its container. The same wake shard rule
   applies to the §12 and §13 finish steps. For a CPU payload whose checks pass, the Off CPU
   moves to the receiver's container. For a Pci payload whose checks pass, the
-  B/D/F moves from the sender process's `owned_pci_functions` to the
-  receiver process's and its root-table owner becomes the receiver process;
+  B/D/F leaves the sender's `PT.pci_functions`, enters the receiver's with
+  count 0, and its root-table owner becomes the receiver process;
   every other function stays attached exactly when it was, and every IOMMU
   table keeps its present mappings. An unattached B/D/F changes nothing
   else. An attached one is detached and the IOTLB domain of the sender
@@ -1067,15 +1105,16 @@ The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterf
   (`d == pci_bdf_did(bdf)`), the table re-anchors as `pci_handoff_table_did`
   states: at the candidate DID of the lexicographically smallest remaining
   attached B/D/F of the sender, or without a DID when none remains. No other
-  table's DID changes. The root table lock (non-U) is taken after the peer
-  thread once SameProcess has passed; for an attached B/D/F the sender's
-  IOMMU table (10006), named by `ProcessRO.iommu_table_ptr` so the sender
-  process stays unlocked, is write-locked under it before the peer's shard.
-  `iommu_root_table_reassign_detached` clears the entry and runs
-  `invalidate_domain(d)`; a re-anchor moves each remaining entry of the
-  table in `d` to the new DID (clear, invalidate `d`, republish), with `d`
-  invalidated before and after (`iommu_root_table_migrate_did`). Every lock
-  is released in the step.
+  table's DID changes. Once SameProcess has passed, both page tables are
+  write-locked (10004, in address order, `wlock_pagetable_pair`) for the
+  array checks; for a transfer the root table lock (non-U, 10005) follows,
+  and for an attached B/D/F the sender's IOMMU table (10006), named by
+  `ProcessRO.iommu_table_ptr` so the sender process stays unlocked, is
+  write-locked under it before the peer's shard. The detach clears the entry
+  and runs `invalidate_domain(d)`; a re-anchor moves the DID to the first
+  remaining attached function of the sender's array. Then the sender's entry
+  releases the function and a free entry of the receiver claims it
+  (`update_pci_entry`). Every lock is released in the step.
 
 ## 11a. IPC call: call, call_usize, receive_call, reply_and_receive, reply_and_receive_usize — one step
 
@@ -1293,8 +1332,8 @@ Status: conforms (workspace run #27816).
   receiver's `quota_4k < 3 * len`; Error unless `UserVa` for the target range;
   VaInUse unless the target is free (`ipc_pages_target_free`: no 4K leaf from
   its first to its last page and no 1G, 2M, or 4K leaf covering one of its
-  pages); PageOwnerMismatch unless the owner of every source page is the
-  receiver's container or in its `uppertree_seq`; otherwise Success.
+  pages); PageOwnerMismatch unless every source page is a RAM leaf whose owner
+  is the receiver's container or in its `uppertree_seq`; otherwise Success.
 - Effect: on Success, `prog = Share4k { source_range, target_range, 0,
   IpcPages { peer } }` and nothing else changes. Otherwise both tables become
   Unlocked and `prog = IpcPages { .., locked: false, released: Some(result) }`. The
@@ -1349,6 +1388,107 @@ recorded peer is `IPC_TRANSIT` with partner `T`, and `ipc_pages_held` states
 `edp_idx_valid(endpoint_index)`; the proof assumes nothing beyond the step
 specifications.
 
+## 13a. Device (IO) pages and BAR mapping
+
+Model (`src/define/pci_bar.rs`, `src/kernel/memory_management/io_mappings_spec.rs`,
+`src/pagetable_concurrent/pci_function_array.rs`):
+
+- The kernel holds a sealed, read-only BAR table (`KernelK.pci_bars`, a
+  `PciBarTable` of at most `PCI_BAR_TABLE_CAPACITY` = 1024 `PciBarEntry`s in
+  the boot glue's static; `KernelU.pci_bars`), each entry a `(B/D/F, BAR index
+  0..5)` and the exact byte range of one memory BAR. It is read without a lock.
+  The boot glue fills it once, from the loader's BAR slots in the loader's
+  order, so slot `i` of `NR_PCI_BAR` (trap layer, syscall 56) is table index
+  `i`; no syscall changes it. Its entries are pairwise byte-disjoint, and BARs
+  whose 4K envelopes share a page belong to the same PCI function
+  (`pci_bar_table_wf`). A BAR page is a 4K page in the outward-rounded 4K
+  envelope of some entry (`pci_bar_page`, through `pci_bar_entry_of_page`).
+- BAR pages have no page-array bookkeeping: a page-array page in an envelope is
+  `Unavailable` for good (`pci_bar_pages_unavailable_wf`), and an IO mapping has
+  no owner, reference count, reverse map, or quota.
+- An IO leaf is a page-table leaf with the IO bit (bit 53,
+  `PAGE_ENTRY_IO_MASK`): present, writable, execute-disabled, and uncached (PCD
+  and PWT). Only 4K and 2M CPU leaves can be IO leaves: IOMMU tables map RAM
+  pages only, and every 1G leaf is a RAM leaf.
+- Each process's page table keeps, per owned PCI function (array entry, at most
+  8), the count of its BAR mappings (one per 4K or 2M IO leaf) and the ghost
+  set of those mappings `(va, SZ4k | SZ2m)`; `PageTableU.pci_functions` shows
+  the counts.
+  `pagetable_pci_mappings_wf`: every recorded mapping has a held IO leaf of
+  that table whose target belongs to the function (a 2M one to a whole 2M chunk
+  of one BAR, `pci_bar_2m_chunk_of`); every present 4K or 2M IO leaf is recorded
+  under its function, which the process owns; every held IO leaf targets BAR
+  pages. So a process maps BAR pages only of functions it owns.
+- Boot maps no IO leaf: the loader reports the BAR slots and maps none of them,
+  and `finish_init_from_boot` accepts RAM leaves only (`boot_dom0_manifest_wf`
+  requires `!entry.is_io`; the glue's `walk_dom0` panics on an IO bit or PWT/PCD
+  in dom0's boot page table). Every function starts unowned (§4e); dom0 claims a
+  function and maps its BARs with the syscalls below.
+
+New syscalls (crate `veriflat_syscall_pci_bar`), one page per call, the big
+lock of the caller's page table in WRITE mode, the CPU and the thread
+write-held (the mmap pattern). The trap layer passes every argument through;
+every bad value is a verified result.
+
+- `syscall_map_pci_bar_4k(slot, page_index, va)` (syscall 58): results in check
+  order Error (`!spec_va_4k_valid(va)`), CpuIdle, ThreadKilled,
+  `ErrorPciBarSlotInvalid` (`slot` past the table, or `page_index` past the
+  BAR's 4K envelope: `spec_page_4k`), `ErrorPciOwnerMismatch` (the caller's
+  process does not own the slot's function), `ErrorVaInUse` (a 1G, 2M, or 4K
+  leaf covers `va`), `ErrorNoQuota` (the thread has less than mmap's four 4K
+  quota), then Success. Steps (`syscall_pci_bar_spec.rs`): enter (CPU, thread,
+  page table, and the window of `va` when it exists write-locked; progress
+  `MapPciBar4k { va, directory: None }`), one directory step per missing L4, L3,
+  and L2 entry (charged to the thread like `mmap_4k`, `map_pci_bar_4k_directory_step`),
+  and exit, which maps `va` to the IO leaf `map_pci_bar_io_entry(page, owning
+  container)`, raises the function's count by one, clears the progress, and
+  unlocks everything.
+- `syscall_map_pci_bar_2m(slot, index, va)` (syscall 59): the same with a
+  2M-aligned `va`, the `index`-th 2M chunk lying wholly in the BAR
+  (`spec_chunk_2m`; a BAR without one gives `ErrorPciBarSlotInvalid`), the 2M
+  window of `va` free of every leaf (`ErrorVaInUse`), and two 4K quota. An empty
+  L1 page under the slot is hidden, flushed, and reclaimed as `mmap_2m` does
+  (progress `MapPciBar2m { va, directory, flushed }`).
+- `syscall_unmap_pci_bar_4k(va)` (syscall 60): Error, CpuIdle, ThreadKilled,
+  `ErrorPciBarNotMapped` (`va` has no present 4K IO leaf in the caller's table:
+  a RAM page included), then Success. Steps: hide (enter with the locks, `va`
+  leaves `mapping_4k`, progress `UnmapPciBar4k { va, flushed: false }`), at most
+  one TLB flush step per CPU, the flushed step, and exit, which removes the
+  leaf and lowers its function's count by one.
+- `syscall_unmap_pci_bar_2m(va)` (syscall 61): the same for a 2M IO leaf
+  (progress `UnmapPciBar2m`).
+
+IO-page rules in the other syscalls:
+
+- No sharing: `share_4k` (§8), used by `send_pages`/`receive_pages` (§13),
+  `new_process*` (§9), and `new_container*` (§10), copies RAM leaves only.
+  `new_process*` and `new_container*` fail their source check (Error) when a
+  source page is an IO leaf; a pages rendezvous fails its owner check
+  (PageOwnerMismatch).
+- No IOMMU mapping: `iommu_map_4k` (§7a) fails with IommuVaNotMapped when a
+  source page is an IO leaf.
+- Generic unmap refuses: `unmap_4k` (§7) and `unmap_2m` (§7d) fail as a whole
+  with Error, changing nothing, when a page of the range holds an IO leaf
+  (`unmap_4k_enter_step_pre` / `unmap_2m_enter_step_pre` and the leaf step
+  preconditions require RAM leaves). Only `unmap_pci_bar_4k/2m` remove an IO
+  leaf.
+- No sending while mapped: `send_pci`/`receive_pci` (§11) fail with
+  `ErrorIpcPciBarMapped` on both sides when the sender's count of the function
+  is not 0.
+- Kill and exit: `kill_process` (§18), `kill_container` (§19), and the
+  `thread_exit` of a process's last thread (§17) hide every user root entry,
+  flush, then release every PCI function (the unown step requires the page
+  table to have no user 4K, 2M, or 1G mapping and no window lock, and the flush
+  to be recorded), and reclaim the hidden leaves: an IO leaf like a RAM leaf,
+  with no page-array bookkeeping, no refund, and no count update (the array is
+  already empty). The function is unowned afterwards and can be claimed again.
+
+Threat model. Holding a mapping of a device's registers is control of that
+device. A process maps only BARs of functions it owns, and a function cannot
+leave its owner while any of its BAR pages is mapped; when its owner dies, its
+mappings are gone before the function becomes unowned. Small BARs of one
+function that share a 4K page are mapped together.
+
 ## 14. Syscall entry list
 
 | Entry point | Section |
@@ -1364,6 +1504,8 @@ specifications.
 | `syscall_new_endpoint` | §5a |
 | `syscall_mmap_4k` | §6 |
 | `syscall_unmap_4k` | §7 |
+| `syscall_mmap_2m` (syscall 47) | no section; steps in `syscall_mmap_2m_spec.rs` |
+| `syscall_unmap_2m` (syscall 48) | §7d |
 | `syscall_mmap_1g`, `syscall_unmap_1g` | §7c |
 | `syscall_iommu_map_4k` | §7a |
 | `syscall_iommu_unmap_4k` | §7b |
@@ -1375,6 +1517,8 @@ specifications.
 | `syscall_send_pci`, `syscall_receive_pci` | §11 |
 | `syscall_call` (`call`, `call_usize`), `syscall_receive_call`, `syscall_reply_and_receive` (`reply_and_receive`, `reply_and_receive_usize`) | §11a |
 | `syscall_pci_attach_dma` | §4d |
+| `syscall_pci_claim` (syscall 57) | §4e |
+| `syscall_map_pci_bar_4k` (syscall 58), `syscall_map_pci_bar_2m` (59), `syscall_unmap_pci_bar_4k` (60), `syscall_unmap_pci_bar_2m` (61) | §13a |
 | `syscall_thread_exit` | §17 |
 | `syscall_kill_process` | §18 |
 | `syscall_kill_container` | §19 |
@@ -1566,6 +1710,38 @@ U projection changes:
   comparison would differ, because `spec_va_4k_valid` does not bound the bits
   above 47 that `spec_v2l4index` masks off.
 
+PCI ownership redesign (phase 2, 2026-11-19; supersedes the reverse set,
+`owner_slots`, `set_owner`, `first_attached_owned`, and the reassign/detach-all
+scans described below; a re-anchoring transfer now picks the next anchor with
+`IommuRootTable::first_attached_in_did` over the sender's array):
+`IommuRootTable` keeps a real `owned: Array<bool, PCI_BDF_COUNT>` and a ghost
+`owners: Seq<Option<RwLockProcessPtr>>` (`owned[i] == owners[i] is Some`;
+16 metadata pages, static size 1,118,208 bytes); `new_disabled` leaves every
+function unowned, so `finish_init_from_boot` takes no ownership argument.
+Each process's page table carries a sealed `PciFunctionArray` of
+`PCI_FUNCTIONS_PER_PROCESS` = 8 entries (`PageTableHigher.pci`, under the
+page-table big lock): each used entry holds one owned function, its
+mapped-BAR-page count, and a ghost set of its mappings. `pci_function_ownership_wf`
+keeps the root table's owners and the arrays in agreement;
+`process_emptied_tables_wf` requires an emptied process's array to be empty.
+`ProcessGhost.owned_pci_functions`, `Process.pci_cleared`, and the 65,536-entry
+scans of kill, exit, and IPC are gone: every loop runs over the 8 entries.
+`KernelK::update_pci_entry` (Claim or Release of one entry together with the
+root-table owner) and `release_pci_functions` (every entry, after the array's
+functions are detached by `iommu_root_table_detach_array`) are the only
+writers. A process without functions never takes the root-table lock in kill
+or exit. New results: `ErrorIpcPciBarMapped`, `ErrorIpcPciReceiverFull`,
+`ErrorPciNotRootProcess`, `ErrorPciAlreadyOwned`, `ErrorPciFunctionArrayFull`.
+
+PCI BAR mapping (phase 3, 2026-11-19; §13a): the loader no longer maps BARs
+into dom0 and the boot contract accepts no IO leaf; dom0 maps BAR pages of
+functions it owns with `map_pci_bar_4k/2m` and removes them with
+`unmap_pci_bar_4k/2m` (syscalls 58 to 61). Each page-table PCI array entry
+counts its function's BAR mappings, one per 4K or 2M IO leaf (`pagetable_pci_mappings_wf` replaces
+`io_mappings_wf`); `pci_function_mapping_count_lt_usize_max` is the one new
+trusted axiom (count increment). New results: `ErrorPciBarSlotInvalid` (index
+56), `ErrorPciBarNotMapped` (index 57).
+
 PCI device ownership (approved 2026-10-08, applied):
 `KernelK.irt: IommuRootTableLock = RwLock<IommuRootTable, (), (), NO_KILL_STATE>`
 locks the whole root table with the new family
@@ -1674,9 +1850,12 @@ The boot-side checks of this boundary are listed in `Methodology.md`.
    non-empty shard of its container and stutters on a killed head. Shards of
    Off or unowned cpus may hold threads; they drain only through
    `rebalance_pull`.
-6. PCI devices (2026-10-08): the root table is one lock that also guards the
-   per-process PCI sets; it never crosses a step boundary, so it is not
-   U-visible. The IOTLB is guarded by no kernel lock: a write-locked IOMMU
+6. PCI devices (2026-10-08; ownership revised 2026-11-19, §15): the root
+   table is one lock over the context entries and the ghost owners; it never
+   crosses a step boundary, so it is not U-visible. A process's owned functions
+   live in its page table's PCI function array under the page-table big lock,
+   and every change of ownership holds both locks (page table 10004 before root
+   table 10005). The IOTLB is guarded by no kernel lock: a write-locked IOMMU
    table marks its DID domain dirty, and its holder empties that domain
    before it removes hidden leaves (§15). An IPC Pci transfer needs both sides to name the same
    B/D/F, is not restricted to one container (the endpoint is the
@@ -1710,17 +1889,18 @@ The boot-side checks of this boundary are listed in `Methodology.md`.
    process lock; a WAITING_REPLY caller is locked under its callee's lock.
 10. Thread exit and zombie semantics (2026-10-12): `syscall_thread_exit`
     removes the running thread (§17). When a process's last thread exits,
-    the same call first reclaims the process's user memory: it unmaps every
-    user 4K mapping of the process's page table (the table structure stays),
-    flushes the process's PCID from every cpu once, returns the thread's and
+    the same call first reclaims the process's user memory: it hides every
+    user root entry of the process's page table (the table structure stays),
+    flushes the process's PCID from every cpu once, releases the process's PCI
+    functions (each detached if attached, then unowned), reclaims the hidden
+    leaves, returns the thread's and
     the process's quota of every size to their container, and releases the
-    process's PCID to its container's PCID allocator. It also detaches every
-    attached function the process owns and unmaps every 4K mapping of the process's
-    IOMMU table; under anchor DIDs (§15) the table's DID is invalidated once
-    and dropped, so its present leaves are then removed directly, with no
-    hide and no flush. The zombie keeps its page
-    table and IOMMU table structures and owns its PCI functions for kill or
-    reap; it holds no quota and no PCID, so its PCID and CR3 never enter a
+    process's PCID to its container's PCID allocator. Releasing the functions
+    detaches them from the process's IOMMU table; under anchor DIDs (§15) the
+    table's DID is invalidated once and dropped, so its present 4K leaves are
+    then removed directly, with no hide and no flush. The zombie keeps its page
+    table and IOMMU table structures and owns no PCI function (its array is
+    empty, `process_emptied_tables_wf`); it holds no quota and no PCID, so its PCID and CR3 never enter a
     cpu's dirty map again. A zombie root process makes its container a zombie.
 
     Only the seven container-locking syscalls (alloc_quota_4k,
@@ -1740,7 +1920,7 @@ The boot-side checks of this boundary are listed in `Methodology.md`.
 
 Status: implemented, including zombie reclaim of 4K mappings, quota, and the
 PCID (stage A) and of PCI attachments and IOMMU 4K mappings (stage B).
-Conforms, including R9 (Batch 2 validation, §2). The lock-table and IOMMU
+Conforms, including R9 (Batch 2 validation, §2). The unown and IOMMU
 leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167).
 
 
@@ -1751,22 +1931,25 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   schedule, rebalance_pull), as after an IPC block.
 - U locks retained from enter to finish: `cpu` (major 1), `C` (101), `P`
   (105), and `T` (106). When `T` is `P`'s last thread, reclaim also holds
-  `PT(P)` (10004) and, when `P` has one, its IOMMU table `IT(P)` (10006) from
-  its lock-table step to its unlock-table step. For `P`'s last thread, `PA(C)`
+  `PT(P)` (10004) from its lock-table step and, when `P` has one, its IOMMU
+  table `IT(P)` (10006) from its unown step, both to its unlock-table step.
+  Each TLB flush step read-holds `CS(C)` until the flushed step releases it.
+  For `P`'s last thread, `PA(C)`
   (107) is taken first in finish, or in the lock-PCID-allocator step when
   finish first drains a full cache, and finish releases it. Finish releases
   `cpu`, `C`, and `P`; `T`'s lock goes with `T`. Enter acquires and
   releases the caller `R` (blocked-thread major 10003), and each drop step
   acquires and releases `E(index)` (10001).
 - Non-U: in enter, when `R` exists, shard `cpu_id` of `C`'s scheduler
-  (10011). In the lock-table step, when `P` has an IOMMU table, the root
-  table (10005), taken after `PT(P)`, held while `IT(P)` is write-locked and
-  detached, and released inside the step. In reclaim, per unmapped CPU or IOMMU
-  page: the page (mapped-page major
-  10009, moved to the free-page major once it is `Free4k`), shard `cpu_id`
-  of its owner's 4K allocator cache (10012), and that allocator's pool
-  (10015, only to drain a full cache); per flushed cpu, its `(cpu', pcid)`
-  needflush cell (30001); and the 4K, 2M, and 1G allocator quota of `C`
+  (10011). In the unown step, only when `P`'s PCI function array is
+  non-empty, the root table (10005), taken after `PT(P)`, held while `IT(P)`
+  is write-locked and detached and the functions are released, and released
+  inside the step. Per flushed cpu, its `(cpu', pcid)` needflush cell
+  (30001). In reclaim, per freed CPU or IOMMU page: the page (mapped-page
+  major 10009, moved to the free-page major once it is free), shard `cpu_id`
+  of its owner's allocator cache of its size (10012, 10013, 10014), and that
+  allocator's pool (10015, 10016, 10017, only to drain a full cache); and the
+  4K, 2M, and 1G allocator quota of `C`
   and of its ancestors (20002, 20003, 20004), one at a time. In finish: `T`'s page
   (allocated-page major 1000), shard `cpu_id` of the 4K allocator cache of
   the page's owner (10012), that allocator's global pool (10015, only to
@@ -1776,8 +1959,9 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   free-page major (30000) once it is `Free4k`, and the idle cpu to major 2;
   each is then released under its new id and not re-acquired.
 - Lock order: `cpu`, `C`, `P`, `T`; then `R` and the shard in enter,
-  `E(index)` in a drop step, `PT(P)`, the root table, `IT(P)`, and the
-  per-page, needflush, and quota locks in reclaim, and the PCID allocator,
+  `E(index)` in a drop step, `PT(P)`, `CS(C)` and the needflush cells, the
+  root table, `IT(P)`, and the per-page, cache, pool, and quota locks in
+  reclaim, and the PCID allocator,
   page, cache, pool, quota, and
   needflush cell in finish.
 - Progress: `ThreadExit { next }` from enter through the drop steps; every
@@ -1814,59 +1998,76 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   descriptors take no step.
 - Effect: `thr.endpoint_descriptors[index] = None`; `E(index).owning_threads`
   loses `(T, index)` (in K its `rf_counter` drops by one);
-  `prog = ThreadExit { next: index + 1 }`. The endpoint stays in the endpoint
-  map, even with no holder left.
+  `prog = ThreadExit { next: index + 1 }`. The drop step needs another holder
+  of `E(index)`; when `T` holds its last reference, the release step
+  (`thread_exit_release_step`, `kernel_u_endpoint_released`) clears the
+  descriptor the same way, removes the unlocked, unqueued endpoint from the
+  endpoint map and its owner's endpoint set, and returns one 4K quota to the
+  container that owns its page.
 
-**Reclaim** (only when `P.owned_threads.len() == 1`; `unmap_4k_locked` means
-`W` for `cpu`, `T`, `P`, `PT(P)`, and `C`, as in §7)
+**Reclaim** (only when `P.owned_threads.len() == 1`; `reclaim(prog)` means
+`thread_exit_reclaim_step_pre`: `W` for `cpu`, `T`, `P`, `PT(P)`, and `C`, and
+`T`'s progress is `prog`)
 
 - Lock table (`thread_exit_lock_table_step_pre`, `thread_exit_lock_table_step`):
   pre `prog is ThreadExit`, `thr.caller is None`, every descriptor `None`,
   `W` for `cpu`, `C`, `P`, and `T`, `P.owned_threads.len() == 1`, and
-  `PT(P)` and, when present, `IT(P)` `Unlocked`; effect: write-locks `PT(P)`
-  and sets `prog = ThreadExitReclaim { flushed: false }`; when `P` has an
-  IOMMU table, also write-locks `IT(P)`, clears `iommu_root_table.attached`
-  of every function that `P` owns (owners are unchanged), sets `IT(P).did`
-  to `None`, and empties the IOTLB domain of the old DID, if any. K
-  (`iommu_root_table_detach_all`) scans all 65,536 B/D/Fs once under the
-  root table lock and `W(IT(P))`, then runs `invalidate_domain` once for the
-  old DID; the root table lock is released inside the step.
-- Leaf (`thread_exit_leaf_step`): pre `unmap_4k_locked` and
-  `prog == ThreadExitReclaim { flushed: false }`; effect: exactly one valid
-  user 4K mapping (the kernel chooses the VA, R1) leaves `PT(P)`. In K the
-  leaf's entry is only marked not present; the page is freed after the
-  flush.
-- Flush: pre `thread_exit_flush_step_pre` (a leaf pre with no valid user 4K
-  mapping left in `PT(P)`); effect: exactly one `(cpu', P.pcid)` TLB entry
-  becomes empty (`kernel_u_cpu_tlb_cleared`). The PCID is flushed once, from
-  every cpu, after all leaves.
+  `PT(P)` `Unlocked`; effect: write-locks `PT(P)` only and sets
+  `prog = ThreadExitReclaim { flushed: false }`. In K the table's stale-CPU
+  set becomes every cpu.
+- Hide (`process_table_hidden_step`): pre `reclaim(ThreadExitReclaim { flushed:
+  false })`; effect: one user root entry of `PT(P)` (the kernel chooses it) is
+  hidden, so every 4K, 2M, and 1G mapping and every window lock under it
+  leaves `PT(P)`. In K only the L4 entry changes (`hide_user_l4_entries`);
+  the leaves under it stay held until reclaim.
+- Flush: pre `thread_exit_flush_step_pre` (`PT(P)` has no 4K, 2M, or 1G
+  mapping and no window lock left); effect: `CS(C)` becomes or stays
+  read-held by `cpu_id` and at most one `(cpu', P.pcid)` TLB entry becomes
+  empty (`kernel_u_cpu_tlb_cleared`). The PCID is flushed once, from every
+  cpu, after all root entries are hidden.
 - Flushed (`thread_exit_flushed_step`): pre as for flush; effect:
-  `prog = ThreadExitReclaim { flushed: true }`.
-- Refund: pre `unmap_4k_locked` and `prog == ThreadExitReclaim { flushed: true }`;
-  effect: one container in `C` or `C.uppertree_seq` gains 4K quota
-  (`kernel_u_container_quota_4k_increased`). Before the refunds, K removes
-  each cleared entry and returns its page to its owner's 4K allocator cache
-  in atomic sections that change no U state and stutter, accumulating the
-  refund in the thread's pending quota. The IOMMU leaf steps follow the CPU
-  refunds, then their own refund; there is no IOMMU flush step.
-- IOMMU leaf (`thread_exit_iommu_leaf_step`): pre `unmap_4k_locked`,
-  `prog == ThreadExitReclaim { flushed: true }`, and `IT(P)` write-locked;
+  `prog = ThreadExitReclaim { flushed: true }` and `CS(C)` loses `cpu_id`'s
+  read hold.
+- Unown (`thread_exit_unown_step_pre`, `thread_exit_unown_step`): pre
+  `reclaim(ThreadExitReclaim { flushed: true })`, `PT(P)` without a user 4K,
+  2M, or 1G mapping or window lock, and `IT(P)`, when present, `Unlocked`;
+  effect: when `P` has an IOMMU table, `IT(P)` is write-locked, every function
+  of `PT(P).pci_functions` is detached, `IT(P).did` becomes `None`, and the
+  IOTLB domain of the old DID, if any, is emptied; every function of the array
+  becomes unowned and `PT(P).pci_functions` empties. K takes the root-table
+  lock (10005) only when the array is non-empty: under it, `W(IT(P))`,
+  `iommu_root_table_detach_array` (one invalidation), and
+  `release_pci_functions`; a process without functions only write-locks its
+  IOMMU table, which then has no DID. A process with neither functions nor an
+  IOMMU table takes no step.
+- Refund: pre `reclaim(ThreadExitReclaim { flushed: true })`; effect: one
+  container in `C` or `C.uppertree_seq` gains 4K, 2M, or 1G quota
+  (`thread_exit_refund_step`). Before the refunds, K reclaims every held leaf
+  of `PT(P)`, hidden ones included (`reclaim_held_leaves`, after the unown
+  step, with the array empty): a RAM leaf's page returns to its owner's
+  allocator cache of its size and its refund accumulates in the thread's
+  pending quota; an IO leaf is removed with no page-array bookkeeping and no
+  refund. These atomic sections change no U state and stutter. The IOMMU
+  leaf steps follow the CPU refunds, then their own refund; there is no IOMMU
+  flush step.
+- IOMMU leaf (`thread_exit_iommu_leaf_step`): pre
+  `reclaim(ThreadExitReclaim { flushed: true })` and `IT(P)` write-locked;
   effect: exactly one 4K mapping (the kernel chooses the IOVA) leaves `IT(P)`.
   The detached `IT(P)` has no DID, so no IOTLB domain caches its leaves: in
   K the present leaf is removed directly and its page returned to its
   owner's 4K allocator cache, accumulating the refund in the thread's pending
   quota (`reclaim_detached_iommu_4k_page`), with no hide and no flush.
 - Quota (`thread_exit_quota_step_pre`, `thread_exit_quota_step`): pre
-  `unmap_4k_locked` and `prog` is `ThreadExitReclaim { flushed: true }`,
+  `reclaim(prog)` with `prog` `ThreadExitReclaim { flushed: true }`,
   `ThreadExitQuota { returned: 4K }`, or `ThreadExitQuota { returned: 2M }`;
   effect: the next size `S` (4K, then 2M, then 1G) moves the whole `quota_S`
   of `T` and of `P` to `C`, zeroes both, and sets
   `prog = ThreadExitQuota { returned: S }`.
 - Unlock table (`thread_exit_unlock_table_step_pre`,
-  `thread_exit_unlock_table_step`): pre `unmap_4k_locked`,
-  `prog == ThreadExitQuota { returned: 1G }`, no valid user 4K mapping left in
-  `PT(P)`, and no 4K mapping left in `IT(P)` when present; effect: unlocks
-  `PT(P)` and `IT(P)` and sets `prog = ThreadExitZombie`.
+  `thread_exit_unlock_table_step`): pre `reclaim(ThreadExitQuota { returned:
+  1G })`, `PT(P)` with no 4K, 2M, or 1G mapping, no window lock, and no PCI
+  function; effect: unlocks `PT(P)` and `IT(P)` and sets
+  `prog = ThreadExitZombie`.
 
 **Lock PCID allocator** (`thread_exit_lock_pcid_allocator_step_pre`,
 `thread_exit_lock_pcid_allocator_step`)
@@ -1921,10 +2122,10 @@ its page as a raw 4K page permission, and drops `T`'s lock from `lctx`.
 ## 18. kill_process — enter, walk, thread, reclaim, retire steps, finish
 
 Status: implemented, including the thread kill (dangling, mark, dequeue, cpu to
-idle, unlink, killed-thread reclaim), PCI reassignment, live reclaim, zombie
+idle, unlink, killed-thread reclaim), PCI release (unown), live reclaim, zombie
 reap, and table-structure retirement.
-Verified with anchor DIDs (§15; Batch 3): workspace run #34166, noninterference run #34165, monolith run #34167; the reassign and IOMMU leaf
-steps use anchor DIDs.
+Verified with anchor DIDs (§15; Batch 3): workspace run #34166, noninterference run #34165, monolith run #34167; the IOMMU leaf
+steps use anchor DIDs. The PCI unown step replaced the reassign step in phase 2 (§15).
 
 - Arguments: `child_index`. The running thread `T` of `cpu_id` kills
   `D = P.children[child_index]` and every process below it, one subtree at a
@@ -1937,25 +2138,26 @@ steps use anchor DIDs.
   (106). Each marked process stays write-locked from the step that marks it
   to its retire step; these processes form the chain from `D` down to the
   target `L`. A marked thread `V` stays write-locked from its mark step until
-  it is reclaimed, and `PT(L)` (10004) and, when `L` has one, `IT(L)` (10006)
-  from the lock-table step to the unlock-table step. A marked process or
+  it is reclaimed, `PT(L)` (10004) from the lock-table step and, when `L` has
+  one, `IT(L)` (10006) from the unown step, both to the unlock-table step. A marked process or
   thread reports the minimal lock id (major 0), so every later lock is above
   it. `C` is never locked: its thread and process sets are lock-free ghost
   state, and its quota and PCIDs change only under allocator locks inside one
   step (R5).
 - Non-U, each taken and released inside one atomic section: the locks of the
-  killed-thread reclaim and of the leaf reclaim as in §17; the root table
-  (10005) and, under it, `IT(L)` (10006) when `L` has one, in the reassign
-  step; and the structure-page, root-page, cache, pool, and quota locks of
+  killed-thread reclaim and of the flush and leaf reclaim as in §17; the root table
+  (10005), only when `L`'s array is non-empty, with `IT(L)` (10006) when `L`
+  has one write-locked under it, in the unown step; and the structure-page, root-page, cache, pool, and quota locks of
   the retire stage. Across the retire stage's sections the killer holds `L`'s
   process page, the object pages of `PT(L)` and `IT(L)`, and both tables
   (hold below). The per-step lists below name them.
 - Lock order: `cpu`, `P`, `T`, then the marked chain and `V` at the sunk id;
   inside a step, `V` at the major of its state, then its shard, endpoint,
   or remote cpu `R`; in the killed-thread reclaim, the endpoint, the caller,
-  the shard, the page, cache, pool, and quota; in reclaim, the root table and
-  `IT(L)` in the reassign step, then `PT(L)`, `IT(L)`, the per-page,
-  needflush, and quota locks, and the PCID
+  the shard, the page, cache, pool, and quota; in reclaim, `PT(L)`, the
+  needflush cells, then the root table and `IT(L)` in the unown step, then the
+  per-page, cache, pool, and quota locks of the held leaves and of `IT(L)`'s
+  leaves, and the PCID
   allocator; in retire, the process and table object pages (1000), `PT(L)`,
   `IT(L)`, then in each section a structure page or the root pages (10008),
   the cache, pool, and quota. `R` (major 1) is above `T` because it runs a process deeper than
@@ -2065,42 +2267,41 @@ present, `W(V)`, `V.killed`)
 **Reclaim** (stage `Walk`; `kill_process_empty_target_pre`: `L` has no
 children and no threads)
 
-- Reassign (`kill_process_reassign_functions_step`): every PCI function `L`
-  owns is detached and gets `P` as its root-table owner;
-  `L.owned_pci_functions` moves to `P`; `L`'s IOMMU table, if any, loses its
-  DID; the only IOTLB domain that may change is the candidate domain of an
-  attached function `L` owned (the table's anchor), which becomes empty. K
-  takes the root table lock (10005) and, for an `L` with an IOMMU table,
-  write-locks `IT(L)` under it: `iommu_root_table_reassign_detach_all` scans
-  all 65,536 B/D/Fs once and runs `invalidate_domain` once for the old DID;
-  a table-less `L` uses `iommu_root_table_reassign_owned`, which invalidates
-  nothing. Both locks are released inside the step. A target owning no
-  function takes no step.
 - Zombie retire (`kill_process_zombie_retire_step`): an `L` that is already a
-  zombie (§17) and owns no function moves to `Retire`.
-- Lock table (`kill_process_lock_table_step`): a live `L` owning no function
-  write-locks `PT(L)` and `IT(L)`; `prog = Reclaim { flushed: false }`.
+  zombie (§17), whose array is therefore empty, moves to `Retire`.
+- Lock table (`kill_process_lock_table_step`): a live `L` write-locks the
+  unlocked `PT(L)` only; `prog = Reclaim { flushed: false }`. In K the table's
+  stale-CPU set becomes every cpu.
+- Hide (`kill_process_table_hidden_step`), flush (pre
+  `kill_process_flush_step_pre`: `PT(L)` has no user 4K, 2M, or 1G mapping and
+  no window lock left), and flushed (`kill_process_flushed_step`,
+  `prog = Reclaim { flushed: true }`) as in §17, with `L` for `P`: one user
+  root entry at a time is hidden (`process_table_hidden_step`), then one
+  `(cpu', L.pcid)` TLB entry at a time becomes empty
+  (`kernel_u_cpu_tlb_cleared`; non-U: that needflush cell, 30001).
+- Unown (`kill_process_unown_functions_step`), after the flushed step: as the
+  §17 unown step for `L`: `IT(L)`, when present, is write-locked, detached
+  from every function of `PT(L).pci_functions`, and drops its DID, whose
+  IOTLB domain alone is emptied; every function of the array becomes unowned
+  (nothing goes to the killer) and the array empties. The root-table lock is
+  taken only when the array is non-empty. A target with neither functions nor
+  an IOMMU table takes no step.
 - The remaining reclaim steps follow §17 with `L` for `P` and
-  `kill_process_reclaim_step_pre` (the stage, `W(PT(L))`, and `W(IT(L))` when
-  present) for `unmap_4k_locked`:
-  - Leaf (`kill_process_leaf_step`): one valid user 4K mapping leaves
-    `PT(L)`; the kernel chooses the VA. In K the entry is only marked not
-    present.
-  - Flush (pre `kill_process_flush_step_pre`: no valid user 4K mapping left in
-    `PT(L)`): one `(cpu', L.pcid)` TLB entry becomes empty
-    (`kernel_u_cpu_tlb_cleared`). Non-U: that needflush cell (30001).
-  - Flushed (`kill_process_flushed_step`): `prog = Reclaim { flushed: true }`.
-  - Refund: one container in `C` or `C.uppertree_seq` gains 4K quota
-    (`kernel_u_container_quota_4k_increased`). Before the refunds, K removes
-    each cleared entry and returns its page (mapped-page major 10009) to
-    shard `cpu_id` of its owner's 4K allocator cache (10012; pool 10015 only
-    to drain a full cache) in atomic sections that change no U state and
-    stutter, accumulating the refund in `T`'s pending quota; each refund
-    step takes one allocator quota lock (20002). The IOMMU leaf steps follow
-    the CPU refunds, then their own refund; there is no IOMMU flush step.
+  `kill_process_reclaim_step_pre` (the stage and `W(PT(L))`) for `reclaim`:
+  - Refund (`kill_process_refund_step`, stage `Reclaim { flushed: true }` or
+    `Retire`): one container in `C` or `C.uppertree_seq` gains 4K, 2M, or 1G
+    quota. Before the refunds, K reclaims every held leaf of `PT(L)` as in §17
+    (`reclaim_held_leaves`, after the unown step): a RAM leaf's page
+    (mapped-page major 10009) returns to shard `cpu_id` of its owner's
+    allocator cache of its size (pool only to drain a full cache), an IO leaf
+    is removed with no bookkeeping, in atomic sections that change no U state
+    and stutter, accumulating the refund in `T`'s pending quota; each refund
+    step takes one allocator quota lock (20002, 20003, or 20004). The IOMMU
+    leaf steps follow the CPU refunds, then their own refund; there is no IOMMU
+    flush step.
   - IOMMU leaf (`kill_process_iommu_leaf_step`): `Reclaim { flushed: true }`;
     one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. `IT(L)` has
-    no DID (the reassign step dropped it, or it had no attached function), so no
+    no DID (the unown step dropped it, or it had no attached function), so no
     IOTLB domain caches its leaves: in K the present leaf is removed directly
     and its page freed (`reclaim_detached_iommu_4k_page`); in a container
     scope (§19) the leaf is hidden in this step and unmapped afterwards,
@@ -2110,8 +2311,8 @@ children and no threads)
     `prog = Quota { returned: S }`. Non-U: `C`'s allocator quota of size `S`
     (20002, 20003, or 20004).
   - Unlock table (`kill_process_unlock_table_step`): `Quota { returned: 1G }`,
-    no valid user 4K mapping left in `PT(L)`, and none in `IT(L)`; unlocks
-    both and sets `prog = Zombie`.
+    `PT(L)` with no user 4K, 2M, or 1G mapping and no window lock, and no 4K
+    mapping in `IT(L)`; unlocks both and sets `prog = Zombie`.
 - Zombify (`kill_process_zombify_step`): `prog` at `Zombie`, `!L.zombie`,
   `PA(C)` unlocked; `L` becomes a zombie whose `pagetable` and `iommu_table`
   project as `None`, `L.pcid` joins `C.free_pcids`, and
@@ -2193,12 +2394,13 @@ Differences:
 
 1. Steps that acquire a U-visible object do not state `Unlocked` for it
    (R3, R4): enter and mark child for the marked process, mark thread for
-   `V`, dequeue endpoint for `E`, cpu to idle for `R`, reassign for `IT(L)`,
-   and lock table for `PT(L)` and `IT(L)`. The dangling step and the
+   `V`, dequeue endpoint for `E`, and cpu to idle for `R`. The lock-table
+   step states `Unlocked` for `PT(L)` and the unown step for `IT(L)`. The dangling step and the
    killed-thread reclaim steps do.
-2. Liveness: a blocked retire stage retries forever. No invariant states
-   that a zombie's tables map nothing, although reclaim removes every 4K
-   leaf and no syscall creates 2M or 1G leaves.
+2. Liveness: a blocked retire stage retries forever. (That a zombie's
+   tables map nothing is the invariant `process_emptied_tables_wf`: no user
+   leaf of any size, RAM or IO, no resolving user root entry, no IOMMU 4K
+   leaf, and an empty PCI function array.)
 
 ## 19. kill_container — enter, walk, process, cpus, pages, retire steps, finish
 
@@ -2306,8 +2508,8 @@ noninterference coverage of those reused steps.
   `L` in place of `C` for the quota, PCID, and process-set changes:
   `kill_process_quota_step` and `kill_process_zombify_step` return quota and
   the PCID to `L`, and `kill_process_retire_step` retires a non-root process
-  into `L.quota_4k`. The reassign step moves `L`'s PCI functions to the
-  killer's process `P`. Dangling callers, marked threads, cpus to idle, and the
+  into `L.quota_4k`. The unown step leaves each killed process's PCI
+  functions unowned. Dangling callers, marked threads, cpus to idle, and the
   killed-thread reclaim (including the take-over of a `DANGLING` caller)
   are those of §18; a call never crosses containers (`thread_caller_callee_wf`
   states `caller.owning_container == callee.owning_container`), so every
@@ -2333,7 +2535,7 @@ noninterference coverage of those reused steps.
   allows a record on a table that is not write-held only for a locked
   window.
 - Root retire (`kill_container_retire_root_step`): pre stage
-  `Process { R, Retire }`, `R` with no children, threads, or PCI functions,
+  `Process { R, Retire }`, `R` with no children or threads,
   `R.zombie`, `R.parent is None`, and `R.owning_container == L`; effect: `R`
   leaves the process map and `L.owned_processes`, `L.zombie` becomes false,
   `L.quota_4k` grows by an amount the spec leaves open, and

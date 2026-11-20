@@ -23,6 +23,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 0 <= i < self.kernel_l4_end ==> self.kernel_entries.view().spec_index(i as int) == page_map_perm.value().spec_index(i),
             self.pcid_wf(),
             self.did_wf(),
+            self.pci.wf(),
             TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0,
         ensures
             self.inv(),

@@ -695,7 +695,7 @@ verus! {
                 || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff),
             payload is ReceiveCpu ==> !(ret is Success),
             payload is Pci ==> (ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
-                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch),
+                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch || ret is ErrorIpcPciBarMapped || ret is ErrorIpcPciReceiverFull),
             payload is Endpoint ==> (ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
                 || ret is ErrorIpcTypeMismatch || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch),
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, waiting_state, blocking),
@@ -897,7 +897,7 @@ verus! {
                 || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff),
             payload is ReceiveCpu ==> !(ret is Success),
             payload is Pci ==> (ret is Success || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
-                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch),
+                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch || ret is ErrorIpcPciBarMapped || ret is ErrorIpcPciReceiverFull),
             payload is Endpoint ==> (ret is Success || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch
                 || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch),
             ipc_rejection(ret) is None,
@@ -1159,7 +1159,7 @@ verus! {
                 || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff),
             payload is ReceiveCpu ==> !(ret is Success),
             payload is Pci ==> (ret is Success || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
-                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch),
+                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch || ret is ErrorIpcPciBarMapped || ret is ErrorIpcPciReceiverFull),
             payload is Endpoint ==> (ret is Success || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch
                 || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch),
             ipc_rejection(ret) == if old(steps).snapshot_k().thrd_mp.spec_index(old(steps).snapshot_k().ep_mp.spec_index(ep_ptr).view().queue.view()[0]).being_killed() {

@@ -518,6 +518,7 @@ proof fn kernel_thread_exit_quota_returned_implies_u_cpu_array_and_endpoint_map(
             &&& b.cpu_tlb == a.cpu_tlb
             &&& b.iommu_tlb == a.iommu_tlb
             &&& b.kernel_l4_end == a.kernel_l4_end
+            &&& b.pci_bars == a.pci_bars
         }),
 {
     reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);

@@ -8,7 +8,7 @@ use super::syscall_unmap_2m_range::unmap_2m_range;
 verus! {
 /// With cpu `cpu_id` and its running thread write-held and the pagetable `pagetable` of the thread's process read-held since
 /// the entry snapshot `entry_lctx` was aligned with, the 2M windows of `cover`, the 4K range covering `va_range`, whose L3
-/// entry links an L2 page held through `window_perms`, and every page of `va_range` a present 2M leaf: records the progress,
+/// entry links an L2 page held through `window_perms`, and every page of `va_range` a present 2M RAM leaf: records the progress,
 /// enters the kernel step, unmaps the range, clears the progress, releases every lock, and records the exiting step.
 pub(super) fn unmap_2m_unmap_and_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, len: usize, va_range: &VaRange2M,
@@ -115,6 +115,7 @@ pub(super) fn unmap_2m_unmap_and_finish(
         forall|j: int| #![trigger va_range.view()[j]] 0 <= j < va_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(va_range.view()[j])
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va_range.view()[j]).present
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va_range.view()[j]).is_io
             &&& old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va_range.view()[j])
             &&& window_of(va_range.view()[j]).va == va_range.view()[j]
             &&& va_range_2m_windows(*cover).contains(window_of(va_range.view()[j]))

@@ -21,7 +21,7 @@ pub(super) open spec fn map_owned_2m_page_eof_transition_framing(pre: KernelK, p
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable)]
         pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
     &&& new_pt.wf()
-    &&& new_pt.mapping_2m() == old_pt.mapping_2m().insert(va, MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
+    &&& new_pt.mapping_2m() == old_pt.mapping_2m().insert(va, MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
     &&& new_pt.mapping_4k() == old_pt.mapping_4k()
     &&& new_pt.mapping_1g() == old_pt.mapping_1g()
     &&& new_pt.page_closure() == old_pt.page_closure()
@@ -38,6 +38,7 @@ pub(super) open spec fn map_owned_2m_page_eof_transition_framing(pre: KernelK, p
             ==> new_pt.spec_held_2m_l2(l4i, l3i, l2i) == old_pt.spec_held_2m_l2(l4i, l3i, l2i)
     &&& new_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
     &&& new_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
+    &&& !new_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& new_page.is_init()
     &&& new_page.locking_thread() == old_page.locking_thread()
@@ -269,6 +270,15 @@ proof fn map_owned_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     reveal(map_owned_2m_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
+        let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+        assert(old_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None) by {
+            pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); spec_va_2m_valid_index_roundtrip(va);
+            old_pt.wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+        };
+        reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+    };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         map_owned_2m_page_eof_page_mappings_4k(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va); map_owned_2m_page_eof_page_mappings_2m(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
         map_owned_2m_page_eof_page_mappings_1g(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);

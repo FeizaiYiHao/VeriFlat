@@ -22,6 +22,7 @@ pub proof fn kernel_u_domains_projection(krnl: &KernelK)
         kernel_k_to_kernel_u(*krnl).cpu_tlb == krnl.cpu_tlb.view(),
         kernel_k_to_kernel_u(*krnl).iommu_tlb == krnl.iommu_tlb.view(),
         kernel_k_to_kernel_u(*krnl).kernel_l4_end == krnl.dflt_pt.view().kernel_l4_end,
+        kernel_k_to_kernel_u(*krnl).pci_bars == krnl.pci_bars.view(),
 { reveal(kernel_k_to_kernel_u); }
 
 /// One cpu slot of the user projection, without unfolding the other projected maps.
@@ -92,7 +93,7 @@ pub proof fn kernel_process_projection_at(krnl: &KernelK, ptr: RwLockProcessPtr)
                     (false, Some(iommu_table)) => Some(iommu_table_map_user_view(krnl.it_mp).spec_index(iommu_table)),
                     _ => None,
                 },
-                pcid: p_ro.pcid, owning_container: p_ro.owning_container, owned_pci_functions: p_ghost.owned_pci_functions.view(), quota_4k: p.quota_4k, quota_2m: p.quota_2m, quota_1g: p.quota_1g,
+                pcid: p_ro.pcid, owning_container: p_ro.owning_container, quota_4k: p.quota_4k, quota_2m: p.quota_2m, quota_1g: p.quota_1g,
                 parent: p_ro.parent, children: p.children.view(), depth: p_ro.depth, uppertree_seq: p.uppertree_seq.view(),
                 subtree_set: p_ghost.subtree_set.view(), owned_threads: p.owned_threads.view(), killed: krnl.prc_mp.spec_index(ptr).being_killed(),
             })

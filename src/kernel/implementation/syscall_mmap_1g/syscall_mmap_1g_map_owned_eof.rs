@@ -18,7 +18,7 @@ pub(super) open spec fn map_owned_1g_page_eof_transition_framing(pre: KernelK, p
     let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
     let new_thread = post.thrd_mp.spec_index(thrd_ptr);
     let target = (spec_v2l4index(va), spec_v2l3index(va));
-    let leaf = PageEntry { addr: pg_ptr, perm: PageEntryPerm { present: true, ps: true, write: true, execute_disable: false, user: true, kernel_present: true } };
+    let leaf = PageEntry { addr: pg_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: true, write: true, execute_disable: false, user: true, kernel_present: true } };
     &&& post == (KernelK { pt_mp: post.pt_mp, pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, ..pre })
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
@@ -28,12 +28,12 @@ pub(super) open spec fn map_owned_1g_page_eof_transition_framing(pre: KernelK, p
     &&& post.pt_mp.spec_index(pagetable_ptr).being_killed() == pre.pt_mp.spec_index(pagetable_ptr).being_killed()
     &&& post.pt_mp.spec_index(pagetable_ptr).view().lower_backup.view() == pre.pt_mp.spec_index(pagetable_ptr).view().lower_backup.view()
     &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
-    &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
+    &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr && new_h.pci == old_h.pci
     &&& new_h.l4_table == old_h.l4_table && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
     &&& new_pt.mapping_4k() == old_pt.mapping_4k()
     &&& new_pt.mapping_2m() == old_pt.mapping_2m()
     &&& new_pt.page_closure() == old_pt.page_closure()
-    &&& new_pt.mapping_1g() == old_pt.mapping_1g().insert(va, MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
+    &&& new_pt.mapping_1g() == old_pt.mapping_1g().insert(va, MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
     &&& forall|i4: L4Index| #![trigger new_pt.spec_resolve_mapping_l4(i4)] old_pt.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_pt.spec_resolve_mapping_l4(i4) == old_pt.spec_resolve_mapping_l4(i4)
     &&& forall|i4: L4Index, i3: L3Index| #![trigger new_pt.spec_resolve_mapping_l3(i4, i3)]
         old_pt.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_pt.spec_resolve_mapping_l3(i4, i3) == old_pt.spec_resolve_mapping_l3(i4, i3)
@@ -280,6 +280,8 @@ proof fn map_owned_1g_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     reveal(map_owned_1g_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         map_owned_1g_page_eof_page_mappings_4k(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va); map_owned_1g_page_eof_page_mappings_2m(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
         map_owned_1g_page_eof_page_mappings_1g(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
@@ -464,5 +466,6 @@ pub(super) proof fn map_owned_1g_page_eof(pre: KernelK, post: KernelK, pg_ptr: P
     map_owned_1g_page_eof_memory_management_inv(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
     map_owned_1g_page_eof_process_management_inv(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
     map_owned_1g_page_eof_tlb_caches(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 } // verus!

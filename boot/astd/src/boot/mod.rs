@@ -22,9 +22,14 @@ pub const MAX_IOMMU_UNITS: usize = 16;
 /// The most PCI functions with a device BAR0 the loader records.
 pub const MAX_PCI_DEVICES: usize = 16;
 
-/// Virtual base of dom0's BAR0 window: the loader maps BAR0 page `p` of every recorded function at
-/// `PCI_BAR_WINDOW_BASE + p` in dom0's initial page table.
-pub const PCI_BAR_WINDOW_BASE: u64 = 0xd0_0000_0000;
+/// The most assigned memory BARs the loader reports; it panics on more rather than leave one out.
+pub const MAX_BAR_SLOTS: usize = 1024;
+
+/// The most firmware RAM ranges the loader reports; it panics on more.
+pub const MAX_RAM_RANGES: usize = 256;
+
+/// The most PCI ECAM (MMCONFIG) windows the loader reports.
+pub const MAX_MMCONFIG_WINDOWS: usize = 8;
 
 /// The type of physical memory.
 ///
@@ -83,8 +88,23 @@ pub struct BootInfo {
     /// The PCI device the kernel's DMA self-test drives, if present.
     pub dma_test_device: Option<DmaTestDevice>,
 
-    /// The PCI functions of bus 0 and of the buses behind its bridges whose BAR0 dom0 sees through its BAR0 window, in B/D/F order.
+    /// The NVMe, Ethernet and `edu` functions whose BAR0 the loader enabled, in B/D/F order (`NR_PCI_INFO` reads them).
     pub pci_devices: ArrayVec<PciDevice, MAX_PCI_DEVICES>,
+
+    /// Every assigned memory BAR of every PCI function (type 0 headers: 6 registers, type 1: 2; a 64-bit BAR takes
+    /// two), in B/D/F and BAR order: the PCI table's BAR slots, in the order of the kernel's BAR table:
+    /// slot `i` here is BAR-table index `i` of `map_pci_bar_4k/2m`. Nothing maps them at boot.
+    pub bar_slots: ArrayVec<BarSlot, MAX_BAR_SLOTS>,
+
+    /// The firmware memory map's RAM ranges as `(base, size)`, above 4 GiB too: usable, ACPI reclaim, ACPI NVS,
+    /// unusable and disabled memory. No BAR may overlap one.
+    pub ram_ranges: ArrayVec<(u64, u64), MAX_RAM_RANGES>,
+
+    /// The PCI ECAM (MMCONFIG) windows of the MCFG table as `(base, size)`.
+    pub mmconfig: ArrayVec<(u64, u64), MAX_MMCONFIG_WINDOWS>,
+
+    /// The DMAR host address width in bits (HAW + 1): the physical addresses the VT-d units can reach.
+    pub iommu_address_width: u8,
 
     /// Base of the zeroed stack CPU 0 runs the kernel's initialization on; the kernel reports how
     /// much of it was used so the loader's reservation can be sized.
@@ -105,8 +125,7 @@ pub struct DmaTestDevice {
     pub mmio: u64,
 }
 
-/// A PCI function of bus 0 or of a bus behind its PCI-to-PCI bridges whose memory BAR0 the loader enabled, placed
-/// below 4 GiB, checked to be uncacheable under the MTRRs, and mapped into dom0 at `PCI_BAR_WINDOW_BASE + bar0_base`.
+/// A PCI function whose memory BAR0 the loader enabled.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PciDevice {
@@ -120,10 +139,36 @@ pub struct PciDevice {
     pub class: u8,
     /// PCI subclass code.
     pub subclass: u8,
-    /// Physical base of BAR0, page aligned and below 4 GiB.
+    /// Physical base of BAR0.
     pub bar0_base: u64,
-    /// Number of 4K pages of BAR0.
+    /// Number of 4K pages of BAR0's page envelope.
     pub bar0_pages: u64,
+}
+
+/// One assigned memory BAR: a BAR slot of the PCI table, keyed by `(bdf, bar)`, with its exact byte range.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct BarSlot {
+    /// `(bus << 8) | (device << 3) | function`.
+    pub bdf: u16,
+    /// BAR register index, 0 to 5; a 64-bit BAR is keyed by its low register.
+    pub bar: u8,
+    /// PCI vendor ID of the function.
+    pub vendor: u16,
+    /// PCI device ID of the function.
+    pub device: u16,
+    /// Physical base: the BAR register's address bits.
+    pub base: u64,
+    /// Size in bytes, a power of two.
+    pub size: u64,
+}
+
+impl BarSlot {
+    /// The slot's outward-rounded 4K page envelope as `(first page, end)`; `None` when `base + size` overflows.
+    pub fn envelope(&self) -> Option<(u64, u64)> {
+        let end = self.base.checked_add(self.size)?.checked_add(0xfff)? & !0xfff;
+        Some((self.base & !0xfff, end))
+    }
 }
 
 /// A loaded domain.
@@ -177,6 +222,10 @@ impl BootInfo {
             apic_ids: ArrayVec::new(),
             dma_test_device: None,
             pci_devices: ArrayVec::new(),
+            bar_slots: ArrayVec::new(),
+            ram_ranges: ArrayVec::new(),
+            mmconfig: ArrayVec::new(),
+            iommu_address_width: 0,
             kernel_stack_base: 0,
             kernel_stack_size: 0,
         }

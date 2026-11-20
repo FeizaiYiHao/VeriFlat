@@ -81,12 +81,24 @@ pub(super) proof fn ipc_rendezvous_result_from_k(
                         else { RetValueType::Success },
                     (IPCPayLoad::Pci { bus: sent_bus, dev: sent_dev, fun: sent_fun }, IPCPayLoad::Pci { bus: received_bus, dev: received_dev, fun: received_fun }) => {
                         let sender_proc = krnl.thrd_mp.spec_index(if sends { thrd_ptr } else { peer_ptr }).view().owning_proc;
+                        let receiver_proc = krnl.thrd_mp.spec_index(if sends { peer_ptr } else { thrd_ptr }).view().owning_proc;
+                        let sender_counts = krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(sender_proc).view().pagetable).view().higher.pci.mapping_counts();
+                        let receiver_counts = krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(receiver_proc).view().pagetable).view().higher.pci.mapping_counts();
+                        let bdf = (sent_bus as usize, sent_dev as usize, sent_fun as usize);
                         &&& ret == if sent_bus != received_bus || sent_dev != received_dev || sent_fun != received_fun { RetValueType::ErrorIpcTypeMismatch }
                             else if krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc == krnl.thrd_mp.spec_index(peer_ptr).view().owning_proc { RetValueType::ErrorIpcSameProcess }
-                            else if !krnl.prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains((sent_bus as usize, sent_dev as usize, sent_fun as usize)) {
-                                RetValueType::ErrorIpcPciOwnerMismatch
-                            } else { RetValueType::Success }
-                        &&& (ret is Success || ret is ErrorIpcPciOwnerMismatch) ==> krnl.prc_mp.dom().contains(sender_proc)
+                            else if !sender_counts.dom().contains(bdf) { RetValueType::ErrorIpcPciOwnerMismatch }
+                            else if sender_counts[bdf] != 0 { RetValueType::ErrorIpcPciBarMapped }
+                            else if receiver_counts.dom().len() >= PCI_FUNCTIONS_PER_PROCESS { RetValueType::ErrorIpcPciReceiverFull }
+                            else { RetValueType::Success }
+                        &&& !(ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess) ==> {
+                            &&& krnl.prc_mp.dom().contains(sender_proc)
+                            &&& krnl.prc_mp.dom().contains(receiver_proc)
+                            &&& !krnl.prc_mp.spec_index(sender_proc).view().zombie
+                            &&& !krnl.prc_mp.spec_index(receiver_proc).view().zombie
+                            &&& krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(sender_proc).view().pagetable)
+                            &&& krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(receiver_proc).view().pagetable)
+                        }
                     },
                     _ => ret is ErrorIpcTypeMismatch,
                 }
@@ -106,7 +118,9 @@ pub(super) proof fn ipc_rendezvous_result_from_k(
     let sent = if waiting_state.is_endpoint_send_waiting() { payload } else { krnl.thrd_mp.spec_index(peer_ptr).view().ipc_payload };
     let sender_proc = krnl.thrd_mp.spec_index(if waiting_state.is_endpoint_send_waiting() { thrd_ptr } else { peer_ptr }).view().owning_proc;
     if sent is Cpu && index_valid(NUM_CPUS, sent->Cpu_cpu_id) { kernel_cpu_projection_at(krnl, sent->Cpu_cpu_id); }
+    let receiver_proc = krnl.thrd_mp.spec_index(if waiting_state.is_endpoint_send_waiting() { peer_ptr } else { thrd_ptr }).view().owning_proc;
     if krnl.prc_mp.dom().contains(sender_proc) { kernel_process_projection_at(krnl, sender_proc); }
+    if krnl.prc_mp.dom().contains(receiver_proc) { kernel_process_projection_at(krnl, receiver_proc); }
 }
 
 /// The block wrapper's user-view facts are exactly the block step on `pre`/`post`.
@@ -147,7 +161,7 @@ pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
 pub(super) proof fn ipc_rendezvous_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, caller_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     waiting_state: ThreadState, peer_thrd_ptr: RwLockThreadPtr, peer_result: RetValueType, cpu_transfer: Option<(CpuId, RwLockThreadPtr)>,
-    pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, payload: IPCPayLoad, cpu_sets_locked: bool, pre_k: KernelK,
+    pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, payload: IPCPayLoad, cpu_sets_locked: bool, pagetables_locked: bool, pre_k: KernelK,
 )
     requires
         pre == kernel_k_to_kernel_u(pre_k),
@@ -159,6 +173,7 @@ pub(super) proof fn ipc_rendezvous_step_from_u(
             &&& cpu_transfer == ipc_cpu_transfer(pre, cpu_id, ep_idx, payload, result)
             &&& pci_transfer == ipc_pci_transfer(pre, cpu_id, ep_idx, waiting_state, payload, result)
             &&& (payload is Cpu || payload is ReceiveCpu) && !(result is ErrorIpcTypeMismatch) && !(result is ErrorIpcSameContainer) ==> cpu_sets_locked
+            &&& payload is Pci && (result is Success || result is ErrorIpcPciOwnerMismatch || result is ErrorIpcPciBarMapped || result is ErrorIpcPciReceiverFull) ==> pagetables_locked
         },
         {
             let cpu = pre.cpu_array[cpu_id as int];
@@ -197,6 +212,7 @@ pub(super) proof fn ipc_rendezvous_step_from_u(
             &&& cpu_transfer matches Some((transfer, _)) ==> pre.cpu_array[transfer as int].lock_state is Unlocked
             &&& pci_transfer matches Some((bdf, sender, _)) ==> pre.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && pre.process_map[sender].iommu_table is Some
                 ==> pre.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
+            &&& pagetables_locked ==> pre.process_map[caller.owning_proc].pagetable->Some_0.lock_state is Unlocked && pre.process_map[peer.owning_proc].pagetable->Some_0.lock_state is Unlocked
         },
     ensures
         ipc_rendezvous_step_pre(pre, cpu_id, ep_idx, waiting_state, payload),

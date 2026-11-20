@@ -164,6 +164,61 @@ proof fn staged_4k_page_container_transfer_eof_page_object_owner(
     page_ptr_valid_imply_page_index_valid(); page_array_wf_at(pre.pg_arr, page_ptr2page_index(pg_ptr)); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf);
 }
 
+/// The transferred page leaves the parent's owned pages for the child's and names the child as its owner.
+proof fn staged_4k_page_container_transfer_eof_owned_pages_forward(pre: KernelK, post: KernelK, pg_ptr: PagePtr, staging_thrd_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
+    requires
+        pre.inv(),
+        page_ptr_valid(pg_ptr),
+        parent != child,
+        pre.ctn_mp.dom().contains(parent),
+        pre.ctn_mp.dom().contains(child),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == parent,
+        transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, pg_ptr, staging_thrd_ptr, parent, child),
+    ensures container_owned_pages_forward_wf(post.ctn_mp, post.pg_arr),
+{ reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing); reveal(container_owned_pages_wf); }
+
+proof fn staged_4k_page_container_transfer_eof_owned_pages_backward(pre: KernelK, post: KernelK, pg_ptr: PagePtr, staging_thrd_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
+    requires
+        pre.inv(),
+        page_ptr_valid(pg_ptr),
+        parent != child,
+        pre.ctn_mp.dom().contains(parent),
+        pre.ctn_mp.dom().contains(child),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == parent,
+        transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, pg_ptr, staging_thrd_ptr, parent, child),
+    ensures container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr),
+{ reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing); reveal(container_owned_pages_wf); }
+
+/// The transferred Owned4k page lies in no 2M region, so no 2M region gains or loses a listed member.
+proof fn staged_4k_page_container_transfer_eof_owned_pages_2m_region(pre: KernelK, post: KernelK, pg_ptr: PagePtr, staging_thrd_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
+    requires
+        pre.inv(),
+        page_ptr_valid(pg_ptr),
+        parent != child,
+        pre.ctn_mp.dom().contains(parent),
+        pre.ctn_mp.dom().contains(child),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == parent,
+        transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, pg_ptr, staging_thrd_ptr, parent, child),
+    ensures container_owned_pages_2m_region_wf(post.ctn_mp, post.pg_arr),
+{ reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing); reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); }
+
+/// The transferred Owned4k page lies in no 1G region, so no 1G region gains or loses a listed member.
+proof fn staged_4k_page_container_transfer_eof_owned_pages_1g_region(pre: KernelK, post: KernelK, pg_ptr: PagePtr, staging_thrd_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
+    requires
+        pre.inv(),
+        page_ptr_valid(pg_ptr),
+        parent != child,
+        pre.ctn_mp.dom().contains(parent),
+        pre.ctn_mp.dom().contains(child),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == parent,
+        transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, pg_ptr, staging_thrd_ptr, parent, child),
+    ensures container_owned_pages_1g_region_wf(post.ctn_mp, post.pg_arr),
+{ reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing); reveal(container_owned_pages_wf); reveal(hugepage_1g_wf); }
+
 pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post: KernelK, pg_ptr: PagePtr, staging_thrd_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
     requires
         pre.inv(),
@@ -218,7 +273,13 @@ pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post
             allocator_2m_pages_wf_preserved_for_page_state_eq(pre.allc_2m_mp, post.allc_2m_mp, pre.pg_arr, post.pg_arr);
             allocator_1g_pages_wf_preserved_for_page_state_eq(pre.allc_1g_mp, post.allc_1g_mp, pre.pg_arr, post.pg_arr);
         };
-        assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); reveal(hugepage_1g_wf); page_index_roundtrip(); };
+        assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by {
+            staged_4k_page_container_transfer_eof_owned_pages_forward(pre, post, pg_ptr, staging_thrd_ptr, parent, child);
+            staged_4k_page_container_transfer_eof_owned_pages_backward(pre, post, pg_ptr, staging_thrd_ptr, parent, child);
+            staged_4k_page_container_transfer_eof_owned_pages_2m_region(pre, post, pg_ptr, staging_thrd_ptr, parent, child);
+            staged_4k_page_container_transfer_eof_owned_pages_1g_region(pre, post, pg_ptr, staging_thrd_ptr, parent, child);
+            reveal(container_owned_pages_wf);
+        };
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
         staged_4k_page_container_transfer_eof_page_object_owner(pre, post, pg_ptr, staging_thrd_ptr, parent, child);
         assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
@@ -249,6 +310,8 @@ pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post
         assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(pg_ptr)); };
         assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(pg_ptr)); };
         assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(pg_ptr)); };
+        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
+        assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     };
     staged_4k_page_container_transfer_eof_process_management_inv(pre, post, pg_ptr, staging_thrd_ptr, parent, child);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {

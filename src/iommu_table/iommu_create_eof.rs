@@ -17,7 +17,7 @@ impl IommuTable {
         &&& forall|i: usize| #![trigger post.l4_table.view().spec_index(pre.cr3).value().spec_index(i)]
             pei_valid(i) && i != target_l4i ==> post.l4_table.view().spec_index(pre.cr3).value().spec_index(i) =~= pre.l4_table.view().spec_index(pre.cr3).value().spec_index(i)
         &&& post.l4_table.view().spec_index(pre.cr3).value().spec_index(target_l4i) =~= (PageEntry {
-            addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: false } })
+            addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: false } })
         &&& post.l3_tables.view() == pre.l3_tables.view().insert(page_map_ptr, post.l3_tables.view().spec_index(page_map_ptr))
         &&& post.l3_tables.view().spec_index(page_map_ptr).addr() == page_map_ptr
         &&& post.l3_tables.view().spec_index(page_map_ptr).is_init()
@@ -293,7 +293,7 @@ impl IommuTable {
         &&& forall|i: usize| #![trigger post.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)]
             pei_valid(i) && i != target_l3i ==> post.l3_tables.view().spec_index(target_l3_p).value().spec_index(i) =~= pre.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)
         &&& post.l3_tables.view().spec_index(target_l3_p).value().spec_index(target_l3i) =~= (PageEntry {
-            addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } })
+            addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } })
         &&& post.l2_tables.view() == pre.l2_tables.view().insert(page_map_ptr, post.l2_tables.view().spec_index(page_map_ptr))
         &&& post.l2_tables.view().spec_index(page_map_ptr).addr() == page_map_ptr
         &&& post.l2_tables.view().spec_index(page_map_ptr).is_init()
@@ -631,7 +631,7 @@ impl IommuTable {
         &&& forall|i: usize| #![trigger post.l2_tables.view().spec_index(target_l2_p).value().spec_index(i)]
             pei_valid(i) && i != target_l2i ==> post.l2_tables.view().spec_index(target_l2_p).value().spec_index(i) =~= pre.l2_tables.view().spec_index(target_l2_p).value().spec_index(i)
         &&& post.l2_tables.view().spec_index(target_l2_p).value().spec_index(target_l2i) =~= (PageEntry {
-            addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } })
+            addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } })
         &&& post.l1_tables.view() == pre.l1_tables.view().insert(page_map_ptr, post.l1_tables.view().spec_index(page_map_ptr))
         &&& post.l1_tables.view().spec_index(page_map_ptr).addr() == page_map_ptr
         &&& post.l1_tables.view().spec_index(page_map_ptr).is_init()

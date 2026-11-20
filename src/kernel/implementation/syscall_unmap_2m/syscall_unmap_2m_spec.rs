@@ -3,7 +3,8 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_unmap_2m` from the state at entry, in the implementation's check order: malformed arguments, a
-/// killed caller, and then a range below the first user L4 index or with a page that has no present 2M leaf.
+/// killed caller, and then a range below the first user L4 index or with a page that has no present 2M leaf or maps device memory,
+/// which is refused as a whole.
 /// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
 pub open spec fn unmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
@@ -12,14 +13,14 @@ pub open spec fn unmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr,
     if range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range) { RetValueType::Error }
     else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if thread.killed { RetValueType::ErrorThreadKilled }
-    else if user_va_range(pre, va_range.covering_4k_range()) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) {
+    else if user_va_range(pre, va_range.covering_4k_range()) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && !mapping[va_range.view()[j]].is_io {
         RetValueType::Success
     } else { RetValueType::Error }
 }
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu and the thread are unlocked; the thread's
 /// process has a pagetable that no thread write-holds and in which every 2M window of the range exists and is unlocked; the
-/// thread's container exists; and every page of the valid, non-empty user range is mapped by a 2M leaf.
+/// thread's container exists; and every page of the valid, non-empty user range is mapped by a 2M RAM leaf.
 #[verifier::opaque]
 pub open spec fn unmap_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange2M) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -37,7 +38,8 @@ pub open spec fn unmap_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
     &&& range.wf()
     &&& range.len > 0
     &&& user_va_range(old_u, range.covering_4k_range())
-    &&& forall|i: int| #![trigger pagetable.mapping_2m.dom().contains(range.view()[i])] 0 <= i < range.len ==> pagetable.mapping_2m.dom().contains(range.view()[i])
+    &&& forall|i: int| #![trigger pagetable.mapping_2m.dom().contains(range.view()[i])] 0 <= i < range.len
+        ==> pagetable.mapping_2m.dom().contains(range.view()[i]) && !pagetable.mapping_2m[range.view()[i]].is_io
 }
 
 /// Entering write-locks the cpu, which enters its kernel step, and its running thread, read-locks the pagetable of the
@@ -59,7 +61,7 @@ pub open spec fn unmap_2m_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 }
 
 /// A leaf step runs while the range is not fully cleared and before the flush, and the next page of the range, the
-/// `unmapped`-th, is still mapped.
+/// `unmapped`-th, is still mapped to RAM.
 #[verifier::opaque]
 pub open spec fn unmap_2m_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -69,6 +71,7 @@ pub open spec fn unmap_2m_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& progress->Unmap2m_unmapped < progress->Unmap2m_range.len
     &&& !progress->Unmap2m_flushed
     &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_2m.dom().contains(progress->Unmap2m_range.view()[progress->Unmap2m_unmapped as int])
+    &&& !old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_2m[progress->Unmap2m_range.view()[progress->Unmap2m_unmapped as int]].is_io
 }
 
 /// A leaf step removes the next page of the range, the `unmapped`-th, from the process's 2M user mapping and advances
