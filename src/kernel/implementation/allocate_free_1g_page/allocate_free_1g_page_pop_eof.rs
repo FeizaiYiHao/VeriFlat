@@ -40,7 +40,6 @@ pub(super) open spec fn pop_stage_1g_page_eof_transition_framing(
     &&& new_thread.killer_info() == old_thread.killer_info()
     &&& post.allc_1g_mp.unchanged_except(&pre.allc_1g_mp, allocator)
     &&& new_allocator == (PageAllocator { cpu_caches: new_allocator.cpu_caches, global_pool: new_allocator.global_pool, total_free_pages: Ghost((old_allocator.total_free_pages.view() - 1) as usize), ..old_allocator })
-    &&& old_allocator.global_pool.view().view().len() > 0
     &&& old_allocator.global_pool.view().view().first() == page
     &&& old_allocator.global_pool.view().map().dom().contains(node)
     &&& old_allocator.global_pool.view().map().index(node) == page
@@ -291,6 +290,7 @@ proof fn pop_stage_1g_page_eof_page_types(pre: KernelK, post: KernelK, allocator
     requires
         pre.inv(),
         pop_stage_1g_page_eof_transition_framing(pre, post, allocator, thread, container, page, node),
+        pre.allc_1g_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
@@ -362,7 +362,6 @@ proof fn pop_stage_1g_page_eof_staged_pages(pre: KernelK, post: KernelK, allocat
     };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        assert(post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view().mappings());
         reveal(process_emptied_tables_wf);
     };
 }
@@ -373,6 +372,7 @@ proof fn pop_stage_1g_page_eof_global_pool(pre: KernelK, post: KernelK, allocato
         allocator_free_page_ptrs_wf(pre.allc_1g_mp),
         allocator_free_1g_pages_wf(pre.allc_1g_mp, pre.pg_arr),
         pop_stage_1g_page_eof_transition_framing(pre, post, allocator, thread, container, page, node),
+        pre.allc_1g_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             &&& page_ptr_valid(page)
@@ -464,6 +464,7 @@ proof fn pop_stage_1g_page_eof_free_pages(pre: KernelK, post: KernelK, allocator
     requires
         pre.inv(),
         pop_stage_1g_page_eof_transition_framing(pre, post, allocator, thread, container, page, node),
+        pre.allc_1g_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             &&& page_ptr_valid(page)
@@ -508,6 +509,7 @@ proof fn pop_stage_1g_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     requires
         pre.inv(),
         pop_stage_1g_page_eof_transition_framing(pre, post, allocator, thread, container, page, node),
+        pre.allc_1g_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thread);
@@ -585,6 +587,7 @@ pub(super) proof fn pop_stage_1g_page_eof(pre: KernelK, post: KernelK, allocator
     requires
         pre.inv(),
         pop_stage_1g_page_eof_transition_framing(pre, post, allocator, thread, container, page, node),
+        pre.allc_1g_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thread);

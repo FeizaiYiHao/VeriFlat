@@ -45,7 +45,6 @@ pub(super) open spec fn pop_stage_2m_page_eof_transition_framing(
             let old_cache = old_allocator.cpu_caches.spec_index(cpu_id).view();
             let new_cache = new_allocator.cpu_caches.spec_index(cpu_id).view();
             &&& index_valid(NUM_CPUS, cpu_id)
-            &&& old_cache.view().linked_list.view().len() > 0
             &&& old_cache.view().linked_list.view().first() == page
             &&& old_cache.view().linked_list.map().dom().contains(node)
             &&& old_cache.view().linked_list.map().index(node) == page
@@ -59,7 +58,6 @@ pub(super) open spec fn pop_stage_2m_page_eof_transition_framing(
             &&& new_allocator.cpu_caches.spec_index(cpu_id).lock_id() == old_allocator.cpu_caches.spec_index(cpu_id).lock_id()
         },
         None => {
-            &&& old_allocator.global_pool.view().view().len() > 0
             &&& old_allocator.global_pool.view().view().first() == page
             &&& old_allocator.global_pool.view().map().dom().contains(node)
             &&& old_allocator.global_pool.view().map().index(node) == page
@@ -323,6 +321,8 @@ proof fn pop_stage_2m_page_eof_page_types(pre: KernelK, post: KernelK, allocator
     requires
         pre.inv(),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        source is Some ==> pre.allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(source->Some_0).view().view().linked_list.view().len() > 0,
+        source is None ==> pre.allc_2m_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
@@ -407,6 +407,8 @@ proof fn pop_stage_2m_page_eof_global_pool(pre: KernelK, post: KernelK, allocato
         allocator_free_page_ptrs_wf(pre.allc_2m_mp),
         allocator_free_2m_pages_wf(pre.allc_2m_mp, pre.pg_arr),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        source is Some ==> pre.allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(source->Some_0).view().view().linked_list.view().len() > 0,
+        source is None ==> pre.allc_2m_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
@@ -446,6 +448,8 @@ proof fn pop_stage_2m_page_eof_cpu_cache(pre: KernelK, post: KernelK, allocator:
         allocator_free_page_ptrs_wf(pre.allc_2m_mp),
         allocator_free_2m_pages_wf(pre.allc_2m_mp, pre.pg_arr),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        source is Some ==> pre.allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(source->Some_0).view().view().linked_list.view().len() > 0,
+        source is None ==> pre.allc_2m_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
@@ -528,6 +532,8 @@ proof fn pop_stage_2m_page_eof_free_pages(pre: KernelK, post: KernelK, allocator
     requires
         pre.inv(),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        source is Some ==> pre.allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(source->Some_0).view().view().linked_list.view().len() > 0,
+        source is None ==> pre.allc_2m_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
@@ -571,6 +577,8 @@ proof fn pop_stage_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     requires
         pre.inv(),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        source is Some ==> pre.allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(source->Some_0).view().view().linked_list.view().len() > 0,
+        source is None ==> pre.allc_2m_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thread);
@@ -650,6 +658,8 @@ pub(super) proof fn pop_stage_2m_page_eof(pre: KernelK, post: KernelK, allocator
     requires
         pre.inv(),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        source is Some ==> pre.allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(source->Some_0).view().view().linked_list.view().len() > 0,
+        source is None ==> pre.allc_2m_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thread);

@@ -96,7 +96,8 @@ pub(super) open spec fn remove_last_held_1g_mapping_to_allocator_eof_transition_
     &&& new_counter == old_counter + 1
     &&& new_thread.view().free_quota_pending_1g_at_depth(depth) == new_counter
     &&& new_thread.view().direct_free_quota_pending_1g.view() == old_thread.view().direct_free_quota_pending_1g.view() + if depth == old_thread.view().container_depth { 1int } else { 0int }
-    &&& new_thread.view().indirect_free_quota_pending_1g.view() == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_1g.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_1g.view() }
+    &&& new_thread.view().indirect_free_quota_pending_1g.view()
+        == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_1g.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_1g.view() }
     &&& forall|t: RwLockThreadPtr|
         #![trigger pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_4k]
         #![trigger post.thrd_mp.spec_index(t).view().direct_free_quota_pending_4k]
@@ -361,7 +362,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_allocator_quota_wf(
         let thread = pre.thrd_mp.spec_index(thrd_ptr).view();
         container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr); container_thread_wf_uppertree_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr);
         if depth < thread.container_depth {
-            container_perms_wf_at(pre.ctn_mp, thread.owning_container); assert(thread.upper_container_seq.view().contains(owner));
+            assert(thread.upper_container_seq.view().contains(owner)) by { container_perms_wf_at(pre.ctn_mp, thread.owning_container); };
             container_uppertree_seq_wf_at(pre.rt_ctn, pre.ctn_mp, thread.owning_container, owner);
         }
         reveal(container_kill_retire_wf); reveal(container_allocator_wf);

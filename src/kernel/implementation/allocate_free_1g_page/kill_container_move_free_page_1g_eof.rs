@@ -318,7 +318,6 @@ pub(super) proof fn kill_container_move_free_page_1g_eof(
             reveal(mapped_4k_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf);
         };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-            assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
             reveal(process_emptied_tables_wf);
         };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };

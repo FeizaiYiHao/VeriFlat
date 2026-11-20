@@ -86,4 +86,5 @@ mod remove_last_held_1g_mapping_eof;
 pub mod reclaim_held_1g_page;
 mod reclaim_held_1g_page_eof;
 pub mod mmap_1g_install_directory;
+pub mod mmap_1g_install_directory_spec;
 mod mmap_1g_install_directory_trace;

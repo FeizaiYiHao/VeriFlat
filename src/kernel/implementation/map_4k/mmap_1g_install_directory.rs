@@ -2,43 +2,13 @@ use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
+use super::mmap_1g_install_directory_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::mmap_4k_create_entry_install_eof::*;
 #[cfg(verus_keep_ghost)]
 use super::mmap_1g_install_directory_trace::mmap_1g_directory_step_from_k;
 
 verus! {
-/// Installing the L3 directory page for the next 1G page records it in mmap progress and leaves other progress unchanged.
-pub open spec fn mmap_1g_progress_after_directory(progress: Option<SyscallProgress>) -> Option<SyscallProgress> {
-    match progress {
-        Some(SyscallProgress::Mmap1g { range, mapped, directory: _, hidden, flushed }) => Some(SyscallProgress::Mmap1g { range, mapped, directory: true, hidden, flushed }),
-        _ => progress,
-    }
-}
-
-/// A directory step starts under the three mmap locks, before the recorded range is fully mapped and before the L3 page of the next 1G page is installed, with quota for one directory page.
-#[verifier::opaque]
-pub open spec fn mmap_1g_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    let progress = thread.syscall_progress->Some_0;
-    &&& thread_pagetable_op_in_progress(old_u, cpu_id)
-    &&& progress is Mmap1g
-    &&& progress->Mmap1g_mapped < progress->Mmap1g_range.len
-    &&& !progress->Mmap1g_directory
-    &&& thread.quota_4k >= 1
-}
-
-/// An L3 directory page consumes one 4K quota of the running thread and records the installed directory in its progress; it creates no window and changes no mapping.
-#[verifier::opaque]
-pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thrd_ptr);
-    new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: mmap_1g_progress_after_directory(thread.syscall_progress), ..thread }),
-        ..old_u
-    })
-}
-
     /// Allocate one page and install it as the L3 directory page under the missing user root entry `l4i` of the running thread's table, under the table's big write lock, then end the krnl section. Every L3 entry of the new page is empty; the quota deduction and the progress record are
     /// visible through `ThreadU` at this boundary.
     pub fn install_one_mmap_1g_directory_page(
@@ -94,7 +64,8 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_held_l4(l4i) is None,
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
+                ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -203,7 +174,8 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
                     ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_held_1g_l3(l4j, l3j) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_held_1g_l3(l4j, l3j),
             forall|l4j: L4Index, l3j: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j)]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j)
-                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j),
+                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j)
+                        == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j),
             forall|l3j: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3j)]
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_1g_l3(l4i, l3j)]
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3j)]
@@ -331,7 +303,8 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
                     ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_held_1g_l3(l4j, l3j) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_held_1g_l3(l4j, l3j),
             forall|l4j: L4Index, l3j: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j)]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j)
-                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j),
+                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j)
+                        == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4j, l3j),
             forall|l3j: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3j)]
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_1g_l3(l4i, l3j)]
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3j)]

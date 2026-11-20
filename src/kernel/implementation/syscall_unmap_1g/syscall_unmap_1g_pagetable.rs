@@ -134,7 +134,6 @@ pub(super) fn unmap_1g_lock_pagetable_and_unmap(
     } else {
         proof {
             broadcast use spec_va_1g_valid_index_roundtrip;
-            assert(va_range == spec_va_range_1g(va, len));
             unmap_1g_result_from_k(&old(steps).snapshot_k(), cpu_id, va, len, RetValueType::Error);
         }
         unmap_1g_unlock_all_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable, Ghost(entry_lctx), Tracked(cpu_perm), Tracked(thread_perm),
@@ -184,7 +183,8 @@ fn unmap_1g_unlock_all_rejected(
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
             #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+                ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
             #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]

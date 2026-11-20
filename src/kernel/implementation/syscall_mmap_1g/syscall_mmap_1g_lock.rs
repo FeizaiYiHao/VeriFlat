@@ -54,15 +54,9 @@ fn mmap_1g_unlock_and_finish(
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
-        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
-        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
-        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
-        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
-        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
-        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
-        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
-        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
     ensures
@@ -253,11 +247,6 @@ fn mmap_1g_lock_pagetable_and_map(
     proof {
         krnl.default_pagetable_wf_at(pagetable);
     }
-    proof {
-        let entry = whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable);
-        let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        assert(table.mapping_4k() == entry.mapping_4k() && table.mapping_2m() == entry.mapping_2m() && table.mapping_1g() == entry.mapping_1g());
-    }
     let (free, Ghost(at), Ghost(found_2m), Ghost(found_4k)) = mmap_1g_precheck(krnl, va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm));
     if free {
         mmap_1g_map_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, len, va_range, prc_ptr, thrd_ptr, ctn_ptr, pagetable, cr3, pcid, Ghost(entry_lctx),
@@ -312,7 +301,8 @@ fn mmap_1g_unlock_all_rejected(
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
             #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+                ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
             #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]

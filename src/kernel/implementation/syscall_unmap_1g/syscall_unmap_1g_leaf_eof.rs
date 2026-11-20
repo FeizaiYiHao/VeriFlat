@@ -13,7 +13,6 @@ pub(super) open spec fn unmap_1g_hide_leaf_eof_transition_framing(pre: KernelK, 
     let target = (spec_v2l4index(va), spec_v2l3index(va));
     let hidden = PageEntry { perm: PageEntryPerm { present: false, ..old_c.spec_resolve_mapping_1g_l3(target.0, target.1)->0.perm }, ..old_c.spec_resolve_mapping_1g_l3(target.0, target.1)->0 };
     &&& post == (KernelK { pt_mp: post.pt_mp, ..pre })
-    &&& pre.pt_mp.dom().contains(pagetable)
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
@@ -48,7 +47,6 @@ pub(super) open spec fn unmap_1g_hide_leaf_eof_transition_framing(pre: KernelK, 
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_2m_l2(i4, i3, i2) == old_c.spec_held_2m_l2(i4, i3, i2)
     &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_held_4k_l1(i4, i3, i2, i1)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_held_4k_l1(i4, i3, i2, i1) == old_c.spec_held_4k_l1(i4, i3, i2, i1)
-    &&& old_c.spec_resolve_mapping_1g_l3(target.0, target.1) is Some
     &&& new_c.spec_resolve_mapping_1g_l3(target.0, target.1) == Some(hidden)
     &&& new_c.spec_held_1g_l3(target.0, target.1) == Some(hidden)
 }
@@ -79,6 +77,7 @@ proof fn unmap_1g_hide_leaf_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pag
         va_1g_valid(va),
         pre.pt_mp.dom().contains(pagetable),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
@@ -106,6 +105,7 @@ proof fn unmap_1g_hide_leaf_eof_mapped_2m_pages(pre: KernelK, post: KernelK, pag
         va_1g_valid(va),
         pre.pt_mp.dom().contains(pagetable),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
@@ -133,6 +133,7 @@ proof fn unmap_1g_hide_leaf_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pag
         va_1g_valid(va),
         pre.pt_mp.dom().contains(pagetable),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
@@ -153,8 +154,9 @@ proof fn unmap_1g_hide_leaf_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pag
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     broadcast use spec_va_1g_valid_index_roundtrip;
     reveal(mapped_1g_page_pagetable_wf);
-    pre.pt_mp.spec_index(pagetable).view().higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
-    assert(new_c.mapping_1g().spec_index(va).addr == old_c.mapping_1g().spec_index(va).addr);
+    assert(new_c.mapping_1g().spec_index(va).addr == old_c.mapping_1g().spec_index(va).addr) by {
+        pre.pt_mp.spec_index(pagetable).view().higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
+    };
 }
 
 /// A translation cached for `va` is covered by the table record, which lists every CPU stale.
@@ -165,6 +167,7 @@ proof fn unmap_1g_hide_leaf_eof_cpu_tlb(pre: KernelK, post: KernelK, pagetable: 
         va_1g_valid(va),
         pre.pt_mp.dom().contains(pagetable),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
@@ -193,6 +196,7 @@ pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetabl
         va_1g_valid(va),
         pre.pt_mp.dom().contains(pagetable),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
@@ -207,9 +211,6 @@ pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetabl
 {
     reveal(unmap_1g_hide_leaf_eof_transition_framing);
     pre.default_pagetable_wf_at(pagetable);
-    let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
-    let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
-    assert(new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && old_c.kernel_l4_end() == KERNEL_MEM_END_L4INDEX);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { unmap_1g_hide_leaf_eof_pci_mappings(pre, post, pagetable, va); };

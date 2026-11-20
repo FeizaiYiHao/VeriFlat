@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 
 verus! {
 /// The final mapping of the 1G page `pg_ptr`, the held 1G leaf at `va` of the write-held page table `pagetable`, leaves the table with its record, and the page returns through its free-list node at `node_addr` to the global pool of its owner's 1G allocator `allc_ptr`, whose quota grows by
@@ -185,28 +187,9 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_page_relations(
     kill_reclaim_held_1g_page_scoped_eof_mapped_1g_pages(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
-    kill_reclaim_held_1g_page_scoped_eof_process_pagetable(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
-}
-
-/// The process-to-page-table relation closes after the held 1G leaf `va` of `pagetable` is cleared.
-proof fn kill_reclaim_held_1g_page_scoped_eof_process_pagetable(
-    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, node_addr: usize,
-)
-    requires
-        pre.inv(),
-        kill_reclaim_held_1g_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr),
-    ensures
-        process_pagetable_wf(post.prc_mp, post.pt_mp),
-{
-    reveal(kill_reclaim_held_1g_page_scoped_eof_transition_framing);
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by {
-        reveal(process_pagetable_wf);
-        assert forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.proc_ptr] post.pt_mp.dom().contains(pt)
-            implies post.prc_mp.dom().contains(post.pt_mp.spec_index(pt).view().higher.proc_ptr) && post.prc_mp.spec_index(post.pt_mp.spec_index(pt).view().higher.proc_ptr).view().pagetable == pt
-            by { process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pt); };
-    };
 }
 
 /// The 1G global-pool relation closes after `pg_ptr` enters the head of the global pool of the owner allocator `allc_ptr`.
@@ -457,7 +440,7 @@ pub(crate) proof fn kill_reclaim_held_1g_page_scoped_eof(
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     kill_reclaim_held_1g_page_scoped_eof_cpu_caches(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);
-    assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() =~= whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g());
+    assert_maps_equal!(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g(), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g());
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);

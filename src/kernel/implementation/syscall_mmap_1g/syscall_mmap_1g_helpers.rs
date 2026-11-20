@@ -57,7 +57,8 @@ pub(super) fn mmap_1g_map_and_finish(
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
             #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+                ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
             #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
@@ -149,11 +150,6 @@ pub(super) fn mmap_1g_map_and_finish(
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr);
         process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-    }
-    proof {
-        let entry = whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable);
-        let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        assert(table.mapping_4k() == entry.mapping_4k() && table.mapping_2m() == entry.mapping_2m() && table.mapping_1g() == entry.mapping_1g());
     }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap1g { range: *va_range, mapped: 0, directory: false, hidden: false, flushed: false })), Tracked(&*lctx), Tracked(&thread_perm));
     proof {
