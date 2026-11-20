@@ -459,10 +459,7 @@ pub(crate) proof fn kill_target_pci_released_implies_u_pci_functions_empty(krnl:
         krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
         krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
     ensures kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
-{
-    kernel_process_projection_at(krnl, target);
-    assert(kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0.pci_functions =~= Map::<PciBdf, nat>::empty());
-}
+{ kernel_process_projection_at(krnl, target); }
 
 /// The target, owned by `ctn_ptr` on `krnl`, is owned by it on the projection.
 pub(crate) proof fn kill_refund_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr)

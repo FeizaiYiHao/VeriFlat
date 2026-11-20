@@ -60,13 +60,13 @@ pub fn syscall_map_pci_bar_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let ghost entry_lctx = *old(lctx);
     let page = if slot < krnl.pci_bars.len() { krnl.pci_bars.chunk_2m(slot, index) } else { None };
     if page.is_none() {
+        krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thrd_ptr), None, None, None);
             process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, prc_ptr);
             map_pci_bar_2m_result_from_k(&*old(krnl), cpu_id, slot, index, va, RetValueType::ErrorPciBarSlotInvalid);
         }
-        krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
-        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
-        proof { steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thrd_ptr), None, None, None); }
         return RetValueType::ErrorPciBarSlotInvalid;
     }
     let addr = page.unwrap();
@@ -107,11 +107,13 @@ pub fn syscall_map_pci_bar_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     };
     if !quota {
         let ret = if owner_index.is_none() { RetValueType::ErrorPciOwnerMismatch } else if !free { RetValueType::ErrorVaInUse } else { RetValueType::ErrorNoQuota };
-        proof { map_pci_bar_2m_result_from_k(&*old(krnl), cpu_id, slot, index, va, ret); }
         krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
         krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
-        proof { steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable), None); }
+        proof {
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable), None);
+            map_pci_bar_2m_result_from_k(&*old(krnl), cpu_id, slot, index, va, ret);
+        }
         return ret;
     }
     proof { map_pci_bar_2m_result_from_k(&*old(krnl), cpu_id, slot, index, va, RetValueType::Success); }

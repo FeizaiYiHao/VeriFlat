@@ -4,8 +4,9 @@ use crate::*;
 
 verus! {
 /// A two-dimensional lock array over token storage: the cells live in memory outside the array value, reached only
-/// through raw addresses. Cell `(row, col)` lies at `lock_cell_addr(base, row * COLS + col)` for the lock type's
-/// `TokenCellBase` address `base`, and the array holds one points-to token per cell and no runtime bytes.
+/// through raw addresses. Cell `(row, col)` lies at `lock_cell_addr(base, row * (COLS + 1) + col)` for the lock type's
+/// `TokenCellBase` address `base`: each row is followed by one unused cell, so the cells of one column in different rows
+/// do not all map to one cache set. The array holds one points-to token per cell and no runtime bytes.
 #[verifier::reject_recursive_types(T)]
 pub struct LockedArray2D<T, ROT, GhostT, const ROWS: usize, const COLS: usize> {
     perms: Tracked<Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>>,
@@ -15,8 +16,8 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
     /// `perms` holds exactly one token per in-range cell, each covering an initialized lock at its cell address: the
     /// two-dimensional form of `TokenCells::wf`, `TokenLock::wf`, and the `perms_wf` of `LockedMap` and `UnLockedMap`.
     pub open spec fn perms_wf(perms: Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>) -> bool {
-        // cell index row * COLS + col fits in usize
-        &&& ROWS * COLS <= usize::MAX
+        // cell index row * (COLS + 1) + col fits in usize
+        &&& ROWS * (COLS + 1) <= usize::MAX
         &&& forall|row: usize, col: usize|
             #![trigger perms.dom().contains((row, col))]
             perms.dom().contains((row, col)) <==> index_valid(ROWS, row) && index_valid(COLS, col)
@@ -26,7 +27,7 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
             perms.dom().contains((row, col)) ==> {
                 &&& perms[(row, col)].is_init()
                 &&& perms[(row, col)].addr()
-                    == lock_cell_addr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), row * COLS + col)
+                    == lock_cell_addr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), row * (COLS + 1) + col)
             }
     }
 
@@ -58,8 +59,8 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
         ensures
             ret == self.perms.view()[(row, col)].addr(),
     {
-        assert(row * COLS + col < ROWS * COLS) by (nonlinear_arith) requires row < ROWS, col < COLS;
-        lock_cell_addr_exec::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base(), row * COLS + col)
+        assert(COLS + 1 <= ROWS * (COLS + 1) && row * (COLS + 1) + col < ROWS * (COLS + 1)) by (nonlinear_arith) requires row < ROWS, col < COLS;
+        lock_cell_addr_exec::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base(), row * (COLS + 1) + col)
     }
 
     pub fn set_ghost(&mut self, row: usize, col: usize, Ghost(value): Ghost<GhostT>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>)
