@@ -28,6 +28,8 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, pagetable_perm, iommu_perm),
+        (iommu_perm is Some) == (iommu_table is Some),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
@@ -65,7 +67,6 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
         final(krnl).prc_mp.spec_index(target).view().zombie,
         final(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        final(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -107,6 +108,7 @@ pub(crate) fn kill_reclaim_return_quota(
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
+        (*iommu_perm is Some) == (iommu_table is Some),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
@@ -175,6 +177,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
+        (*iommu_perm is Some) == (iommu_table is Some),
         kill_process_quota_stage_after(stage) == Some(KillStage::Quota { returned: size }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
@@ -539,6 +542,8 @@ pub(crate) fn kill_reclaim_unlock_table(
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Quota { returned: PageSize::SZ1g }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, pagetable_perm, iommu_perm),
+        (iommu_perm is Some) == (iommu_table is Some),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
@@ -580,7 +585,6 @@ pub(crate) fn kill_reclaim_unlock_table(
         final(krnl).prc_mp.spec_index(target).view().state.view() is TablesEmptied,
         final(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        final(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         final(krnl).prc_mp.spec_index(target).view().quota_4k == 0,
         final(krnl).prc_mp.spec_index(target).view().quota_2m == 0,
         final(krnl).prc_mp.spec_index(target).view().quota_1g == 0,
@@ -661,7 +665,6 @@ pub(crate) fn kill_reclaim_zombify(
         old(krnl).prc_mp.spec_index(target).view().state.view() is TablesEmptied,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         old(krnl).prc_mp.spec_index(target).view().quota_4k == 0,
         old(krnl).prc_mp.spec_index(target).view().quota_2m == 0,
         old(krnl).prc_mp.spec_index(target).view().quota_1g == 0,
@@ -682,7 +685,6 @@ pub(crate) fn kill_reclaim_zombify(
         final(krnl).prc_mp.spec_index(target).view().zombie,
         final(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        final(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()

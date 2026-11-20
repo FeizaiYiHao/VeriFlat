@@ -75,7 +75,6 @@ use kernel::implementation::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 pub use kernel::implementation::map_4k::mmap_4k_install_one::install_one_mmap_2m_directory_page;
 use kernel::implementation::map_4k::hide_empty_l1_in_window::hide_empty_l1_in_window;
 use kernel::implementation::map_4k::reclaim_hidden_l1_page_in_window::reclaim_hidden_l1_page_in_window;
-use kernel::implementation::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
 use kernel::implementation::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_iommu_4k_reclaim_one::{reclaim_unmapped_iommu_4k_page, reclaim_detached_iommu_4k_page};
 use kernel::implementation::map_4k::flush_iommu_tlb::flush_iommu_tlb_for_table;
@@ -106,7 +105,7 @@ global layout ProcessRwLock is size == 256, align == 8;
 global layout EndpointRwLock is size == 72, align == 8;
 global layout CpuSetRwLock is size == 1856, align == 64;
 global layout IommuTableRwLock is size == 64, align == 8;
-global layout PageTableRwLock is size == 1856, align == 64;
+global layout PageTableRwLock is size == 2176, align == 64;
 global layout PcidAllocatorRwLock is size == 32776, align == 8;
 }
 

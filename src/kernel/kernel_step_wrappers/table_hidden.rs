@@ -22,6 +22,7 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
             == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_1g().remove_keys(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_1g().dom().filter(|va: VAddr| spec_v2l4index(va) == l4i)),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.remove_keys(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().filter(|w: WindowVa| spec_v2l4index(w.va) == l4i)),
+        post.pt_mp.spec_index(root).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(root).view().higher.pci.mapping_counts(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(pre);

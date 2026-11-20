@@ -183,6 +183,7 @@ impl KernelK {
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,
             final(self).dflt_pt == old(self).dflt_pt,
+            final(self).pci_bars == old(self).pci_bars,
             final(self).it_mp.perms_wf(),
             final(self).it_mp.dom() =~= old(self).it_mp.dom().insert(pg_ptr),
             forall|ptr: RwLockPageTableRoot| #![auto]

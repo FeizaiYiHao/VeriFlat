@@ -295,6 +295,7 @@ pub(super) proof fn reclaim_dangling_thread_eof(
     };
     reclaim_dangling_thread_eof_thread_relations(pre, post, cpu_id, dangling_ptr, owner, allc_ptr, cache_node_addr);
     reveal(reclaim_dangling_thread_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_covers_nonempty_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match);
         reveal(container_cpu_wf);

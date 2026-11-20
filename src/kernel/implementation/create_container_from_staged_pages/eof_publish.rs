@@ -85,6 +85,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().mappings()]
         #![trigger pre.pg_arr.spec_index(index).view().view().mappings()]
@@ -103,11 +104,6 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
         #![trigger pre.pg_arr.spec_index(index).view().view().owning_container]
         index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
             ==> post.pg_arr.spec_index(index).view().view().owning_container == pre.pg_arr.spec_index(index).view().view().owning_container
-    &&& forall|index: PageIndex|
-        #![trigger post.pg_arr.spec_index(index).view().view().is_io_page]
-        #![trigger pre.pg_arr.spec_index(index).view().view().is_io_page]
-        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
-            ==> post.pg_arr.spec_index(index).view().view().is_io_page == pre.pg_arr.spec_index(index).view().view().is_io_page
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().free_list_node_storage]
         #![trigger pre.pg_arr.spec_index(index).view().view().free_list_node_storage]
@@ -217,11 +213,9 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& !post.prc_mp.spec_index(process_page).being_killed()
     &&& !post.prc_mp.spec_index(process_page).view().zombie
     &&& post.prc_mp.spec_index(process_page).view().state.view() is Creating
-    &&& post.prc_mp.spec_index(process_page).view().pci_cleared.view() == false
     &&& post.prc_mp.spec_index(process_page).view().pcid == root_pcid
     &&& post.prc_mp.spec_index(process_page).view().pagetable == pagetable_page
     &&& post.prc_mp.spec_index(process_page).view().iommu_table is None
-    &&& post.prc_mp.spec_index(process_page).view_ghost().owned_pci_functions.view().is_empty()
     &&& post.prc_mp.spec_index(process_page).view().quota_4k == process_quota_4k
     &&& post.prc_mp.spec_index(process_page).view().quota_2m == 0
     &&& post.prc_mp.spec_index(process_page).view().quota_1g == 0
@@ -249,6 +243,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.cr3 == l4_page
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_page, post.pt_lower.view().spec_index(pagetable_page))
     &&& post.pt_mp.spec_index(pagetable_page).view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_page)
     &&& forall|pt_ptr: RwLockPageTableRoot|
@@ -414,6 +409,7 @@ pub(super) proof fn publish_staged_container_root_eof_postconditions(
         post.allc_4k_mp.spec_index(allocator_4k_page).quota.view().view() == allocator_quota_4k,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).is_empty(),
         post.pt_mp.spec_index(pagetable_page).view().higher.proc_ptr == process_page,
+        post.pt_mp.spec_index(pagetable_page).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         post.prc_mp.spec_index(process_page).view().iommu_table is None,
         post.ctn_mp.spec_index(container_page).view().uppertree_seq.view() == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq.view().push(parent_ctn_ptr),
         post.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq,

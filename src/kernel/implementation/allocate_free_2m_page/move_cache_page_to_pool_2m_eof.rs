@@ -143,6 +143,7 @@ pub(super) proof fn move_cache_page_to_pool_2m_eof(pre: KernelK, post: KernelK, 
             thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
         };
         assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
+        assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
         assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by {
             container_process_allocator_quota_2m_wf_preserved_for_container_allocator_eq(pre.ctn_mp, post.ctn_mp, post.prc_mp, post.thrd_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_4k_mp, pre.allc_1g_mp);
         };

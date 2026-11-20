@@ -5,7 +5,7 @@ use super::unmap_4k_spec::*;
 
 verus! {
 /// The caller write-holding its cpu and thread and holding the pagetable of the thread's present process in either mode, while
-/// the range is not fully cleared and its next page has a present 4K leaf, satisfies the leaf precondition and projects its K
+/// the range is not fully cleared and its next page has a present 4K RAM leaf, satisfies the leaf precondition and projects its K
 /// anchors.
 pub proof fn unmap_4k_leaf_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, range: VaRange4K, unmapped: usize,
@@ -26,6 +26,7 @@ pub proof fn unmap_4k_leaf_step_pre_from_k(
         unmapped < range.len,
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view()[unmapped as int]),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k()[range.view()[unmapped as int]].present,
+        !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k()[range.view()[unmapped as int]].is_io,
     ensures
         unmap_4k_leaf_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
@@ -148,6 +149,7 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable).mapping_2m()
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable).mapping_1g()
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable).lower.pagetable_window_locks
+            &&& krnl.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == entry.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts()
         },
     ensures
         ({
@@ -405,10 +407,12 @@ pub proof fn unmap_4k_leaf_range_steps_from_k(
         post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va].present,
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va].is_io,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va] }),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks,
+        post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
@@ -588,6 +592,7 @@ pub proof fn unmap_4k_flushed_range_steps_from_k(
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_2m() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_2m()
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_1g() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_1g()
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).lower.pagetable_window_locks
+            &&& pre.pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == snap.pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
         },
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.cpu_set_mp.unchanged_except(&snap.cpu_set_mp, pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),

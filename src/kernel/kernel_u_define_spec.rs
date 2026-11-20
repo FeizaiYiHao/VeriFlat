@@ -22,6 +22,8 @@ verus! {
         pub cpu_tlb: Map<(CpuId, Pcid), SingleTLB>,
         pub iommu_tlb: Map<VtdDomainId, SingleTLB>,
         pub kernel_l4_end: usize,
+        /// The memory BARs of every PCI function; constant after boot.
+        pub pci_bars: Seq<PciBarEntry>,
     }
 
     /// The range starts at or above the first user L4 index, compared as the implementation's prechecks do.
@@ -37,6 +39,7 @@ verus! {
     pub open spec fn kernel_k_user_projection(krnl: KernelK) -> KernelU {
         KernelU {
             iommu_root_table: krnl.irt.view().user_view(), cpu_tlb: krnl.cpu_tlb.view(), iommu_tlb: krnl.iommu_tlb.view(), kernel_l4_end: krnl.dflt_pt.view().kernel_l4_end,
+            pci_bars: krnl.pci_bars.view(),
             endpoint_map: Map::new(krnl.ep_mp.dom(), |ptr: RwLockEndpointPtr| {
                 let e = krnl.ep_mp.spec_index(ptr);
                 EndpointU {
@@ -96,7 +99,7 @@ verus! {
                         },
                         _ => None,
                     },
-                    pcid: p_ro.pcid, owning_container: p_ro.owning_container, owned_pci_functions: p_ghost.owned_pci_functions.view(),
+                    pcid: p_ro.pcid, owning_container: p_ro.owning_container,
                     quota_4k: p.quota_4k, quota_2m: p.quota_2m, quota_1g: p.quota_1g, parent: p_ro.parent, children: p.children.view(), depth: p_ro.depth,
                     uppertree_seq: p.uppertree_seq.view(), subtree_set: p_ghost.subtree_set.view(), owned_threads: p.owned_threads.view(),
                     killed: krnl.prc_mp.spec_index(ptr).being_killed(),

@@ -390,4 +390,7 @@ pub unsafe fn init_cpu(cpu_id: usize) {
     msr::wrmsr(msr::IA32_KERNEL_GSBASE, 0);
     assert!(core::arch::x86_64::__cpuid(0x8000_0001).edx & (1 << 27) != 0, "rdtscp is required");
     msr::wrmsr(IA32_TSC_AUX, cpu_id as u64);
+    // IO leaves set PCD|PWT, which select PAT entry 3 on a 4K leaf: it must be UC on every CPU (its reset value).
+    assert!(core::arch::x86_64::__cpuid(1).edx & (1 << 16) != 0, "CPU {}: no PAT", cpu_id);
+    assert!((msr::rdmsr(0x277) >> 24) & 0x7 == 0, "CPU {}: PAT entry 3 is not UC", cpu_id);
 }

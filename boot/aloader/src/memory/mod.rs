@@ -9,7 +9,8 @@ use core::{fmt, ops::DerefMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use x86::current::paging::PAddr;
 
-use astd::boot::PhysicalMemoryType;
+use astd::boot::{PhysicalMemoryType, MAX_RAM_RANGES};
+use astd::heapless::Vec as ArrayVec;
 use astd::memory::PageProtection;
 use astd::sync::Mutex;
 use aelf::{VirtualMapper, ContiguousMapping};
@@ -24,6 +25,14 @@ pub const ALLOCATOR_SIZE: usize = 384 * 1024 * 1024; // kernel (320 MiB) + dom0 
 
 /// The physical memory map.
 static PHYSICAL_MEMORY_MAP: Mutex<MemoryMap<BootMemoryType>> = Mutex::new(MemoryMap::empty());
+
+/// The firmware map's RAM ranges as `(base, size)`, before the map is cut at `MAX_PHYSICAL_MEMORY`.
+static RAM_RANGES: Mutex<ArrayVec<(u64, u64), MAX_RAM_RANGES>> = Mutex::new(ArrayVec::new());
+
+/// The firmware memory map's RAM ranges at every address: usable, ACPI reclaim, ACPI NVS, unusable and disabled memory.
+pub fn ram_ranges() -> ArrayVec<(u64, u64), MAX_RAM_RANGES> {
+    RAM_RANGES.lock().clone()
+}
 
 /// The memory region reserved for the initial allocator.
 static ALLOCATOR_MEMORY_REGION: Mutex<Option<MemoryRange>> = Mutex::new(None);
@@ -168,10 +177,15 @@ pub fn init_physical_memory_map(
     image_ranges: impl Iterator<Item = MemoryRange>,
 ) {
     let mut map = PHYSICAL_MEMORY_MAP.lock();
-    let filtered_regions = regions.filter(|(r, _)| {
+    let mut ram = RAM_RANGES.lock();
+    let filtered_regions = regions.filter(|(r, t)| {
+        if *t != AcpiMemoryType::Reserved {
+            ram.push((r.base(), r.size())).expect("more firmware RAM ranges than MAX_RAM_RANGES");
+        }
         r.base() < MAX_PHYSICAL_MEMORY as u64
     });
     *map = MemoryMap::new(filtered_regions.map(|(r, t)| (r, BootMemoryType::Other(t))));
+    drop(ram);
 
     map.relabel(MemoryRange::new(0, 1024 * 1024), BootMemoryType::Bios);
     map.relabel(loader_range, BootMemoryType::Loader);

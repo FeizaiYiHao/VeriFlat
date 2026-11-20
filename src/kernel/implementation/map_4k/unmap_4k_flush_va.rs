@@ -66,6 +66,7 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k() == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).mapping_4k()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m() == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
+            &&& final(krnl).pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == final(steps).snapshot_k().pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
         },
         ({
@@ -174,6 +175,7 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pt).mapping_4k() == whole_pagetable(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), pt).mapping_4k()
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pt).mapping_2m() == whole_pagetable(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), pt).mapping_2m()
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pt).mapping_1g() == whole_pagetable(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), pt).mapping_1g()
+                &&& krnl.pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == steps.snapshot_k().pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
             },
             kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),

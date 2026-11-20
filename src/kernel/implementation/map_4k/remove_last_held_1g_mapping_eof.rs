@@ -29,6 +29,10 @@ pub(super) open spec fn remove_last_held_1g_mapping_to_allocator_eof_transition_
     &&& post.pt_mp.spec_index(pagetable).view().lower_backup.view() == pre.pt_mp.spec_index(pagetable).view().lower_backup.view()
     &&& new_c.lower == old_c.lower
     &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
+    &&& forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.proc_ptr]
+        post.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt).view().higher.proc_ptr == pre.pt_mp.spec_index(pt).view().higher.proc_ptr
+    &&& forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.pci]
+        post.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt).view().higher.pci == pre.pt_mp.spec_index(pt).view().higher.pci
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g().remove(va)
     &&& new_c.page_closure() == old_c.page_closure()
     &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
@@ -146,6 +150,24 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_process_management_inv(
     assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
 }
 
+/// The process and PCI-function links of the page tables close: no table changes its process or its PCI function array.
+proof fn remove_last_held_1g_mapping_to_allocator_eof_process_links(
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
+    old_counter: usize, new_counter: usize, node_addr: usize,
+)
+    requires
+        pre.inv(),
+        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        pre.pt_mp.dom().contains(pagetable),
+    ensures
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{
+    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+}
+
 /// The page-table relations close after the last mapping of `pg_ptr`, the held 1G leaf `va`, is dropped and cleared.
 proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
@@ -193,7 +215,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
     };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
+    remove_last_held_1g_mapping_to_allocator_eof_process_links(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
@@ -436,6 +458,8 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     assert(post.subsystems_inv()) by {
         reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(thread_ipc_transit_wf); reveal(KernelK::default_pagetable_wf);
@@ -460,5 +484,6 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+    remove_last_held_1g_mapping_to_allocator_eof_process_links(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
 }
 }

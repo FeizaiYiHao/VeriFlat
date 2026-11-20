@@ -250,7 +250,8 @@ impl KernelSteps {
             !old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().zombie,
             old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().iommu_table is Some,
             old(self).snapshot_k().it_mp.spec_index(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).locking_thread() is None,
-            old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function)),
+            old(self).snapshot_k().pt_mp.dom().contains(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().pagetable),
+            old(self).snapshot_k().pt_mp.spec_index(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().pagetable).view().higher.pci.view().dom().contains((bus, device, function)),
             pci_bdf_valid(bus, device, function),
             old(self).snapshot_k().irt.view().spec_index_iommu_root(bus, device, function) is None,
             kernel_pagetable_nonlock_fields_unchanged(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view()),
@@ -258,6 +259,7 @@ impl KernelSteps {
             kernel_process_nonlock_fields_unchanged(old(self).snapshot_k().prc_mp, krnl.prc_mp),
             kernel_thread_nonlock_fields_unchanged(old(self).snapshot_k().thrd_mp, krnl.thrd_mp),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
+            krnl.pci_bars == old(self).snapshot_k().pci_bars,
             krnl.it_mp.dom() == old(self).snapshot_k().it_mp.dom(),
             forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
                 old(self).snapshot_k().it_mp.dom().contains(p) ==> {
@@ -334,7 +336,8 @@ impl KernelSteps {
             &&& pre_u.process_map.dom().contains(prc_ptr)
             &&& pre_u.process_map[prc_ptr].lock_state is Unlocked
             &&& !pre_u.process_map[prc_ptr].killed
-            &&& pre_u.process_map[prc_ptr].owned_pci_functions.contains((bus, device, function))
+            &&& pre_u.process_map[prc_ptr].pagetable is Some
+            &&& pre_u.process_map[prc_ptr].pagetable->Some_0.pci_functions.dom().contains((bus, device, function))
             &&& pre_u.process_map[prc_ptr].iommu_table is Some
             &&& pre_u.process_map[prc_ptr].iommu_table->Some_0.lock_state is Unlocked
             &&& !pre_u.iommu_root_table.attached[bus as int][device as int][function as int]
@@ -360,6 +363,132 @@ impl KernelSteps {
             });
             assert_maps_equal!(mid_u.thread_map, pre_u.thread_map, t => { if snap.thrd_mp.dom().contains(t) { kernel_thread_projection_at(&snap, t); kernel_thread_projection_at(&mid, t); } });
             assert_maps_equal!(mid_u.endpoint_map, pre_u.endpoint_map, e => { if snap.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(&snap, e); kernel_endpoint_projection_at(&mid, e); } });
+        };
+        self.end_kernel_step_raw(krnl, lctx);
+    }
+
+    /// Ends the section in which the live root process `prc_ptr` of a root container, running on `cpu_id`, claimed the unowned
+    /// PCI function `(bus, device, function)` into the free entry `index` of its page table's PCI function array.
+    pub proof fn end_kernel_step_pci_claim(
+        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, bus: usize, device: usize, function: usize,
+        index: int,
+    )
+        requires
+            krnl.inv(),
+            lctx.kernel_view_locking_state() is Release,
+            index_valid(NUM_CPUS, cpu_id),
+            old(self).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+            old(self).snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().state is Running,
+            old(self).snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_process == Some(prc_ptr),
+            old(self).snapshot_k().prc_mp.dom().contains(prc_ptr),
+            old(self).snapshot_k().prc_mp.spec_index(prc_ptr).locking_thread() is None,
+            !old(self).snapshot_k().prc_mp.spec_index(prc_ptr).being_killed(),
+            !old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().zombie,
+            old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view_rodata().view().parent is None,
+            old(self).snapshot_k().ctn_mp.dom().contains(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container),
+            old(self).snapshot_k().ctn_mp.spec_index(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container).view_rodata().view().parent is None,
+            pci_bdf_valid(bus, device, function),
+            old(self).snapshot_k().irt.view().spec_index_owner(bus, device, function) is None,
+            0 <= index < PCI_FUNCTIONS_PER_PROCESS,
+            ({
+                let snap = old(self).snapshot_k();
+                let root = snap.prc_mp.spec_index(prc_ptr).view().pagetable;
+                let pci = snap.pt_mp.spec_index(root).view().higher.pci;
+                &&& snap.pt_mp.dom().contains(root)
+                &&& snap.pt_mp.spec_index(root).locking_thread() is None
+                &&& krnl.pt_mp.spec_index(root).locking_thread() is None
+                &&& pci.view().dom().len() < PCI_FUNCTIONS_PER_PROCESS
+                &&& !pci.spec_entry(index).used
+                &&& krnl.pt_mp.unchanged_except(&snap.pt_mp, root)
+                &&& krnl.pt_mp.spec_index(root).view().higher == (PageTableHigher { pci: krnl.pt_mp.spec_index(root).view().higher.pci, ..snap.pt_mp.spec_index(root).view().higher })
+                &&& krnl.pt_mp.spec_index(root).view().higher.pci.view() == pci.view().insert((bus, device, function), Set::<PciBarMapping>::empty())
+            }),
+            krnl.pt_lower == old(self).snapshot_k().pt_lower,
+            kernel_cpu_nonlock_fields_unchanged(old(self).snapshot_k().cpu_arr, krnl.cpu_arr),
+            kernel_process_nonlock_fields_unchanged(old(self).snapshot_k().prc_mp, krnl.prc_mp),
+            kernel_thread_nonlock_fields_unchanged(old(self).snapshot_k().thrd_mp, krnl.thrd_mp),
+            kernel_endpoint_nonlock_fields_unchanged(old(self).snapshot_k().ep_mp, krnl.ep_mp),
+            kernel_iommu_table_nonlock_fields_unchanged(old(self).snapshot_k().it_mp, krnl.it_mp),
+            kernel_container_nonlock_fields_and_quotas_unchanged(&old(self).snapshot_k(), krnl),
+            krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
+            krnl.pci_bars == old(self).snapshot_k().pci_bars,
+            krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
+            krnl.irt.view().owners() == seq3_update(old(self).snapshot_k().irt.view().owners(), bus as int, device as int, function as int, Some(prc_ptr)),
+            krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
+            krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
+            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
+            krnl.cpu_regs.view().view() == old(self).snapshot_k().cpu_regs.view().view(),
+            krnl.cpu_trap_frame.view().view() == old(self).snapshot_k().cpu_trap_frame.view().view(),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
+                krnl.ctn_mp.dom().contains(p) && old(self).snapshot_k().ctn_mp.dom().contains(p) ==> {
+                    &&& krnl.ctn_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_state_u()
+                    &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
+                },
+            forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
+                krnl.prc_mp.dom().contains(p) && old(self).snapshot_k().prc_mp.dom().contains(p) ==> krnl.prc_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().prc_mp.spec_index(p).lock_state_u(),
+            forall|p: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(p)]
+                krnl.pt_mp.dom().contains(p) && old(self).snapshot_k().pt_mp.dom().contains(p) ==> {
+                    &&& krnl.pt_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pt_mp.spec_index(p).lock_state_u()
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
+                },
+            forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
+                krnl.it_mp.dom().contains(p) && old(self).snapshot_k().it_mp.dom().contains(p) ==> krnl.it_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().it_mp.spec_index(p).lock_state_u(),
+            forall|p: RwLockThreadPtr| #![trigger krnl.thrd_mp.spec_index(p)]
+                krnl.thrd_mp.dom().contains(p) && old(self).snapshot_k().thrd_mp.dom().contains(p) ==> krnl.thrd_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().thrd_mp.spec_index(p).lock_state_u(),
+            forall|p: RwLockEndpointPtr| #![trigger krnl.ep_mp.spec_index(p)]
+                krnl.ep_mp.dom().contains(p) && old(self).snapshot_k().ep_mp.dom().contains(p) ==> krnl.ep_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ep_mp.spec_index(p).lock_state_u(),
+            forall|i: CpuId| #![trigger krnl.cpu_arr.spec_index(i)]
+                index_valid(NUM_CPUS, i) ==> krnl.cpu_arr.spec_index(i).value.lock_state_u() == old(self).snapshot_k().cpu_arr.spec_index(i).value.lock_state_u(),
+        ensures
+            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
+            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
+            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
+            final(self).snapshot_k() == *krnl,
+            kernel_u_pci_claim_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, bus, device, function),
+            kernel_k_to_kernel_u(old(self).snapshot_k()).cpu_array[cpu_id as int].lock_state is Unlocked,
+            kernel_k_to_kernel_u(old(self).snapshot_k()).cpu_array[cpu_id as int].current_process == Some(prc_ptr),
+            kernel_k_to_kernel_u(old(self).snapshot_k()).process_map[prc_ptr].lock_state is Unlocked,
+            kernel_k_to_kernel_u(old(self).snapshot_k()).process_map[prc_ptr].pagetable->Some_0.lock_state is Unlocked,
+    {
+        reveal(kernel_u_pci_claim_changed);
+        use_type_invariant(&*self);
+        let snap = self.snapshot_k();
+        let root = snap.prc_mp.spec_index(prc_ptr).view().pagetable;
+        let bdf = (bus, device, function);
+        let update = PciEntryUpdate::Claim { bus, device, function };
+        let mid = KernelK { irt: snap.irt, pt_mp: snap.pt_mp, ..*krnl };
+        reveal(kernel_process_nonlock_fields_unchanged);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+        assert(process_pagetable_wf(mid.prc_mp, mid.pt_mp)) by { reveal(process_pagetable_wf); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&snap, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &mid)) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
+        };
+        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&snap, &mid);
+        kernel_pci_entry_updated_implies_u_step(&mid, krnl, root, index, update);
+        assert({
+            let pre_u = kernel_k_to_kernel_u(snap);
+            let process = pre_u.process_map[prc_ptr];
+            let table = process.pagetable->Some_0;
+            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
+            &&& pre_u.cpu_array[cpu_id as int].state is Running
+            &&& pre_u.cpu_array[cpu_id as int].current_process == Some(prc_ptr)
+            &&& pre_u.process_map.dom().contains(prc_ptr)
+            &&& process.lock_state is Unlocked
+            &&& !process.killed
+            &&& process.parent is None
+            &&& pre_u.container_map.dom().contains(process.owning_container)
+            &&& pre_u.container_map[process.owning_container].parent is None
+            &&& pre_u.iommu_root_table.owners[bus as int][device as int][function as int] is None
+            &&& process.pagetable is Some
+            &&& table.lock_state is Unlocked
+            &&& table.pci_functions.dom().len() < PCI_FUNCTIONS_PER_PROCESS
+        }) by {
+            kernel_u_domains_projection(&snap); snap.irt.view().user_view_eq_owners_and_attached();
+            kernel_cpu_projection_at(&snap, cpu_id); kernel_process_projection_at(&snap, prc_ptr); kernel_process_projection_at(&mid, prc_ptr);
+            kernel_container_projection_at(&snap, snap.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container);
         };
         self.end_kernel_step_raw(krnl, lctx);
     }

@@ -2,16 +2,17 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_pci_helpers::{finish_ipc_pci_rendezvous_release, ipc_pci_lock_transfer_and_schedule_peer};
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_pci_eof::ipc_pci_rendezvous_eof;
+use super::syscall_ipc_pci_eof::ipc_pci_rendezvous_eof_rendezvous_fields;
 use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 
 verus! {
-    /// Hands the PCI function named on both sides from the sending to the receiving process under the root-table
-    /// lock; an attached function is detached under the sender's IOMMU table write lock, which invalidates its old DID
-    /// domain, and the waiting peer is scheduled with Success. A same-process
-    /// pair or a sender that does not own the function schedules the peer with that error and moves nothing.
+    /// Hands the PCI function named on both sides from the sending to the receiving process: under both page tables' write
+    /// locks the sender's PCI function array must hold it with no BAR mapping and the receiver's must have a free entry; then,
+    /// under the root-table lock, an attached function is detached under the sender's IOMMU table write lock, which invalidates
+    /// its old DID domain, the sender's array releases it and the receiver's claims it, and the waiting peer is scheduled with
+    /// Success. A same-process pair or a failed check schedules the peer with that error and moves nothing.
     pub(super) fn ipc_rendezvous_pci(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         prc_ptr: RwLockProcessPtr, current_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, Ghost(ep_idx): Ghost<EndpointIdx>,
@@ -143,7 +144,7 @@ verus! {
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            ret is Success || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch,
+            ret is Success || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch || ret is ErrorIpcPciBarMapped || ret is ErrorIpcPciReceiverFull,
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(steps).snapshot_k() == *final(krnl),
@@ -176,10 +177,22 @@ verus! {
                 &&& pre.thrd_mp.spec_index(peer_thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().state
                 &&& pre.thrd_mp.spec_index(peer_thrd_ptr).view().ipc_payload == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().ipc_payload
                 &&& pre.prc_mp.dom().contains(sender_proc)
-                &&& pre.prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view() == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view()
+                &&& pre.prc_mp.dom().contains(receiver_proc)
+                &&& !pre.prc_mp.spec_index(sender_proc).view().zombie
+                &&& !pre.prc_mp.spec_index(receiver_proc).view().zombie
+                &&& pre.prc_mp.spec_index(sender_proc).view().pagetable == old(krnl).prc_mp.spec_index(sender_proc).view().pagetable
+                &&& pre.prc_mp.spec_index(receiver_proc).view().pagetable == old(krnl).prc_mp.spec_index(receiver_proc).view().pagetable
+                &&& pre.pt_mp.dom().contains(old(krnl).prc_mp.spec_index(sender_proc).view().pagetable)
+                &&& pre.pt_mp.dom().contains(old(krnl).prc_mp.spec_index(receiver_proc).view().pagetable)
+                &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), old(krnl).prc_mp.spec_index(sender_proc).view().pagetable).higher.pci.mapping_counts()
+                    == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).prc_mp.spec_index(sender_proc).view().pagetable).higher.pci.mapping_counts()
+                &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), old(krnl).prc_mp.spec_index(receiver_proc).view().pagetable).higher.pci.mapping_counts()
+                    == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).prc_mp.spec_index(receiver_proc).view().pagetable).higher.pci.mapping_counts()
             }) by {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
                 reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
+                reveal(kernel_pagetable_nonlock_fields_unchanged); process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, sender_proc);
+                process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, receiver_proc);
             };
         }
         if sender_proc == receiver_proc {
@@ -193,27 +206,34 @@ verus! {
         proof { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, peer_container); }
         let wake_cpu = if peer_container == current_container { cpu_id } else { peer_last_cpu };
         let peer_sched_ptr = krnl.ctn_mp.borrow_rodata(peer_container).borrow().scheduler;
-        proof { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, peer_container); }
-        let (result, iommu_table, Ghost(anchor), Tracked(irt_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(iommu_table_lock_perm)) = ipc_pci_lock_transfer_and_schedule_peer(
-            krnl, Tracked(&mut *lctx), cpu_id, current_thrd_ptr, ep_ptr, peer_thrd_ptr, peer_sched_ptr, wake_cpu, bus, dev, fun, sender_proc, receiver_proc,
-            Tracked(&endpoint_lock_perm), Tracked(&peer_thread_lock_perm),
-        );
+        proof {
+            container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, peer_container);
+            process_perms_wf_at(krnl.prc_mp, sender_proc); process_perms_wf_at(krnl.prc_mp, receiver_proc);
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, sender_proc); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, receiver_proc);
+            process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, receiver_proc, current_thrd_ptr); process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, receiver_proc, peer_thrd_ptr);
+        }
+        let sender_pt = krnl.prc_mp.borrow_rodata(sender_proc).borrow().pagetable;
+        let receiver_pt = krnl.prc_mp.borrow_rodata(receiver_proc).borrow().pagetable;
+        let (result, iommu_table, Ghost(anchor), Ghost(states), Tracked(irt_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(iommu_table_lock_perm))
+            = ipc_pci_lock_transfer_and_schedule_peer(krnl, Tracked(&mut *lctx), cpu_id, current_thrd_ptr, ep_ptr, peer_thrd_ptr, peer_sched_ptr, wake_cpu, bus, dev, fun,
+                sender_proc, receiver_proc, sender_pt, receiver_pt, Tracked(&endpoint_lock_perm), Tracked(&peer_thread_lock_perm));
         let ghost bdf: PciBdf = (bus as usize, dev as usize, fun as usize);
         let ghost pci_transfer = if result is Success { Some((bdf, sender_proc, receiver_proc)) } else { None };
         proof {
-            ipc_pci_rendezvous_eof(
-                *old(krnl), *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, result is Success,
-                result, lctx.thread_id(), iommu_table, anchor, steps.snapshot_k(), cpu_id, prc_ptr, ep_idx, waiting_state,
+            ipc_pci_rendezvous_eof_rendezvous_fields(
+                *old(krnl), states.0, states.1, *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt,
+                bdf, result is Success, result, lctx.thread_id(), iommu_table, anchor, steps.snapshot_k(), cpu_id, prc_ptr, ep_idx, waiting_state,
             );
-            assert((result is Success) == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains(bdf)) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, bdf, sender_proc); };
+            assert(old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts().dom() =~= old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.view().dom());
+            assert(old(krnl).pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts().dom() =~= old(krnl).pt_mp.spec_index(receiver_pt).view().higher.pci.view().dom());
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, ep_idx, waiting_state, payload, current_thrd_ptr, ep_ptr, peer_thrd_ptr, result);
         }
         proof { assert(!steps.snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); }; }
         finish_ipc_pci_rendezvous_release(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, peer_thrd_ptr, peer_sched_ptr, wake_cpu,
             Ghost(ep_idx), Ghost(waiting_state), Ghost(result), Ghost(pci_transfer), Ghost(payload), Tracked(cpu_lock_perm),
-            Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(irt_lock_perm),
-            iommu_table, Tracked(iommu_table_lock_perm),
+            Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm),
+            match result { RetValueType::Success => true, _ => false }, Tracked(irt_lock_perm), iommu_table, Tracked(iommu_table_lock_perm),
         );
         result
     }

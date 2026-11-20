@@ -33,6 +33,7 @@ pub(super) open spec fn ipc_cpu_rendezvous_eof_transition_framing(
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& forall|cpu_i: CpuId| #![trigger pre.cpu_arr.spec_index(cpu_i)] #![trigger post.cpu_arr.spec_index(cpu_i)]
         index_valid(NUM_CPUS, cpu_i) && (!transferred || cpu_i != transfer_cpu_id) ==> post.cpu_arr.spec_index(cpu_i) == pre.cpu_arr.spec_index(cpu_i)

@@ -72,13 +72,15 @@ pub open spec fn boot_page_map_perms_wf(perms: Map<PageMapPtr, PointsTo<PageMap>
         }
 }
 
-/// Every dom0 boot mapping maps a valid 4K virtual address to a present, valid page owned by the root container.
+/// Every dom0 boot mapping maps a valid 4K virtual address to a present, valid RAM page owned by the root container; dom0 gets
+/// no IO leaf at boot.
 pub open spec fn boot_dom0_manifest_wf(manifest: Map<VAddr, MapEntry>, root_container: RwLockContainerPtr) -> bool {
     forall|va: VAddr|
         #![trigger manifest.dom().contains(va)]
         manifest.dom().contains(va) ==> {
             let entry = manifest.spec_index(va);
             &&& va_4k_valid(va)
+            &&& !entry.is_io
             &&& page_ptr_valid(entry.addr)
             &&& entry.present
             &&& entry.owning_container.view() == root_container
@@ -317,6 +319,7 @@ pub fn adopt_boot_dom0_pagetable(
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()),
+        pci: PciFunctionArray::new_empty(),
     };
     (higher, Tracked::assume_new())
 }
@@ -615,7 +618,7 @@ pub open spec fn boot_kernel_state(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     pg_arr: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
-    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
 ) -> bool {
     &&& krnl.rt_ctn == layout.root_container
@@ -673,7 +676,7 @@ pub open spec fn boot_kernel_state(
         pci_bdf_valid(bus, device, function) ==> krnl.irt.view().spec_index_iommu_root(bus, device, function) is None
     &&& forall|bus: usize, device: usize, function: usize|
         #![trigger krnl.irt.view().spec_index_owner(bus, device, function)]
-        pci_bdf_valid(bus, device, function) ==> krnl.irt.view().spec_index_owner(bus, device, function) == layout.root_process
+        pci_bdf_valid(bus, device, function) ==> krnl.irt.view().spec_index_owner(bus, device, function) is None
     // CPU page table.
     &&& krnl.pt_mp.perms_wf()
     &&& krnl.pt_mp.dom() =~= set![layout.cpu_pagetable]
@@ -689,6 +692,7 @@ pub open spec fn boot_kernel_state(
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.hidden_l1_tables_in_locked_windows()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.cr3 == layout.cpu_cr3
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.pcid == Some(1usize)
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.pcid_value() == 1
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.proc_ptr == layout.root_process
@@ -818,7 +822,6 @@ pub open spec fn boot_kernel_state(
     &&& krnl.prc_mp.spec_index(layout.root_process).locking_thread() is None
     &&& krnl.prc_mp.spec_index(layout.root_process).view().inv()
     &&& !krnl.prc_mp.spec_index(layout.root_process).view().zombie
-    &&& !krnl.prc_mp.spec_index(layout.root_process).view().pci_cleared.view()
     &&& krnl.prc_mp.spec_index(layout.root_process).view().uppertree_seq.view() == Seq::<RwLockProcessPtr>::empty()
     &&& krnl.prc_mp.spec_index(layout.root_process).view().state.view() is Running
     &&& krnl.prc_mp.spec_index(layout.root_process).view().pcid == 1
@@ -836,7 +839,7 @@ pub open spec fn boot_kernel_state(
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0, pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3,
         iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table), pcid: 1,
     })
-    &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(owned_pci_functions) })
+    &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { subtree_set: Ghost(Set::empty()) })
     // Root thread.
     &&& krnl.thrd_mp.perms_wf()
     &&& krnl.thrd_mp.dom() =~= set![layout.root_thread]
@@ -976,8 +979,8 @@ pub fn finish_init_from_boot(
     cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, cpu_array: CpuLockedArray, cpu_tlb: CpuTLB, iommu_tlb: IommuTLB,
     free_4k_pool: LinkedList<PagePtr, 233>,
     free_2m_pool: LinkedList<PagePtr, 233>, free_1g_pool: LinkedList<PagePtr, 233>,
-    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, owned_pages: Ghost<Set<PagePtr>>,
-    owned_pci_functions: Ghost<Set<PciBdf>>, cpu_rev_maps: Ghost<BootRevMaps>, Tracked(cpu_l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
+    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, pci_bars: &'static PciBarTable, owned_pages: Ghost<Set<PagePtr>>,
+    cpu_rev_maps: Ghost<BootRevMaps>, Tracked(cpu_l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(cpu_l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l1_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(container_page_perm): Tracked<PagePerm2m>,
     Tracked(pcid_allocator_page_perm): Tracked<PagePerm2m>, Tracked(allocator_4k_page_perm): Tracked<PagePerm4k>,
@@ -1013,6 +1016,8 @@ pub fn finish_init_from_boot(
         boot_dom0_manifest_wf(manifest_4k.view(), layout.root_container),
         boot_dom0_pagetable_model(layout.cpu_cr3, layout.root_process, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), cpu_l4_tables, cpu_l3_tables, cpu_l2_tables, cpu_l1_tables, cpu_rev_maps.view()).wf(),
         boot_page_array_ready(page_array, layout, cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom(), manifest_4k.view(), &free_4k_pool, &free_2m_pool, &free_1g_pool),
+        pci_bar_table_wf(pci_bars.view()),
+        pci_bar_pages_unavailable_wf(pci_bars.view(), page_array),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
@@ -1037,9 +1042,7 @@ pub fn finish_init_from_boot(
         iommu_tlb.inv(),
         forall|did: VtdDomainId| #![trigger iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> iommu_tlb.spec_index(did).is_empty(),
         iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty(),
-        owned_pci_functions.view().len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.view().contains(pg_ptr)] owned_pages.view().contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
-        forall|bdf: PciBdf| #![trigger owned_pci_functions.view().contains(bdf)] owned_pci_functions.view().contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         container_page_perm.is_init(),
         container_page_perm.addr() == layout.root_container,
         pcid_allocator_page_perm.is_init(),
@@ -1080,10 +1083,16 @@ pub fn finish_init_from_boot(
 {
     let tracked mut kernel_perm = kernel_perm;
     let ghost boot_cpu_page_closure = cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom();
-    let (cpu_pagetable, Tracked(cpu_pagetable_lower)) = adopt_boot_dom0_pagetable(
+    let (mut cpu_pagetable, Tracked(cpu_pagetable_lower)) = adopt_boot_dom0_pagetable(
         layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, cpu_rev_maps,
         Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables),
     );
+    let ghost adopted_pagetable = cpu_pagetable;
+    cpu_pagetable.pci = PciFunctionArray::new_empty();
+    proof {
+        boot_dom0_pagetable_pci_eof(WholePageTable { higher: adopted_pagetable, lower: cpu_pagetable_lower }, WholePageTable { higher: cpu_pagetable, lower: cpu_pagetable_lower });
+        boot_dom0_pagetable_pci_eof_walks(adopted_pagetable, cpu_pagetable);
+    }
     let (iommu_l4, Tracked(iommu_l4_perm)) = iommu_page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
     assert(iommu_l4_perm.value().iommu_wf()) by {
         assert(iommu_word_valid(0usize)) by (compute);
@@ -1124,14 +1133,14 @@ pub fn finish_init_from_boot(
     let irt_addr = irt_cell_base();
     let irt_base = irt_addr + VTD_TABLE_SIZE;
     assert(VTD_TABLE_SIZE == 4096) by (compute);
-    let irt = TokenLock::from_token(irt_cell_init(LockCell::new_unlocked(IommuRootTable::new_disabled(irt_base, layout.root_process), (), Ghost(()))));
+    let irt = TokenLock::from_token(irt_cell_init(LockCell::new_unlocked(IommuRootTable::new_disabled(irt_base), (), Ghost(()))));
 
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0,
         pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3, iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table),
         pcid: 1,
     });
-    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions };
+    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()) };
     let container_rodata = ReadOnlyNode::new(ContainerRO {
         parent: None, depth: 0, scheduler: layout.scheduler, pcid_allocator: layout.pcid_allocator, cpu_set: layout.cpu_set,
         allocator_ptr_4k: layout.allocator_4k, allocator_ptr_2m: layout.allocator_2m, allocator_ptr_1g: layout.allocator_1g,
@@ -1183,17 +1192,17 @@ pub fn finish_init_from_boot(
     let dflt_pt = default_pagetable_cell_init(default_pagetable);
     let krnl = KernelK {
         pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op), cpu_regs: Tracked(cpu_regs), cpu_trap_frame: Tracked(cpu_trap_frame), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
-        prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt,
+        prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt, pci_bars,
     };
     proof {
         boot_subsystems_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
-            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), scheduler_node_addr, process_node_addr);
         boot_memory_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
-            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), scheduler_node_addr, process_node_addr);
         boot_process_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
-            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), scheduler_node_addr, process_node_addr);
         boot_kernel_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
-            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), scheduler_node_addr, process_node_addr);
     }
     PPtr::<KernelK>::from_usize(layout.kernel_ptr).put(Tracked(&mut kernel_perm), krnl);
     Tracked(kernel_perm)

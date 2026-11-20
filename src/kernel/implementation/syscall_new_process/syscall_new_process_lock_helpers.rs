@@ -559,6 +559,7 @@ pub(super) fn new_process_lock_source_windows(
         ret.0 == (final(krnl).pt_mp.spec_index(root).view().higher.kernel_l4_end <= spec_v2l4index(range.start) && forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_4k().dom().contains(range.view().spec_index(j))
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_4k().spec_index(range.view().spec_index(j)).present
+            &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_4k().spec_index(range.view().spec_index(j)).is_io
         }),
         !ret.0 ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
         !ret.0 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).lower.pagetable_window_locks,
@@ -595,7 +596,8 @@ pub(super) fn new_process_lock_source_windows(
         return (false, Tracked(empty_perms));
     }
     let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(root, range, Tracked(big), Tracked(&mut *lctx));
-    if share_mapping_4k_source_precheck(krnl, range, root, Tracked(&*lctx), Tracked(big)) {
+    let (present, ram) = share_mapping_4k_source_precheck(krnl, range, root, Tracked(&*lctx), Tracked(big));
+    if present && ram {
         return (true, Tracked(window_perms));
     }
     krnl.unlock_pagetable_range_existing_windows::<false>(root, range, Tracked(big), Tracked(&mut *lctx), Tracked(window_perms));

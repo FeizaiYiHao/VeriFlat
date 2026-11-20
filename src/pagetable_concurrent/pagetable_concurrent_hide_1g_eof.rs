@@ -39,6 +39,51 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::hide_1g_leaf_eof_mappings(pre, post, target_l4i, target_l3i, target_l3_p);
     }
 
+    /// EOF closure of `hide_1g_leaf`: the user-entry half of `wf_l4`; the root level is unchanged.
+    proof fn hide_1g_leaf_eof_wf_l4_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.higher.wf_l4(),
+            Self::hide_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            forall|i: L4Index|
+                #![trigger post.higher.l4_entry(i).perm.present]
+                post.higher.kernel_l4_end <= i && pei_valid(i) && (post.higher.l4_entry(i).perm.present || post.higher.l4_entry(i).perm.kernel_present) ==> {
+                    &&& !post.higher.l4_entry(i).perm.ps
+                    &&& post.higher.l3_tables.view().dom().contains(post.higher.l4_entry(i).addr)
+                },
+    {
+        reveal(WholePageTable::hide_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4);
+    }
+
+    /// EOF closure of `hide_1g_leaf`: the root half of `wf_l4`; the L4 table is unchanged.
+    proof fn hide_1g_leaf_eof_wf_l4_root(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.higher.wf_l4(),
+            Self::hide_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            post.higher.l4_table.view().dom() =~= Set::<PageMapPtr>::empty().insert(post.higher.cr3),
+            post.higher.cr3 == post.higher.l4_table.view().spec_index(post.higher.cr3).addr(),
+            post.higher.l4_table.view().spec_index(post.higher.cr3).is_init(),
+            post.higher.l4_table.view().spec_index(post.higher.cr3).value().wf(),
+    {
+        reveal(WholePageTable::hide_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4);
+    }
+
+    /// EOF closure of `hide_1g_leaf`: `wf_l4`.
+    proof fn hide_1g_leaf_eof_wf_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.higher.wf_l4(),
+            Self::hide_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            post.higher.wf_l4(),
+    {
+        Self::hide_1g_leaf_eof_wf_l4_root(pre, post, target_l4i, target_l3i, target_l3_p);
+        Self::hide_1g_leaf_eof_wf_l4_entries(pre, post, target_l4i, target_l3i, target_l3_p);
+        reveal(PageTableHigher::wf_l4);
+    }
+
     /// EOF closure of `hide_1g_leaf`: the big-lock invariant.
     proof fn hide_1g_leaf_eof_higher_inv(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
         requires
@@ -55,7 +100,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::hide_1g_leaf_eof_resolve(pre, post, target_l4i, target_l3i, target_l3_p);
         reveal(WholePageTable::hide_1g_leaf_eof_transition_framing);
         assert(post.higher.va_addr_valid()) by { pre.higher.wf_mapping_1g_at(target_l4i, target_l3i); };
-        assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+        Self::hide_1g_leaf_eof_wf_l4(pre, post, target_l4i, target_l3i, target_l3_p);
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
         assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
@@ -228,6 +273,51 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::clear_held_1g_leaf_eof_mappings(pre, post, target_l4i, target_l3i, target_l3_p);
     }
 
+    /// EOF closure of `clear_held_1g_leaf`: the user-entry half of `wf_l4`.
+    proof fn clear_held_1g_leaf_eof_wf_l4_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.higher.wf_l4(),
+            Self::clear_held_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            forall|i: L4Index|
+                #![trigger post.higher.l4_entry(i).perm.present]
+                post.higher.kernel_l4_end <= i && pei_valid(i) && (post.higher.l4_entry(i).perm.present || post.higher.l4_entry(i).perm.kernel_present) ==> {
+                    &&& !post.higher.l4_entry(i).perm.ps
+                    &&& post.higher.l3_tables.view().dom().contains(post.higher.l4_entry(i).addr)
+                },
+    {
+        reveal(WholePageTable::clear_held_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4);
+    }
+
+    /// EOF closure of `clear_held_1g_leaf`: the root half of `wf_l4`; the L4 table is unchanged.
+    proof fn clear_held_1g_leaf_eof_wf_l4_root(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.higher.wf_l4(),
+            Self::clear_held_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            post.higher.l4_table.view().dom() =~= Set::<PageMapPtr>::empty().insert(post.higher.cr3),
+            post.higher.cr3 == post.higher.l4_table.view().spec_index(post.higher.cr3).addr(),
+            post.higher.l4_table.view().spec_index(post.higher.cr3).is_init(),
+            post.higher.l4_table.view().spec_index(post.higher.cr3).value().wf(),
+    {
+        reveal(WholePageTable::clear_held_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4);
+    }
+
+    /// EOF closure of `clear_held_1g_leaf`: `wf_l4`.
+    proof fn clear_held_1g_leaf_eof_wf_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.higher.wf_l4(),
+            Self::clear_held_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            post.higher.wf_l4(),
+    {
+        Self::clear_held_1g_leaf_eof_wf_l4_root(pre, post, target_l4i, target_l3i, target_l3_p);
+        Self::clear_held_1g_leaf_eof_wf_l4_entries(pre, post, target_l4i, target_l3i, target_l3_p);
+        reveal(PageTableHigher::wf_l4);
+    }
+
     /// EOF closure of `clear_held_1g_leaf`: the big-lock invariant.
     proof fn clear_held_1g_leaf_eof_higher_inv(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
         requires
@@ -244,7 +334,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::clear_held_1g_leaf_eof_resolve(pre, post, target_l4i, target_l3i, target_l3_p);
         reveal(WholePageTable::clear_held_1g_leaf_eof_transition_framing);
         assert(post.higher.va_addr_valid()) by { spec_index2va_injective(); };
-        assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+        Self::clear_held_1g_leaf_eof_wf_l4(pre, post, target_l4i, target_l3i, target_l3_p);
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
         assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
@@ -344,6 +434,44 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);
     }
 
+    /// EOF closure of `clear_held_1g_leaf`: the held L2 entries and 4K leaves are unchanged.
+    pub(super) proof fn clear_held_1g_leaf_eof_held_l2_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_held_l4(target_l4i) is Some,
+            pre.spec_held_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_held_1g_l3(target_l4i, target_l3i) is Some,
+            Self::clear_held_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
+    {
+        reveal(WholePageTable::clear_held_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);
+    }
+
+    /// EOF closure of `clear_held_1g_leaf`: the held 2M leaves are unchanged.
+    pub(super) proof fn clear_held_1g_leaf_eof_held_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_held_l4(target_l4i) is Some,
+            pre.spec_held_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_held_1g_l3(target_l4i, target_l3i) is Some,
+            Self::clear_held_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+    {
+        reveal(WholePageTable::clear_held_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);
+    }
+
     /// EOF closure of `clear_held_1g_leaf`: the held chain through the changed entry and every unchanged held entry.
     pub(super) proof fn clear_held_1g_leaf_eof_held_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
         requires
@@ -360,13 +488,9 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
             post.spec_held_1g_l3(target_l4i, target_l3i) is None,
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
     {
+        Self::clear_held_1g_leaf_eof_held_l2_4k(pre, post, target_l4i, target_l3i, target_l3_p);
+        Self::clear_held_1g_leaf_eof_held_2m(pre, post, target_l4i, target_l3i, target_l3_p);
         reveal(WholePageTable::clear_held_1g_leaf_eof_transition_framing);
         reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);
     }

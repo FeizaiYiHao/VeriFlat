@@ -31,6 +31,21 @@ proof fn set_4k_page_staging_next_eof_page_object_owner(pre: KernelK, post: Kern
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); };
 }
 
+/// The staging-link write keeps every page's state, so the 4K allocators' free lists still name free pages.
+proof fn set_4k_page_staging_next_eof_allocator_free_4k_pages(pre: KernelK, post: KernelK, pg_ptr: PagePtr, next: PagePtr)
+    requires
+        pre.inv(),
+        set_4k_page_staging_next_eof_transition_framing(pre, post, pg_ptr, next),
+        page_ptr_valid(pg_ptr),
+    ensures allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
+{
+    reveal(set_4k_page_staging_next_eof_transition_framing);
+    page_ptr_valid_imply_page_index_valid();
+    assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by {
+        reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_free_page_ptrs_wf);
+    };
+}
+
 /// Closes every kernel invariant after the staging-link write from the entry invariants, the summary, and the
 /// representation facts `set_4k_staging_next` guarantees.
 pub(super) proof fn set_4k_page_staging_next_eof(pre: KernelK, post: KernelK, pg_ptr: PagePtr, next: PagePtr)
@@ -55,6 +70,7 @@ pub(super) proof fn set_4k_page_staging_next_eof(pre: KernelK, post: KernelK, pg
     assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pg_idx);
     };
@@ -78,9 +94,7 @@ pub(super) proof fn set_4k_page_staging_next_eof(pre: KernelK, post: KernelK, pg
     assert(thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_2m_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_staged_1g_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
-    assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by {
-        reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_free_page_ptrs_wf);
-    };
+    set_4k_page_staging_next_eof_allocator_free_4k_pages(pre, post, pg_ptr, next);
     assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, pg_idx); };
     assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, pg_idx); };
 }

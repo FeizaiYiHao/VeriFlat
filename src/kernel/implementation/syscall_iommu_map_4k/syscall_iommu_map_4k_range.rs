@@ -52,6 +52,7 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
         forall|j: int| #![trigger va_range.view()[j]] 0 <= j < va_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va_range.view()[j])
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k()[va_range.view()[j]].present
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k()[va_range.view()[j]].is_io
         },
         forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < iova_range.len ==> !old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(iova_range.view()[j]),
         old(krnl).it_mp.spec_index(iommu_table_ptr).view().leaves_present(),

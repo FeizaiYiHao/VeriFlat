@@ -502,12 +502,12 @@ proof fn thread_exit_destroy_eof_iommu_relations(
         thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr),
     ensures
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
-        process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(thread_exit_destroy_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
 }
 
@@ -579,6 +579,7 @@ pub(super) proof fn thread_exit_destroy_eof(
     thread_exit_destroy_eof_cpu_relations(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr);
     thread_exit_destroy_eof_iommu_relations(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr);
     reveal(thread_exit_destroy_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     thread_exit_destroy_eof_staged_pages(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_covers_nonempty_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match);

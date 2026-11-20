@@ -20,7 +20,6 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
         forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==> {
             &&& after.prc_mp.spec_index(p).view_rodata() == before.prc_mp.spec_index(p).view_rodata()
             &&& after.prc_mp.spec_index(p).view().uppertree_seq == before.prc_mp.spec_index(p).view().uppertree_seq
-            &&& after.prc_mp.spec_index(p).view_ghost().owned_pci_functions == before.prc_mp.spec_index(p).view_ghost().owned_pci_functions
             &&& after.prc_mp.spec_index(p).view_ghost().subtree_set.view() == if before.prc_mp.spec_index(parent).view().uppertree_seq.view().push(parent).contains(p) {
                 before.prc_mp.spec_index(p).view_ghost().subtree_set.view().insert(child)
             } else { before.prc_mp.spec_index(p).view_ghost().subtree_set.view() }
@@ -34,7 +33,6 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
         !after.prc_mp.spec_index(child).view().zombie,
         after.prc_mp.spec_index(child).view().pagetable == table,
         after.prc_mp.spec_index(child).view().iommu_table == iommu,
-        after.prc_mp.spec_index(child).view_ghost().owned_pci_functions.view().is_empty(),
         after.prc_mp.spec_index(child).view().quota_4k == 0,
         after.prc_mp.spec_index(child).view().quota_2m == 0,
         after.prc_mp.spec_index(child).view().quota_1g == 0,
@@ -68,6 +66,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Write),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), table).is_empty(),
+        after.pt_mp.spec_index(table).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         iommu is None ==> after.it_mp == before.it_mp,
         iommu matches Some(t) ==> {
             &&& after.it_mp.dom() == before.it_mp.dom().insert(t)
@@ -98,7 +97,8 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(),
+                mapping_1g: Map::empty(), pagetable_window_locks: Map::empty(), pci_functions: Map::empty() };
             let cost: usize = if (iommu is Some) { 5 } else { 3 };
             &&& pre.process_map.dom().contains(parent)
             &&& !pre.process_map.dom().contains(child)
@@ -117,7 +117,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             })
             &&& post.process_map[child] == (ProcessU {
                 lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, zombie: false, pagetable: Some(empty_table),
-                iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid, owning_container: container, owned_pci_functions: Set::empty(),
+                iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid, owning_container: container,
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
                 depth: (pre.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors,
                 subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
@@ -233,7 +233,6 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
         forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==> {
             &&& after.prc_mp.spec_index(p).view_rodata() == before.prc_mp.spec_index(p).view_rodata()
             &&& after.prc_mp.spec_index(p).view().uppertree_seq == before.prc_mp.spec_index(p).view().uppertree_seq
-            &&& after.prc_mp.spec_index(p).view_ghost().owned_pci_functions == before.prc_mp.spec_index(p).view_ghost().owned_pci_functions
             &&& after.prc_mp.spec_index(p).view_ghost().subtree_set.view() == if before.prc_mp.spec_index(parent).view().uppertree_seq.view().push(parent).contains(p) {
                 before.prc_mp.spec_index(p).view_ghost().subtree_set.view().insert(child)
             } else { before.prc_mp.spec_index(p).view_ghost().subtree_set.view() }
@@ -247,7 +246,6 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
         !after.prc_mp.spec_index(child).view().zombie,
         after.prc_mp.spec_index(child).view().pagetable == table,
         after.prc_mp.spec_index(child).view().iommu_table == iommu,
-        after.prc_mp.spec_index(child).view_ghost().owned_pci_functions.view().is_empty(),
         after.prc_mp.spec_index(child).view().quota_4k == 0,
         after.prc_mp.spec_index(child).view().quota_2m == 0,
         after.prc_mp.spec_index(child).view().quota_1g == 0,
@@ -262,6 +260,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         after.pt_mp.spec_index(table).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), table).is_empty(),
+        after.pt_mp.spec_index(table).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         iommu is None ==> after.it_mp == before.it_mp,
         iommu matches Some(t) ==> {
             &&& after.it_mp.dom() == before.it_mp.dom().insert(t)
@@ -275,7 +274,8 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(),
+                mapping_1g: Map::empty(), pagetable_window_locks: Map::empty(), pci_functions: Map::empty() };
             &&& post.process_map.dom() == pre.process_map.dom().insert(child)
             &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {
                 lock_state: if p == parent { LockStateU::Unlocked } else { pre.process_map[p].lock_state },
@@ -285,7 +285,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
             })
             &&& post.process_map[child] == (ProcessU {
                 lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false, pagetable: Some(empty_table),
-                iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid: post.process_map[child].pcid, owning_container: container, owned_pci_functions: Set::empty(),
+                iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid: post.process_map[child].pcid, owning_container: container,
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
                 depth: (pre.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors,
                 subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
@@ -309,6 +309,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_4k, Map::empty(), va => {});
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_2m, Map::empty(), va => {});
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_1g, Map::empty(), va => {});
+    assert_maps_equal!(post.process_map[child].pagetable->Some_0.pci_functions, Map::empty(), f => {});
     if iommu is Some {
         assert_maps_equal!(post.process_map[child].iommu_table->Some_0.mapping_4k, Map::empty(), va => {});
         assert_maps_equal!(post.process_map[child].iommu_table->Some_0.mapping_2m, Map::empty(), va => {});
@@ -349,6 +350,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
         whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_1g(),
+        post.pt_mp.spec_index(table).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(table).view().higher.pci.mapping_counts(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
@@ -423,6 +425,7 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
         post.pt_mp.spec_index(target_table).locking_thread() == pre.pt_mp.spec_index(target_table).locking_thread(),
         post.pt_lower.view() == pre.pt_lower.view().insert(target_table, post.pt_lower.view().spec_index(target_table)),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).lower.pagetable_window_locks,
+        post.pt_mp.spec_index(target_table).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(target_table).view().higher.pci.mapping_counts(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().insert(target_va, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va]),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),

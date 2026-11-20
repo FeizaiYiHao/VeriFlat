@@ -281,7 +281,7 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch
-                || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch,
+                || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch || ret is ErrorIpcPciBarMapped || ret is ErrorIpcPciReceiverFull,
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, ThreadState::SENDING, true),
     {
         syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, ThreadState::SENDING, IPCPayLoad::Pci { bus, dev, fun }, true)
@@ -319,7 +319,7 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch
-                || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch,
+                || ret is ErrorIpcSameProcess || ret is ErrorIpcPciOwnerMismatch || ret is ErrorIpcPciBarMapped || ret is ErrorIpcPciReceiverFull,
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, ThreadState::RECEIVING, true),
     {
         syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, ThreadState::RECEIVING, IPCPayLoad::Pci { bus, dev, fun }, true)

@@ -10,7 +10,7 @@ use super::super::syscall_kill_process::syscall_kill_process_walk_spec::{KillSco
 verus! {
 /// The killer's cpu, its process `prc_ptr`, itself `thrd_ptr`, its cpu's container, and the marked container `ctn_ptr`
 /// below that container, all write-held on `krnl`, are write-locked by `cpu_id` on the projection, and the empty zombie
-/// root `target` of `ctn_ptr`, which has no parent and owns no PCI function, is so on the projection.
+/// root `target` of `ctn_ptr`, which has no parent, is so on the projection.
 pub(crate) proof fn kill_container_retire_root_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, target: RwLockProcessPtr,
 )
@@ -30,7 +30,6 @@ pub(crate) proof fn kill_container_retire_root_pre_from_k(
         krnl.prc_mp.spec_index(target).view().children.view().len() == 0,
         krnl.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         krnl.prc_mp.spec_index(target).view().zombie,
-        krnl.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         krnl.prc_mp.spec_index(target).view_rodata().view().parent is None,
         krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
     ensures
@@ -50,7 +49,6 @@ pub(crate) proof fn kill_container_retire_root_pre_from_k(
             &&& process.children.len() == 0
             &&& process.owned_threads.len() == 0
             &&& process.zombie
-            &&& process.owned_pci_functions.is_empty()
             &&& process.parent is None
             &&& process.owning_container == ctn_ptr
         }),
@@ -87,7 +85,6 @@ pub(crate) proof fn kill_container_retire_root_step_from_u(
         pre.process_map[target].children.len() == 0,
         pre.process_map[target].owned_threads.len() == 0,
         pre.process_map[target].zombie,
-        pre.process_map[target].owned_pci_functions.is_empty(),
         pre.process_map[target].parent is None,
         pre.process_map[target].owning_container == ctn_ptr,
         pre.container_map[ctn_ptr].quota_4k < quota,

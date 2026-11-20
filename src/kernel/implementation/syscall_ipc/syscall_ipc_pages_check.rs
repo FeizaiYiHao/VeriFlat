@@ -703,9 +703,12 @@ pub(super) fn ipc_pages_check_tables(
             container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, source_thread); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
         };
     }
+    let (source_present, source_ram) = if source_user {
+        share_mapping_4k_source_precheck(&*krnl, source_range, source_pagetable, Tracked(&*lctx), Tracked(source_pagetable_lock_perm))
+    } else { (false, false) };
     let result = if !source_user {
         RetValueType::ErrorIpcRangeNotUser
-    } else if !share_mapping_4k_source_precheck(&*krnl, source_range, source_pagetable, Tracked(&*lctx), Tracked(source_pagetable_lock_perm)) {
+    } else if !source_present {
         RetValueType::ErrorIpcSourceUnmapped
     } else {
         proof { assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(target_thread).inv()) by { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, target_thread); }; }
@@ -722,7 +725,7 @@ pub(super) fn ipc_pages_check_tables(
                     ipc_share_pages_source_owners_in_target_uppertree(&*krnl, cpu_id, current_thrd_ptr, peer_thrd_ptr, source_thread, source_pagetable, source_container, target_container,
                         source_range);
                 }
-                true
+                source_ram
             } else {
                 ipc_pages_check_source_owners(
                     krnl, source_range, target_range, source_thread, target_thread, cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, peer_thrd_ptr, source_process,

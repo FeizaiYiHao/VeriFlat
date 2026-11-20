@@ -76,6 +76,7 @@ pub(super) fn commit_new_container(
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).present
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).is_io
         },
         forall|w: WindowVa| #![trigger va_range_2m_windows(*source_range).contains(w)]
             va_range_2m_windows(*source_range).contains(w) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> source_window_perms.view().dom().contains(w),
@@ -280,6 +281,7 @@ fn commit_new_container_publish(
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).present
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).is_io
         },
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![caller_cpu_id],

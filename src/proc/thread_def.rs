@@ -87,6 +87,15 @@ pub ghost enum SyscallProgress {
     Mmap1g { range: VaRange1G, mapped: usize, directory: bool, hidden: bool, flushed: bool },
     /// Unmapping of the 1G pages of `range` under the page table's write lock; the first `unmapped` leaves are hidden, and `flushed` records the TLB flush.
     Unmap1g { range: VaRange1G, unmapped: usize, flushed: bool },
+    /// Mapping of one BAR page of a PCI function owned by the caller's process at `va`; `directory` is the level installed for it.
+    MapPciBar4k { va: VAddr, directory: Mmap4kDirectory },
+    /// Mapping of one 2M BAR chunk of a PCI function owned by the caller's process at `va`; `directory` is the level installed for
+    /// it, and `flushed` records that the hidden empty L1 table under `va` was flushed from every cpu, so reclaiming it may proceed.
+    MapPciBar2m { va: VAddr, directory: Mmap2mDirectory, flushed: bool },
+    /// Unmapping of the BAR page mapped at `va`; `flushed` records the TLB flush.
+    UnmapPciBar4k { va: VAddr, flushed: bool },
+    /// Unmapping of the 2M BAR chunk mapped at `va`; `flushed` records the TLB flush.
+    UnmapPciBar2m { va: VAddr, flushed: bool },
     /// IOMMU mapping of the caller's pages at `va_range` into its IOMMU table at `iova_range`; the first `mapped` pages are done.
     IommuMap4k { va_range: VaRange4K, iova_range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
     /// IOMMU unmapping of `iova_range`; the first `unmapped` pages are done, and `flushed` records the IOTLB flush.

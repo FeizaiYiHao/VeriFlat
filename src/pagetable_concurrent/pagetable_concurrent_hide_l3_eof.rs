@@ -17,7 +17,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|i: usize| #![trigger post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)]
             pei_valid(i) && i != target_l3i ==> post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i) =~= pre.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)
         &&& post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(target_l3i)
-            =~= (PageEntry { addr: pre.higher.l3_entry(target_l3_p, target_l3i).addr, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+            =~= (PageEntry { addr: pre.higher.l3_entry(target_l3_p, target_l3i).addr, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
         &&& post.lower.pagetable_window_locks == pre.lower.pagetable_window_locks.remove_keys(pre.lower.pagetable_window_locks.dom().filter(|w: WindowVa| spec_v2l4index(w.va) == target_l4i && spec_v2l3index(w.va) == target_l3i))
     }
 
@@ -63,17 +63,73 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
     {
+        Self::hide_l3_entry_eof_wf_l4_l3(pre, post, target_l4i, target_l3i, target_l3_p);
         reveal(WholePageTable::hide_l3_entry_eof_transition_framing);
-        assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
-        assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
         assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
-        assert(post.higher.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4); };
+        Self::hide_l3_entry_eof_wf_mapping_1g_entries(pre, post, target_l4i, target_l3i, target_l3_p);
+        assert(post.higher.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); };
         assert(post.higher.user_only()) by { reveal(PageTableHigher::user_only); };
         assert(post.higher.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
         assert(post.higher.table_pages_wf()) by { reveal(PageTableHigher::table_pages_wf); };
         assert(post.higher.tables_reachable_wf()) by { reveal(PageTableHigher::tables_reachable_wf); };
         assert(post.higher.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
+    }
+
+    /// EOF closure of `hide_l3_entry`: `wf_l4` and `wf_l3`; the placeholder links the same L2 page and is no 1G leaf.
+    proof fn hide_l3_entry_eof_wf_l4_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            forall|i: L2Index| #![trigger pre.lower.l2_owner(pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, i)] pei_valid(i) ==> pre.lower.l2_owner(pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, i) is None,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
+            forall|i: L2Index, j: L1Index| #![trigger pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, i, j)]
+                pei_valid(i) && pei_valid(j) ==> pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, i, j) is None,
+            Self::hide_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            post.higher.wf_l4(),
+            post.higher.wf_l3(),
+    {
+        reveal(WholePageTable::hide_l3_entry_eof_transition_framing);
+        assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+        assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
+    }
+
+    /// EOF closure of `hide_l3_entry`: the body of `wf_mapping_1g`; no 1G walk changes and `mapping_1g` is unchanged.
+    proof fn hide_l3_entry_eof_wf_mapping_1g_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            forall|i: L2Index| #![trigger pre.lower.l2_owner(pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, i)] pei_valid(i) ==> pre.lower.l2_owner(pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, i) is None,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
+            forall|i: L2Index, j: L1Index| #![trigger pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, i, j)]
+                pei_valid(i) && pei_valid(j) ==> pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, i, j) is None,
+            Self::hide_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index|
+                #![trigger post.higher.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0)))]
+                #![trigger post.higher.spec_resolve_mapping_1g_l3(l4i, l3i)]
+                post.higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> {
+                    &&& post.higher.mapping_1g.view().dom().contains(spec_index2va((l4i, l3i, 0, 0))) == post.higher.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
+                    &&& post.higher.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
+                        ==> post.higher.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == post.higher.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
+                        && post.higher.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == post.higher.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
+                        && post.higher.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == post.higher.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
+                        && post.higher.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).is_io == post.higher.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.is_io
+                        && post.higher.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == post.higher.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present
+                },
+    {
+        Self::hide_l3_entry_eof_resolve(pre, post, target_l4i, target_l3i, target_l3_p);
+        reveal(WholePageTable::hide_l3_entry_eof_transition_framing);
+        reveal(PageTableHigher::wf_mapping_1g);
     }
 
     /// EOF closure of `hide_l3_entry`: the leaves of the window half that read no walk, the unchanged page closure, and the hidden L1
@@ -219,7 +275,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
-            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
+            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr,
+                perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
@@ -227,6 +284,32 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+    {
+        Self::hide_l3_entry_eof_held_l3(pre, post, target_l4i, target_l3i, target_l3_p);
+        reveal(WholePageTable::hide_l3_entry_eof_transition_framing);
+    }
+
+    /// EOF closure of `hide_l3_entry`: the root and L3 levels of the held chain; the placeholder keeps the L2 page's address.
+    proof fn hide_l3_entry_eof_held_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            forall|i: L2Index| #![trigger pre.lower.l2_owner(pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, i)] pei_valid(i) ==> pre.lower.l2_owner(pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, i) is None,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
+            forall|i: L2Index, j: L1Index| #![trigger pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, i, j)]
+                pei_valid(i) && pei_valid(j) ==> pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, i, j) is None,
+            Self::hide_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
+            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr,
+                perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
     {
         reveal(WholePageTable::hide_l3_entry_eof_transition_framing);
         reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);

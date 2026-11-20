@@ -2,6 +2,15 @@
 //! its result, logging `self-test: <name> ok` the first time each one succeeds. It exits with
 //! `sys_debug_exit(0)` once every syscall passed and with a nonzero code at the first failure.
 //!
+//! PCI functions: every function starts unowned; dom0, the root process, claims the DMA test device before attaching or
+//! sending it, and claims it again once the child it sent the device to is killed.
+//!
+//! Device memory: nothing is mapped at boot. dom0 finds the BAR slot of a function it owns with `sys_pci_bar`, maps a
+//! BAR page with `map_pci_bar_4k` (a 2M chunk of a large BAR with `map_pci_bar_2m`) and reads a register through it;
+//! the IO checks (`io_*`, `iommu_io`, `pci_bar_*`) check that an IO page can be neither IOMMU-mapped, sent to a child
+//! process, nor removed by the generic unmap, that a function is not sent while one of its BAR pages is mapped, and that
+//! a killed child that mapped a BAR of its function leaves the function claimable again.
+//!
 //! Nothing here waits for a timer tick, so the same binary passes on a `no-timer` kernel: threads
 //! that share a CPU take turns at blocking IPC and `sys_schedule`, and every CPU that has to run a
 //! thread is woken by the IPI of `cpu_online` and kept busy by a thread that only yields, since a
@@ -16,13 +25,13 @@ use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use vsys::*;
 
 /// The verified syscalls (SystemCalls.md section 14) with the names the log uses.
-const SYSCALLS: [(usize, &str); 50] = [
+const SYSCALLS: [(usize, &str); 55] = [
     (NR_ALLOC_QUOTA_4K, "alloc_quota_4k"), (NR_ALLOC_THREAD_QUOTA_4K, "alloc_thread_quota_4k"),
     (NR_ALLOC_QUOTA_2M, "alloc_quota_2m"), (NR_ALLOC_THREAD_QUOTA_2M, "alloc_thread_quota_2m"),
     (NR_ALLOC_QUOTA_1G, "alloc_quota_1g"), (NR_ALLOC_THREAD_QUOTA_1G, "alloc_thread_quota_1g"),
     (NR_SCHEDULE, "schedule"), (NR_MMAP_4K, "mmap_4k"), (NR_UNMAP_4K, "unmap_4k"), (NR_MMAP_2M, "mmap_2m"),
     (NR_UNMAP_2M, "unmap_2m"), (NR_SPLIT_2M, "split_2m"), (NR_MERGE_2M, "merge_2m"), (NR_MMAP_1G, "mmap_1g"),
-    (NR_UNMAP_1G, "unmap_1g"), (NR_PCI_ATTACH_DMA, "pci_attach_dma"), (NR_IOMMU_MAP_4K, "iommu_map_4k"),
+    (NR_UNMAP_1G, "unmap_1g"), (NR_PCI_CLAIM, "pci_claim"), (NR_PCI_ATTACH_DMA, "pci_attach_dma"), (NR_IOMMU_MAP_4K, "iommu_map_4k"),
     (NR_IOMMU_UNMAP_4K, "iommu_unmap_4k"), (NR_NEW_ENDPOINT, "new_endpoint"), (NR_NEW_THREAD, "new_thread"),
     (NR_NEW_THREAD_WITH_ENDPOINT, "new_thread_with_endpoint"), (NR_SEND_EMPTY, "send_empty"),
     (NR_RECEIVE_EMPTY, "receive_empty"), (NR_SEND_EMPTY_NO_BLOCK, "send_empty_no_block"),
@@ -37,9 +46,13 @@ const SYSCALLS: [(usize, &str); 50] = [
     (NR_NEW_CONTAINER, "new_container"), (NR_NEW_CONTAINER_WITH_ENDPOINT, "new_container_with_endpoint"),
     (NR_CPU_ONLINE_CHILD, "cpu_online_child"), (NR_CPU_OFFLINE_REQUEST_CHILD, "cpu_offline_request_child"),
     (NR_SEND_CPU, "send_cpu"), (NR_RECEIVE_CPU, "receive_cpu"), (NR_KILL_CONTAINER, "kill_container"),
+    (NR_MAP_PCI_BAR_4K, "map_pci_bar_4k"), (NR_UNMAP_PCI_BAR_4K, "unmap_pci_bar_4k"), (NR_MAP_PCI_BAR_2M, "map_pci_bar_2m"),
+    (NR_UNMAP_PCI_BAR_2M, "unmap_pci_bar_2m"),
 ];
 /// The 1G syscalls, left untested when the boot found no free 1G block (no CPUID pdpe1gb).
 const SYSCALLS_1G: [usize; 4] = [NR_ALLOC_QUOTA_1G, NR_ALLOC_THREAD_QUOTA_1G, NR_MMAP_1G, NR_UNMAP_1G];
+/// The 2M BAR syscalls, left untested when no BAR holds a whole 2M chunk (the default boot; the high-BAR boot has one).
+const SYSCALLS_BAR_2M: [usize; 2] = [NR_MAP_PCI_BAR_2M, NR_UNMAP_PCI_BAR_2M];
 
 /// Bit `nr` is set once syscall `nr` succeeded; dom0's child processes and containers share dom0's
 /// image, so its statics too.
@@ -55,6 +68,14 @@ const VA_2M: usize = 0xc1_0000_0000;
 const VA_1G: usize = 0xc2_0000_0000;
 const VA_DMA: usize = 0xc3_0000_0000;
 const VA_PAGES: usize = 0xc4_0000_0000;
+/// Where the peer child receives the IO page dom0 sends it.
+const VA_IO: usize = 0xc5_0000_0000;
+/// Where dom0 maps edu's BAR0 pages, the IOMMU child maps its edu page, and dom0 maps the ivshmem 2M chunks.
+const VA_BAR: usize = 0xc6_0000_0000;
+const VA_CHILD_BAR: usize = 0xc7_0000_0000;
+const VA_BAR_2M: usize = 0xc8_0000_0000;
+/// A BAR slot index past every slot the loader can report (`MAX_BAR_SLOTS`).
+const BAD_SLOT: usize = 1 << 20;
 const SIZE_2M: usize = 1 << 21;
 const SIZE_1G: usize = 1 << 30;
 const MAGIC: u64 = 0x5afe_9a9e;
@@ -62,6 +83,8 @@ const MAGIC: u64 = 0x5afe_9a9e;
 const PROBE_IOVA: usize = 0x80_0010_0000;
 /// QEMU's `edu` device.
 const EDU_VENDOR_DEVICE: usize = 0x1234_11e8;
+/// QEMU's `ivshmem-plain`, whose BAR2 (shared memory) the extra high-BAR boot places above 4 GiB.
+const IVSHMEM_VENDOR_DEVICE: usize = 0x1af4_1110;
 
 /// Descriptor 0 holds dom0's root endpoint; dom0 creates a second endpoint at descriptor 1.
 const ROOT_ENDPOINT: usize = 0;
@@ -86,6 +109,13 @@ static mut PLAIN_STACK: [u8; 16384] = [0; 16384];
 static mut CONTAINER_STACK: [u8; 16384] = [0; 16384];
 static mut CONTAINER_YIELD_STACK: [u8; 16384] = [0; 16384];
 static DMA_BDF: AtomicUsize = AtomicUsize::new(0);
+/// The BAR-table slot of edu's BAR0, the offset of its identification register in BAR0's first page, and the value dom0
+/// read there.
+static EDU_SLOT: AtomicUsize = AtomicUsize::new(0);
+static IO_ID_OFFSET: AtomicUsize = AtomicUsize::new(0);
+static IO_ID: AtomicUsize = AtomicUsize::new(0);
+/// Set once the IOMMU child refused a PCI transfer because dom0 still mapped a BAR page of the function.
+static CHILD_SAW_BAR_MAPPED: AtomicBool = AtomicBool::new(false);
 static IOMMU_CHILD_ATTACHED: AtomicBool = AtomicBool::new(false);
 static PEER_DONE: AtomicBool = AtomicBool::new(false);
 static CONTAINER_CPU_ONLINED: AtomicBool = AtomicBool::new(false);
@@ -203,6 +233,31 @@ fn dma_bdf() -> (usize, usize, usize) {
     (bdf >> 8, (bdf >> 3) & 0x1f, bdf & 0x7)
 }
 
+/// The BAR-table slot of BAR `bar` of PCI function `bdf` (`bus << 8 | device << 3 | function`) with its physical base
+/// and size, found through `sys_pci_bar`, whose slot index is the kernel's BAR-table index.
+fn find_bar_slot(bdf: usize, bar: usize) -> Option<(usize, usize, usize)> {
+    let mut i = 0;
+    loop {
+        let (key, base, size) = unsafe { sys_pci_bar(i) };
+        if key < 0 {
+            return None;
+        }
+        if (key as usize >> 8) & 0xffff == bdf && key as usize & 0xff == bar {
+            return Some((i, base, size));
+        }
+        i += 1;
+    }
+}
+
+/// Fails unless edu's identification register, in the IO page mapped at `page`, reads what dom0 read first.
+fn expect_io_id(what: &str, page: usize) {
+    let id = unsafe { ((page + IO_ID_OFFSET.load(Ordering::SeqCst)) as *const u32).read_volatile() } as usize;
+    if id != IO_ID.load(Ordering::SeqCst) {
+        log::error!("self-test: {}: edu identification reads {:#x}, expected {:#x}", what, id, IO_ID.load(Ordering::SeqCst));
+        unsafe { sys_debug_exit(1) };
+    }
+}
+
 /// Yields forever, recording where it runs: keeps a CPU busy, so a thread queued there runs and the CPU
 /// notices an offline request.
 extern "C" fn yield_forever() -> ! {
@@ -227,11 +282,20 @@ extern "C" fn ipc_thread() -> ! {
 }
 
 /// First thread of the IOMMU child process: takes the DMA test device over the root endpoint and
-/// attaches it to its own IOMMU table.
+/// attaches it to its own IOMMU table. Only the root process may claim a function.
 extern "C" fn iommu_child() -> ! {
     let (bus, dev, fun) = dma_bdf();
+    // dom0 first sends the device while it still maps a BAR page of it: both sides get ErrorIpcPciBarMapped.
+    expect_error("receive_pci while the sender maps a BAR page", unsafe { sys_receive_pci(ROOT_ENDPOINT, bus, dev, fun) }, "ErrorIpcPciBarMapped");
+    CHILD_SAW_BAR_MAPPED.store(true, Ordering::SeqCst);
     ok(NR_RECEIVE_PCI, unsafe { sys_receive_pci(ROOT_ENDPOINT, bus, dev, fun) });
+    // The new owner maps a BAR page of the device and reads it; the kill later reclaims that mapping.
+    fund(4);
+    ok(NR_MAP_PCI_BAR_4K, unsafe { sys_map_pci_bar_4k(EDU_SLOT.load(Ordering::SeqCst), 0, VA_CHILD_BAR) });
+    expect_io_id("the IOMMU child's BAR page", VA_CHILD_BAR);
     ok(NR_PCI_ATTACH_DMA, unsafe { sys_pci_attach_dma(bus, dev, fun) });
+    expect_error("pci_claim by a child process", unsafe { sys_pci_claim(bus, dev, fun) }, "ErrorPciNotRootProcess");
+    log::info!("self-test: pci_claim_child ok (refused)");
     IOMMU_CHILD_ATTACHED.store(true, Ordering::SeqCst);
     yield_forever()
 }
@@ -242,6 +306,10 @@ extern "C" fn peer_child() -> ! {
     ok(NR_RECEIVE_ENDPOINT, unsafe { sys_receive_endpoint(ROOT_ENDPOINT, 1) });
     ok(NR_SEND_EMPTY, unsafe { sys_send_empty(1) });
     ok(NR_SEND_PAGES, unsafe { sys_send_pages(ROOT_ENDPOINT, (&raw const SHARED_PAGE) as usize, 1) });
+    // The IO page dom0 sends: device memory is never shared, so the rendezvous fails its owner check on both sides.
+    fund(4);
+    expect_error("receive_pages of an IO page", unsafe { sys_receive_pages(ROOT_ENDPOINT, VA_IO, 1) }, "ErrorIpcPageOwnerMismatch");
+    log::info!("self-test: io_send ok (refused)");
     PEER_DONE.store(true, Ordering::SeqCst);
     yield_forever()
 }
@@ -310,8 +378,8 @@ fn test_memory() -> bool {
     true
 }
 
-/// VT-d with QEMU's `edu`: once attached to dom0's IOMMU table, the device reads a page dom0 maps
-/// at the probe IOVA and faults again once it is unmapped.
+/// VT-d with QEMU's `edu`: dom0 cannot attach the unowned device; once claimed, it cannot claim it again; once attached
+/// to dom0's IOMMU table, the device reads a page dom0 maps at the probe IOVA and faults again once it is unmapped.
 fn test_iommu() {
     let bdf = unsafe { sys_debug_dma_device() };
     if bdf < 0 {
@@ -325,6 +393,15 @@ fn test_iommu() {
         unsafe { sys_debug_exit(1) };
     }
     log::info!("self-test: pci_info ok");
+    let Some((slot, _, _)) = find_bar_slot(bdf as usize, 0) else { fail("finding edu's BAR0 slot", -1) };
+    EDU_SLOT.store(slot, Ordering::SeqCst);
+    expect_error("pci_attach_dma of an unowned function", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
+    log::info!("self-test: pci_attach_unowned ok (refused)");
+    expect_error("map_pci_bar_4k of an unowned function", unsafe { sys_map_pci_bar_4k(slot, 0, VA_BAR) }, "ErrorPciOwnerMismatch");
+    log::info!("self-test: pci_bar_unowned ok (refused)");
+    ok(NR_PCI_CLAIM, unsafe { sys_pci_claim(bus, dev, fun) });
+    expect_error("pci_claim of an owned function", unsafe { sys_pci_claim(bus, dev, fun) }, "ErrorPciAlreadyOwned");
+    log::info!("self-test: pci_claim_twice ok (refused)");
     ok(NR_PCI_ATTACH_DMA, unsafe { sys_pci_attach_dma(bus, dev, fun) });
     ok(NR_MMAP_4K, unsafe { sys_mmap_4k(VA_DMA, 1) });
     unsafe { (VA_DMA as *mut u64).write_volatile(MAGIC) };
@@ -339,6 +416,90 @@ fn test_iommu() {
         fail("DMA read after iommu_unmap_4k (expected a fault)", reason);
     }
     ok(NR_UNMAP_4K, unsafe { sys_unmap_4k(VA_DMA, 1) });
+}
+
+/// Device memory through edu's BAR0, which dom0 owns and has attached: bad slot and page indices are refused; dom0 maps
+/// BAR0's first page and reads the identification register; an IO page can be neither IOMMU-mapped nor removed by the
+/// generic `unmap_4k`; `unmap_pci_bar_4k` refuses a RAM page; and a second BAR page is mapped, unmapped for good, and
+/// leaves the first one readable. The first page stays mapped for `test_processes`.
+fn test_io() {
+    let (bus, dev, fun) = dma_bdf();
+    let slot = EDU_SLOT.load(Ordering::SeqCst);
+    let (_, bar0, bar_pages) = unsafe { sys_pci_info(bus, dev, fun) };
+    expect_error("map_pci_bar_4k of a bad slot", unsafe { sys_map_pci_bar_4k(BAD_SLOT, 0, VA_BAR) }, "ErrorPciBarSlotInvalid");
+    expect_error("map_pci_bar_4k of a page past the BAR", unsafe { sys_map_pci_bar_4k(slot, bar_pages, VA_BAR) }, "ErrorPciBarSlotInvalid");
+    expect_error("map_pci_bar_2m of a 1 MiB BAR", unsafe { sys_map_pci_bar_2m(slot, 0, VA_BAR_2M) }, "ErrorPciBarSlotInvalid");
+    log::info!("self-test: pci_bar_bad_slot ok (refused)");
+
+    fund(16);
+    ok(NR_MAP_PCI_BAR_4K, unsafe { sys_map_pci_bar_4k(slot, 0, VA_BAR) });
+    IO_ID_OFFSET.store(bar0 & 0xfff, Ordering::SeqCst);
+    let id = unsafe { ((VA_BAR + (bar0 & 0xfff)) as *const u32).read_volatile() } as usize;
+    if id & 0xff != 0xed {
+        log::error!("self-test: edu identification at {:#x} reads {:#x}", VA_BAR + (bar0 & 0xfff), id);
+        unsafe { sys_debug_exit(1) };
+    }
+    IO_ID.store(id, Ordering::SeqCst);
+    log::info!("self-test: io_read ok");
+    expect_error("map_pci_bar_4k over a mapped VA", unsafe { sys_map_pci_bar_4k(slot, 0, VA_BAR) }, "ErrorVaInUse");
+
+    expect_error("iommu_map_4k of an IO page", unsafe { sys_iommu_map_4k(VA_BAR, PROBE_IOVA, 1) }, "ErrorIommuVaNotMapped");
+    log::info!("self-test: iommu_io ok (refused)");
+    expect_error("unmap_4k of an IO page", unsafe { sys_unmap_4k(VA_BAR, 1) }, "Error");
+    expect_io_id("the IO page after a refused unmap_4k", VA_BAR);
+    log::info!("self-test: unmap_4k_io ok (refused)");
+
+    ok(NR_MMAP_4K, unsafe { sys_mmap_4k(VA_4K, 1) });
+    expect_error("unmap_pci_bar_4k of a RAM page", unsafe { sys_unmap_pci_bar_4k(VA_4K) }, "ErrorPciBarNotMapped");
+    ok(NR_UNMAP_4K, unsafe { sys_unmap_4k(VA_4K, 1) });
+    log::info!("self-test: unmap_pci_bar_ram ok (refused)");
+
+    let last = VA_BAR + 4096;
+    ok(NR_MAP_PCI_BAR_4K, unsafe { sys_map_pci_bar_4k(slot, bar_pages - 1, last) });
+    ok(NR_UNMAP_PCI_BAR_4K, unsafe { sys_unmap_pci_bar_4k(last) });
+    expect_error("unmap_pci_bar_4k of an unmapped page", unsafe { sys_unmap_pci_bar_4k(last) }, "ErrorPciBarNotMapped");
+    let ret = unsafe { sys_iommu_map_4k(last, PROBE_IOVA, 1) };
+    if ret >= 0 {
+        fail("iommu_map_4k of an unmapped IO page (expected an error)", ret);
+    }
+    expect_io_id("the IO page next to an unmapped one", VA_BAR);
+    log::info!("self-test: io_unmap ok");
+}
+
+/// A BAR above 4 GiB, when the boot has one (QEMU ivshmem's BAR2 in the extra high-BAR boot): dom0 claims ivshmem, maps
+/// the first and the last 2M chunk of BAR2 with `map_pci_bar_2m`, writes and reads both ends of each, checks that the
+/// generic `unmap_2m` refuses an IO page, and unmaps both. Returns whether it ran.
+fn test_high_bar() -> bool {
+    let mut i = 0;
+    loop {
+        let (key, base, size) = unsafe { sys_pci_bar(i) };
+        if key < 0 {
+            log::info!("self-test: io_high_bar skipped: no ivshmem BAR above 4 GiB");
+            return false;
+        }
+        let key = key as usize;
+        if key >> 24 == IVSHMEM_VENDOR_DEVICE && key & 0xff == 2 && base >= 1 << 32 && size >= SIZE_2M {
+            let bdf = (key >> 8) & 0xffff;
+            ok(NR_PCI_CLAIM, unsafe { sys_pci_claim(bdf >> 8, (bdf >> 3) & 0x1f, bdf & 7) });
+            fund(4);
+            let chunks = [(0, VA_BAR_2M), (size / SIZE_2M - 1, VA_BAR_2M + SIZE_2M)];
+            for (index, va) in chunks {
+                ok(NR_MAP_PCI_BAR_2M, unsafe { sys_map_pci_bar_2m(i, index, va) });
+                for off in [0, SIZE_2M - 8] {
+                    unsafe { ((va + off) as *mut u64).write_volatile(MAGIC ^ (va + off) as u64) };
+                    expect_word("an ivshmem word above 4 GiB", va + off, MAGIC ^ (va + off) as u64);
+                }
+            }
+            expect_error("unmap_2m of a 2M IO page", unsafe { sys_unmap_2m(VA_BAR_2M, 1) }, "Error");
+            for (_, va) in chunks {
+                ok(NR_UNMAP_PCI_BAR_2M, unsafe { sys_unmap_pci_bar_2m(va) });
+            }
+            expect_error("unmap_pci_bar_2m of an unmapped chunk", unsafe { sys_unmap_pci_bar_2m(VA_BAR_2M) }, "ErrorPciBarNotMapped");
+            log::info!("self-test: io_high_bar ok (BAR2 at {:#x}, {:#x} bytes)", base, size);
+            return true;
+        }
+        i += 1;
+    }
 }
 
 /// Threads and IPC on dom0's CPU: a new endpoint, a second thread on it that answers every IPC kind
@@ -359,18 +520,15 @@ fn test_ipc() {
     pass(NR_THREAD_EXIT);
 }
 
-/// Child processes sharing dom0's image: one with an IOMMU table that takes the DMA device, one that
-/// receives the root endpoint and sends a page back, and a plain one that keeps yielding. The first
-/// two are killed; the plain one and a yielding thread of dom0 keep CPUs busy for `test_cpus`.
+/// Child processes sharing dom0's image: one that receives the root endpoint and sends a page back (an IO page dom0
+/// sends it is refused), one with an IOMMU table that takes the DMA device, maps a BAR page of it and attaches it, and a
+/// plain one that keeps yielding. The device is refused while dom0 still maps a BAR page of it and sent once dom0 unmaps
+/// it. The first two are killed, which leaves the DMA device unowned although the child mapped its BAR, so dom0 claims it
+/// again; the plain one and a yielding thread of dom0 keep CPUs busy for `test_cpus`.
 fn test_processes() {
     let (image, pages) = image_range();
     let (bus, dev, fun) = dma_bdf();
     fund(3 * (6 + 3 * pages) + 2);
-    let ret = unsafe { sys_new_process_with_iommu_and_endpoint(image, pages, ROOT_ENDPOINT, entry(iommu_child), stack_top(&raw const IOMMU_CHILD_STACK)) };
-    ok(NR_NEW_PROCESS_WITH_IOMMU_AND_ENDPOINT, ret);
-    ok(NR_SEND_PCI, unsafe { sys_send_pci(ROOT_ENDPOINT, bus, dev, fun) });
-    wait_yield("the IOMMU child to attach the device", || IOMMU_CHILD_ATTACHED.load(Ordering::SeqCst));
-
     let ret = unsafe { sys_new_process_with_endpoint(image, pages, ROOT_ENDPOINT, entry(peer_child), stack_top(&raw const PEER_STACK)) };
     ok(NR_NEW_PROCESS_WITH_ENDPOINT, ret);
     ok(NR_SEND_ENDPOINT, unsafe { sys_send_endpoint(ROOT_ENDPOINT, ROOT_ENDPOINT) });
@@ -378,13 +536,25 @@ fn test_processes() {
     ok(NR_RECEIVE_PAGES, unsafe { sys_receive_pages(ROOT_ENDPOINT, VA_PAGES, 1) });
     unsafe { (VA_PAGES as *mut u64).write_volatile(MAGIC) };
     expect_word("the page sent by the peer child, through its own mapping", (&raw const SHARED_PAGE) as usize, MAGIC);
+    expect_error("send_pages of an IO page", unsafe { sys_send_pages(ROOT_ENDPOINT, VA_BAR, 1) }, "ErrorIpcPageOwnerMismatch");
     wait_yield("the peer child", || PEER_DONE.load(Ordering::SeqCst));
+
+    let ret = unsafe { sys_new_process_with_iommu_and_endpoint(image, pages, ROOT_ENDPOINT, entry(iommu_child), stack_top(&raw const IOMMU_CHILD_STACK)) };
+    ok(NR_NEW_PROCESS_WITH_IOMMU_AND_ENDPOINT, ret);
+    expect_error("send_pci while a BAR page is mapped", unsafe { sys_send_pci(ROOT_ENDPOINT, bus, dev, fun) }, "ErrorIpcPciBarMapped");
+    ok(NR_UNMAP_PCI_BAR_4K, unsafe { sys_unmap_pci_bar_4k(VA_BAR) });
+    wait_yield("the IOMMU child to see the refused transfer", || CHILD_SAW_BAR_MAPPED.load(Ordering::SeqCst));
+    ok(NR_SEND_PCI, unsafe { sys_send_pci(ROOT_ENDPOINT, bus, dev, fun) });
+    log::info!("self-test: pci_bar_send_mapped ok (refused, then sent after unmap_pci_bar_4k)");
+    wait_yield("the IOMMU child to attach the device", || IOMMU_CHILD_ATTACHED.load(Ordering::SeqCst));
 
     ok(NR_NEW_PROCESS, unsafe { sys_new_process(image, pages, entry(yield_forever), stack_top(&raw const PLAIN_STACK)) });
     ok(NR_NEW_THREAD, unsafe { sys_new_thread(entry(yield_forever), stack_top(&raw const YIELD_STACK)) });
-    // Children are numbered in creation order: the IOMMU child, then the peer child.
+    // Children are numbered in creation order: the peer child, then the IOMMU child, which maps a BAR page of the device.
     ok(NR_KILL_PROCESS, unsafe { sys_kill_process(0) });
     ok(NR_KILL_PROCESS, unsafe { sys_kill_process(0) });
+    ok(NR_PCI_CLAIM, unsafe { sys_pci_claim(bus, dev, fun) });
+    log::info!("self-test: pci_claim_after_kill ok (the killed owner had mapped a BAR page)");
 }
 
 /// CPU 1 comes online and pulls a yielding thread (or dom0's). Then whichever of CPUs 0 and 1 dom0 does
@@ -440,6 +610,8 @@ pub extern "C" fn _start() -> ! {
     log::info!("self-test: debug_null ok");
     let has_1g = test_memory();
     test_iommu();
+    test_io();
+    let has_bar_2m = test_high_bar();
     test_ipc();
     test_processes();
     test_cpus();
@@ -451,7 +623,7 @@ pub extern "C" fn _start() -> ! {
     let passed = PASSED.load(Ordering::SeqCst);
     let mut missing = false;
     for (nr, name) in SYSCALLS {
-        if passed & (1 << nr) == 0 && (has_1g || !SYSCALLS_1G.contains(&nr)) {
+        if passed & (1 << nr) == 0 && (has_1g || !SYSCALLS_1G.contains(&nr)) && (has_bar_2m || !SYSCALLS_BAR_2M.contains(&nr)) {
             log::error!("self-test: {} was not exercised", name);
             missing = true;
         }

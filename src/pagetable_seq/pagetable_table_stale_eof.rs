@@ -43,6 +43,38 @@ pub open spec fn table_stale_cpus_update_eof_transition_framing(pre: KernelK, po
         pre.pt_mp.dom().contains(pagetable_ptr) && pagetable_ptr != root ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr)
 }
 
+/// EOF closure of `KernelK::replace_table_stale_cpus`: `process_pagetable_wf`; every table keeps its process and PCID.
+proof fn table_stale_cpus_update_eof_process_pagetable(pre: KernelK, post: KernelK, root: RwLockPageTableRoot)
+    requires
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        table_stale_cpus_update_eof_transition_framing(pre, post, root),
+    ensures process_pagetable_wf(post.prc_mp, post.pt_mp),
+{
+    assert(post.prc_mp == pre.prc_mp && post.pt_mp.unchanged_except(&pre.pt_mp, root) && post.pt_mp.spec_index(root).view().higher
+        == (PageTableHigher { table_stale_cpus: post.pt_mp.spec_index(root).view().higher.table_stale_cpus, ..pre.pt_mp.spec_index(root).view().higher })) by {
+        reveal(table_stale_cpus_update_eof_transition_framing);
+    };
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { broadcast use table_stale_cpus_update_eof_process_pagetable_at; reveal(process_pagetable_wf); };
+}
+
+/// EOF closure of `KernelK::replace_table_stale_cpus`: the page-table half of `process_pagetable_wf` at one table, which keeps
+/// its process.
+broadcast proof fn table_stale_cpus_update_eof_process_pagetable_at(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, pt: RwLockPageTableRoot)
+    requires
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        table_stale_cpus_update_eof_transition_framing(pre, post, root),
+    ensures
+        #![trigger table_stale_cpus_update_eof_transition_framing(pre, post, root), post.pt_mp.spec_index(pt).view().higher.proc_ptr]
+        post.pt_mp.dom().contains(pt) ==> post.prc_mp.dom().contains(post.pt_mp.spec_index(pt).view().higher.proc_ptr)
+            && post.prc_mp.spec_index(post.pt_mp.spec_index(pt).view().higher.proc_ptr).view().pagetable == pt,
+{
+    assert(post.prc_mp == pre.prc_mp && post.pt_mp.dom() == pre.pt_mp.dom()
+        && (post.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt).view().higher.proc_ptr == pre.pt_mp.spec_index(pt).view().higher.proc_ptr)) by {
+        reveal(table_stale_cpus_update_eof_transition_framing);
+    };
+    reveal(process_pagetable_wf);
+}
+
 /// EOF closure of `KernelK::replace_table_stale_cpus`: the table is write-held, so it may list CPUs; its roots, page
 /// records, and process are unchanged; a `Set` only grows the record and a `RemoveCpu` drops a CPU that keeps nothing a
 /// flush would remove, so the TLB and paging-structure invariants carry over.
@@ -93,10 +125,11 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
+    table_stale_cpus_update_eof_process_pagetable(pre, post, root);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the big-lock payload: no payload invariant reads the table record.
@@ -107,7 +140,7 @@ proof fn table_stale_cpus_update_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, p
     ensures
         post.inv(),
 {
-    assert(post.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+    assert(post.wf_l4()) by { reveal(PageTableHigher::wf_l4); assert(post.l4_table == pre.l4_table && post.l3_tables == pre.l3_tables); };
     assert(post.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
     assert(post.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
     assert(post.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
@@ -118,6 +151,53 @@ proof fn table_stale_cpus_update_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, p
     assert(post.tables_reachable_wf()) by { reveal(PageTableHigher::tables_reachable_wf); };
     assert(post.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
 }
+
+/// EOF closure of `KernelK::replace_table_stale_cpus` for `wf_mapping_4k`: the leaves and mappings are unchanged.
+proof fn table_stale_cpus_update_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        pre.wf(),
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures post.wf_mapping_4k(),
+{
+    table_stale_cpus_update_eof_higher_inv(pre.higher, post.higher);
+    table_stale_cpus_update_eof_resolve_4k(pre, post);
+    reveal(WholePageTable::wf_mapping_4k);
+}
+
+/// EOF closure of `KernelK::replace_table_stale_cpus` for the 4K walks, which do not read the table record: each resolves as
+/// before.
+proof fn table_stale_cpus_update_eof_resolve_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+            post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+{}
+
+/// EOF closure of `KernelK::replace_table_stale_cpus` for `wf_mapping_2m`: the leaves and mappings are unchanged.
+proof fn table_stale_cpus_update_eof_wf_mapping_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        pre.wf(),
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures post.wf_mapping_2m(),
+{
+    table_stale_cpus_update_eof_resolve_2m(pre, post);
+    reveal(WholePageTable::wf_mapping_2m);
+}
+
+/// EOF closure of `KernelK::replace_table_stale_cpus` for the 2M walks, which do not read the table record: each resolves
+/// as before.
+proof fn table_stale_cpus_update_eof_resolve_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
+            post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
+{}
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the table itself: no table invariant reads the table record.
 proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
@@ -135,8 +215,8 @@ proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
     assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
     assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
-    assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); };
-    assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); };
+    table_stale_cpus_update_eof_wf_mapping_4k(pre, post);
+    table_stale_cpus_update_eof_wf_mapping_2m(pre, post);
     assert(post.user_only()) by { reveal(WholePageTable::user_only); };
     assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
     assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
@@ -217,6 +297,7 @@ proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, ro
         table_stale_cpus_update_eof_transition_framing(pre, post, root),
     ensures
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
@@ -224,6 +305,7 @@ proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, ro
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }

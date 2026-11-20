@@ -184,10 +184,11 @@ pub fn probe_cpus() -> ArrayVec<u8, MAX_CPUS> {
     ids
 }
 
-/// Register bases of the VT-d remapping units, in DMAR order. VeriFlat's isolation needs DMA
-/// remapping, so a machine without a DMAR table or a DRHD entry does not boot. PCI segment groups
-/// other than 0 are not supported: the kernel's requester IDs have no segment.
-pub fn probe_iommu() -> ArrayVec<u64, MAX_IOMMU_UNITS> {
+/// Register bases of the VT-d remapping units, in DMAR order, and the DMAR host address width in bits (the
+/// physical addresses DMA can reach). VeriFlat's isolation needs DMA remapping, so a machine without a DMAR table
+/// or a DRHD entry does not boot. PCI segment groups other than 0 are not supported: the kernel's requester IDs
+/// have no segment.
+pub fn probe_iommu() -> (ArrayVec<u64, MAX_IOMMU_UNITS>, u8) {
     let acpi = tables();
 
     log::info!("ACPI: {:?}", acpi);
@@ -202,7 +203,9 @@ pub fn probe_iommu() -> ArrayVec<u64, MAX_IOMMU_UNITS> {
         units.push(base).expect("more DRHD entries than MAX_IOMMU_UNITS");
     }
     assert!(!units.is_empty(), "DMAR has no DRHD entry: VeriFlat needs VT-d DMA remapping");
-    units
+    let width = dmar.host_address_width + 1;
+    log::info!("DMAR host address width: {} bits", width);
+    (units, width)
 }
 
 /// The PCI ECAM (MMCONFIG) windows of the MCFG table as `(base, size)`; empty without an MCFG.

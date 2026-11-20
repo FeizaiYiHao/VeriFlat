@@ -26,8 +26,7 @@ pub(super) fn thread_exit_reclaim_flush(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
     cr3: PageTableRoot, pcid: Pcid, Ghost(entry_k): Ghost<KernelK>,
-    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
-    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>, Ghost(locked_it): Ghost<LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
+    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>, Ghost(table_lctx): Ghost<LocalContext>,
     Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
@@ -36,12 +35,8 @@ pub(super) fn thread_exit_reclaim_flush(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_inserted(&entry_lctx, &table_lctx, KernelObjId::PageTable(pagetable), pt_entry),
-        iommu_table is Some ==> typed_lock_maps_inserted(&table_lctx, old(lctx), KernelObjId::IommuTable(iommu_table->Some_0), it_entry),
-        iommu_table is None ==> typed_lock_maps_unchanged(&table_lctx, old(lctx)),
+        typed_lock_maps_unchanged(&table_lctx, old(lctx)),
         pt_entry.mode == TypedLockMode::Write,
-        it_entry.mode == TypedLockMode::Write,
-        entry_k.prc_mp.spec_index(prc_ptr).view().iommu_table == iommu_table,
-        iommu_table is Some ==> locked_it.view().leaves_present() && locked_it.view().proc_ptr == prc_ptr && locked_it.view().kernel_l4_end == 0,
         old(lctx).cpu_id() == cpu_id,
         old(lctx).thread_id() == entry_lctx.thread_id(),
         index_valid(NUM_CPUS, cpu_id),
@@ -138,7 +133,6 @@ pub(super) fn thread_exit_reclaim_flush(
         entry_k.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         entry_k.thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH,
         old(krnl).pt_mp.dom().contains(pagetable),
-        iommu_table is Some ==> old(krnl).it_mp.dom().contains(iommu_table->Some_0) && old(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
         old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
@@ -158,8 +152,7 @@ pub(super) fn thread_exit_reclaim_flush(
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).kernel_view_locking_state() is Acquire,
-        iommu_table is Some ==> typed_lock_maps_inserted(&table_lctx, final(lctx), KernelObjId::IommuTable(iommu_table->Some_0), it_entry),
-        iommu_table is None ==> typed_lock_maps_unchanged(&table_lctx, final(lctx)),
+        typed_lock_maps_unchanged(&table_lctx, final(lctx)),
         final(lctx).cpu_id() == cpu_id,
         final(lctx).thread_id() == entry_lctx.thread_id(),
         cpu_lock_perm.lock_id() == final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -194,7 +187,6 @@ pub(super) fn thread_exit_reclaim_flush(
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == entry_k.thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable),
-        iommu_table is Some ==> final(krnl).it_mp.dom().contains(iommu_table->Some_0) && final(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + NUM_CPUS + 1,
@@ -242,15 +234,15 @@ pub(super) fn thread_exit_reclaim_flush(
     }
 }
 
-/// Reclaim the page of every held 4K and 2M leaf of the hidden, flushed page table, accumulating its quota as the thread's
-/// pending refund, then refund the 4K and then the 2M quota to the thread's container chain.
+/// Reclaim the page of every held 4K and 2M leaf of the hidden, flushed page table whose PCI functions are released,
+/// accumulating its quota as the thread's pending refund, then refund the 4K and then the 2M quota to the thread's container
+/// chain. The process's IOMMU table, if any, stays write-held and unchanged.
 pub(super) fn thread_exit_reclaim_unmap_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
     Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>, Ghost(entry_k): Ghost<KernelK>,
-    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
-    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>, Ghost(locked_it): Ghost<LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
-    Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
+    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>, Ghost(table_lctx): Ghost<LocalContext>,
+    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(it_entry): Ghost<TypedHeldLock>, Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
     requires
@@ -261,9 +253,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         iommu_table is Some ==> typed_lock_maps_inserted(&table_lctx, old(lctx), KernelObjId::IommuTable(iommu_table->Some_0), it_entry),
         iommu_table is None ==> typed_lock_maps_unchanged(&table_lctx, old(lctx)),
         pt_entry.mode == TypedLockMode::Write,
-        it_entry.mode == TypedLockMode::Write,
-        entry_k.prc_mp.spec_index(prc_ptr).view().iommu_table == iommu_table,
-        iommu_table is Some ==> locked_it.view().leaves_present() && locked_it.view().proc_ptr == prc_ptr && locked_it.view().kernel_l4_end == 0,
         old(lctx).cpu_id() == cpu_id,
         old(lctx).thread_id() == entry_lctx.thread_id(),
         index_valid(NUM_CPUS, cpu_id),
@@ -360,7 +349,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         entry_k.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         entry_k.thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH,
         old(krnl).pt_mp.dom().contains(pagetable),
-        iommu_table is Some ==> old(krnl).it_mp.dom().contains(iommu_table->Some_0) && old(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         0 <= start <= old(steps).view().len(),
@@ -372,6 +360,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_perms == entry_pt.lower.l2_perms,
@@ -418,7 +407,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == entry_k.thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable),
-        iommu_table is Some ==> final(krnl).it_mp.dom().contains(iommu_table->Some_0) && final(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 3 * (MAX_CONTAINER_TREE_DEPTH + 1),
@@ -430,6 +418,8 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
+        iommu_table matches Some(it) ==> final(krnl).it_mp.dom().contains(it) && final(krnl).it_mp.spec_index(it) == old(krnl).it_mp.spec_index(it),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i) is None,
@@ -446,7 +436,10 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     let mut direct_2m = 0usize;
     let mut indirect_1g = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct_1g = 0usize;
-    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
+    proof {
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        if let Some(it) = iommu_table { assert(lctx.iommu_table_lock_map().dom().contains(it)); }
+    }
     reclaim_held_leaves(krnl, pagetable, thrd_ptr, cpu_id, &mut indirect_4k, &mut direct_4k, &mut indirect_2m, &mut direct_2m, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx),
         Tracked(&mut *steps), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm));
     let ghost reclaimed_k = *krnl;
@@ -981,6 +974,7 @@ pub(super) fn thread_exit_reclaim_return_quota(
         emptied_pt.lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         emptied_pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         emptied_pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        emptied_pt.higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         emptied_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         emptied_pt.lower.hidden_l1_tables_in_locked_windows(),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger emptied_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i)]

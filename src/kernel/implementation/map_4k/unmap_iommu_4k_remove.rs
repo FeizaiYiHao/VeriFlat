@@ -27,7 +27,7 @@ pub fn remove_iommu_4k_mapping_without_free(
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
         page_ptr_valid(pg_ptr),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pg_ptr), TypedLockMode::Write),
         page_perm.view().state() is WriteLock,
         page_perm.view().thread_id() == old(lctx).thread_id(),
@@ -64,8 +64,7 @@ pub fn remove_iommu_4k_mapping_without_free(
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count - 1,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().iommu_mappings()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().iommu_mappings().remove((iommu_table, spec_index2va(indices))),
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state
-            == if old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable },
+        final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == PageState::Mapped4k,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread(),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().being_killed() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().being_killed(),
         !was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),

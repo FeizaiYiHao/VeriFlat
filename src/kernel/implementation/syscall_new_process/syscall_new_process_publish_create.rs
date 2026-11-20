@@ -99,7 +99,6 @@ pub(super) fn create_and_release_staged_process(
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)] old(krnl).prc_mp.dom().contains(p) ==> {
             &&& final(krnl).prc_mp.spec_index(p).view_rodata() == old(krnl).prc_mp.spec_index(p).view_rodata()
             &&& final(krnl).prc_mp.spec_index(p).view().uppertree_seq == old(krnl).prc_mp.spec_index(p).view().uppertree_seq
-            &&& final(krnl).prc_mp.spec_index(p).view_ghost().owned_pci_functions == old(krnl).prc_mp.spec_index(p).view_ghost().owned_pci_functions
             &&& final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view() == if old(krnl).prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().push(parent_ptr).contains(p) {
                 old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().insert(ret.0)
             } else { old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view() }
@@ -114,7 +113,6 @@ pub(super) fn create_and_release_staged_process(
         final(krnl).prc_mp.spec_index(ret.0).view().state.view() is Creating,
         final(krnl).prc_mp.spec_index(ret.0).view().pagetable == ret.1,
         final(krnl).prc_mp.spec_index(ret.0).view().iommu_table == None,
-        final(krnl).prc_mp.spec_index(ret.0).view_ghost().owned_pci_functions.view().is_empty(),
         final(krnl).prc_mp.spec_index(ret.0).view().quota_4k == 0,
         final(krnl).prc_mp.spec_index(ret.0).view().quota_2m == 0,
         final(krnl).prc_mp.spec_index(ret.0).view().quota_1g == 0,
@@ -152,6 +150,7 @@ pub(super) fn create_and_release_staged_process(
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)] old(krnl).pt_mp.dom().contains(p)
             ==> final(krnl).pt_mp.spec_index(p) == old(krnl).pt_mp.spec_index(p) && final(krnl).pt_lower.view().spec_index(p) == old(krnl).pt_lower.view().spec_index(p),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.1).is_empty(),
+        final(krnl).pt_mp.spec_index(ret.1).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         final(krnl).pt_mp.spec_index(ret.1).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         final(krnl).pt_mp.spec_index(ret.1).view().higher.proc_ptr == ret.0,
         final(krnl).it_mp == old(krnl).it_mp,

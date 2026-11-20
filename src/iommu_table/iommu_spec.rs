@@ -35,6 +35,7 @@ impl IommuTable {
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
             pagetable_window_locks: Map::empty(),
+            pci_functions: Map::empty(),
         }
     }
 
@@ -368,6 +369,7 @@ impl IommuTable {
                     ==> self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
                     && (self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present ==> self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write)
                     && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
+                    && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).is_io == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
                     && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
             }
     }

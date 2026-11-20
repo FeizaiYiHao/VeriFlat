@@ -37,11 +37,13 @@ pub proof fn kernel_iommu_tlb_within_may_cache_projection(krnl: &KernelK, did: V
 {
     let anchor = pci_bdf_of_did(did);
     let root_table = krnl.irt.view();
+    assert(pci_bdf_valid(anchor.0, anchor.1, anchor.2) && pci_bdf_did(anchor.0, anchor.1, anchor.2) == did) by (nonlinear_arith) requires vtd_domain_id_valid(did), anchor == pci_bdf_of_did(did);
     kernel_u_user_domains_projection(krnl); root_table.user_view_eq_owners_and_attached();
     if root_table.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did) {
-        let owner = root_table.spec_index_owner(anchor.0, anchor.1, anchor.2);
+        let owner = root_table.spec_index_owner(anchor.0, anchor.1, anchor.2)->Some_0;
         let it = krnl.prc_mp.spec_index(owner).view().iommu_table->Some_0;
         assert({
+            &&& root_table.spec_index_owner(anchor.0, anchor.1, anchor.2) is Some
             &&& krnl.prc_mp.dom().contains(owner)
             &&& root_table.spec_index_iommu_root(anchor.0, anchor.1, anchor.2) is Some
             &&& krnl.prc_mp.spec_index(owner).view().iommu_table is Some

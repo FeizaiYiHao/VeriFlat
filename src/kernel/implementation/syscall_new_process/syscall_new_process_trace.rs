@@ -32,7 +32,8 @@ pub(super) proof fn new_process_result_from_k(krnl: &KernelK, cpu_id: CpuId, va:
             let endpoint_missing = ep_idx is Some && thread.view().endpoint_descriptors.spec_index(ep_idx->Some_0) is None;
             let funded = unkilled && has_pcid && !endpoint_missing && thread.view().quota_4k >= base + 3 * range;
             let mapped = table.kernel_l4_end() <= spec_v2l4index(va) && forall|j: int| #![trigger va_range.view().spec_index(j)] 0 <= j < range
-                ==> table.mapping_4k().dom().contains(va_range.view().spec_index(j)) && table.mapping_4k().spec_index(va_range.view().spec_index(j)).present;
+                ==> table.mapping_4k().dom().contains(va_range.view().spec_index(j)) && table.mapping_4k().spec_index(va_range.view().spec_index(j)).present
+                && !table.mapping_4k().spec_index(va_range.view().spec_index(j)).is_io;
             &&& live ==> cpu.view().view().current_thread is Some && krnl.thrd_mp.dom().contains(thrd_ptr) && krnl.prc_mp.dom().contains(prc_ptr)
             &&& unkilled ==> krnl.ctn_mp.dom().contains(ctn_ptr)
             &&& funded ==> !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable)
@@ -99,6 +100,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             &&& table.view().higher.kernel_l4_end <= spec_v2l4index(range.start)
             &&& forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view().spec_index(j))
                 && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(range.view().spec_index(j)).present
+                && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(range.view().spec_index(j)).is_io
             &&& range.wf()
             &&& 0 < range.len <= (usize::MAX - base) / 3
             &&& ep_idx is Some ==> edp_idx_valid(ep_idx->Some_0) && ep_ptr is Some && thread.view().endpoint_descriptors.spec_index(ep_idx->Some_0) == ep_ptr
@@ -209,7 +211,10 @@ pub(super) proof fn new_process_publish_step_from_u(
         },
         {
             let ancestors = pre.process_map[parent_ptr].uppertree_seq.push(parent_ptr);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+            let empty_table = PageTableU {
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(),
+                pagetable_window_locks: Map::empty(), pci_functions: Map::empty(),
+            };
             let cost: usize = if with_iommu { 5 } else { 3 };
             let origin = Share4kOrigin::NewProcess(NewProcessProgress { range, regs, endpoint_index: ep_idx, with_iommu, child: Some(child_ptr) });
             let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, directory: Mmap4kDirectory::None, origin };
@@ -229,7 +234,7 @@ pub(super) proof fn new_process_publish_step_from_u(
             })
             &&& post.process_map[child_ptr] == (ProcessU {
                 lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false, pagetable: Some(empty_table),
-                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid, owning_container: ctn_ptr, owned_pci_functions: Set::empty(),
+                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid, owning_container: ctn_ptr,
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent_ptr), children: Seq::empty(),
                 depth: (pre.process_map[parent_ptr].depth + 1) as usize, uppertree_seq: ancestors,
                 subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,

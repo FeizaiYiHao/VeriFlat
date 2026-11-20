@@ -31,7 +31,6 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& new_page.view().ref_count == old_page.view().ref_count + 1
     &&& new_page.view().addr == old_page.view().addr
     &&& new_page.view().state == old_page.view().state
-    &&& new_page.view().is_io_page == old_page.view().is_io_page
     &&& new_page.view().owning_container == old_page.view().owning_container
 }
 
@@ -58,6 +57,7 @@ pub(super) proof fn map_shared_page_into_iommu_4k_eof(
         pre.pt_mp.dom().contains(source_pagetable),
         pre.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == prc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io,
         page_ptr_valid(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         pg_idx == page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         index_valid(NUM_PAGES, pg_idx),
@@ -78,6 +78,8 @@ pub(super) proof fn map_shared_page_into_iommu_4k_eof(
     ensures post.inv(),
 {
     reveal(map_shared_page_into_iommu_4k_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
@@ -130,6 +132,7 @@ proof fn map_shared_page_into_iommu_4k_eof_page_iommu_table(
         pre.pt_mp.dom().contains(source_pagetable),
         pre.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == prc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io,
         page_ptr_valid(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         pg_idx == page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         index_valid(NUM_PAGES, pg_idx),
@@ -176,6 +179,7 @@ proof fn map_shared_page_into_iommu_4k_eof_page_pagetable(
         pre.pt_mp.dom().contains(source_pagetable),
         pre.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == prc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io,
         page_ptr_valid(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         pg_idx == page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         index_valid(NUM_PAGES, pg_idx),

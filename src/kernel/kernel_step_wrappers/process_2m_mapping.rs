@@ -135,6 +135,22 @@ broadcast proof fn kernel_owned_2m_page_implies_u_2m_mapping_frame_differs_at(k:
         kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
         reveal(mapped_2m_page_pagetable_wf);
     }
+    if k.prc_mp.dom().contains(p) {
+        let pt = k.prc_mp.spec_index(p).view().pagetable;
+        kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
+        pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt);
+        if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io {
+            assert(pci_bar_page(k.pci_bars.view(), whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr)) by {
+                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
+                k.default_pagetable_wf_at(pt); spec_va_2m_valid_index_roundtrip(v);
+                c.wf_mapping_2m_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                pagetable_pci_mappings_wf_held_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+            };
+            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+            pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
+        }
+    }
 }
 
 /// Point form of the 4K clause of `kernel_owned_2m_page_implies_u_mappings_outside_its_frame` at one process and VA: a 4K
@@ -161,6 +177,28 @@ broadcast proof fn kernel_owned_2m_page_implies_u_4k_mapping_outside_its_frame_a
         if addr <= a < addr + 0x200000 {
             assert(head <= idx < head + 512) by (nonlinear_arith) requires addr % 0x1000 == 0, head == addr / 4096, idx == a / 4096, addr <= a < addr + 0x200000;
             hugepage_2m_wf_tail_forward_at(k.pg_arr, head, idx);
+        }
+    }
+    if k.prc_mp.dom().contains(p) {
+        let pt = k.prc_mp.spec_index(p).view().pagetable;
+        kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
+        let head = page_ptr2page_index(addr);
+        let a = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).addr;
+        let idx = page_ptr2page_index(a);
+        if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).is_io && addr <= a < addr + 0x200000 {
+            assert(pci_bar_page(k.pci_bars.view(), a)) by {
+                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
+                pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_4k_valid_index_roundtrip(v);
+                c.wf_mapping_4k_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+                c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+                pagetable_pci_mappings_wf_held_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+            };
+            hugepage_2m_wf_head_at(k.pg_arr, head);
+            assert(head <= idx < head + 512 && idx < NUM_PAGES) by (nonlinear_arith)
+                requires addr % 0x1000 == 0, head == addr / 4096, idx == a / 4096, addr <= a < addr + 0x200000, head % 512 == 0, head < NUM_PAGES, NUM_PAGES % 512 == 0;
+            hugepage_2m_wf_tail_forward_at(k.pg_arr, head, idx);
+            assert(a % 0x1000 == 0 && page_index2page_ptr(idx) == a) by { assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && PAGE_SZ_1G == 0x40000000) by (compute); };
+            pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, idx);
         }
     }
 }
@@ -200,12 +238,44 @@ broadcast proof fn kernel_owned_2m_page_implies_u_iommu_4k_mapping_outside_its_f
 pub proof fn kernel_owned_4k_page_implies_u_outside_pagetable_4k_mappings(k: KernelK, addr: PagePtr)
     requires
         k.inv(),
+        page_ptr_valid(addr),
         k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
     ensures
         forall|p: RwLockProcessPtr, v: VAddr| #![trigger kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v]]
             kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
             ==> kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v].addr != addr,
-{ reveal(kernel_k_to_kernel_u); reveal(process_pagetable_wf); reveal(mapped_4k_page_pagetable_wf); }
+{
+    broadcast use kernel_owned_4k_page_implies_u_4k_mapping_target_differs_at;
+}
+
+/// Point form of `kernel_owned_4k_page_implies_u_outside_pagetable_4k_mappings` at one process and VA: a RAM 4K mapping names a
+/// `Mapped4k` page and an IO one a BAR page, which is `Unavailable`.
+broadcast proof fn kernel_owned_4k_page_implies_u_4k_mapping_target_differs_at(k: KernelK, addr: PagePtr, p: RwLockProcessPtr, v: VAddr)
+    requires
+        k.inv(),
+        page_ptr_valid(addr),
+        k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
+    ensures
+        #![trigger kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v], k.pg_arr.spec_index(page_ptr2page_index(addr))]
+        kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
+            ==> kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v].addr != addr,
+{
+    kernel_u_domains_projection(&k);
+    if k.prc_mp.dom().contains(p) {
+        let pt = k.prc_mp.spec_index(p).view().pagetable;
+        kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
+        mapped_4k_page_pagetable_wf_pagetable_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, pt, v);
+        let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
+        if c.mapping_4k().contains_key(v) && c.mapping_4k().spec_index(v).is_io && c.mapping_4k().spec_index(v).addr == addr {
+            pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_4k_valid_index_roundtrip(v);
+            c.wf_mapping_4k_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+            c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+            pagetable_pci_mappings_wf_held_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+            pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
+        }
+    }
+}
 
 /// The `Owned4k` page at `addr` is the target of no 4K mapping of any IOMMU table in the projection of `k`.
 pub proof fn kernel_owned_4k_page_implies_u_outside_iommu_4k_mappings(k: KernelK, addr: PagePtr)
@@ -222,6 +292,7 @@ pub proof fn kernel_owned_4k_page_implies_u_outside_iommu_4k_mappings(k: KernelK
 pub proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(k: KernelK, addr: PagePtr)
     requires
         k.inv(),
+        page_ptr_valid(addr),
         k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
     ensures
         forall|p: RwLockProcessPtr, v: VAddr| #![trigger kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v]]
@@ -234,6 +305,7 @@ pub proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(k: KernelK
 broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k: KernelK, addr: PagePtr, p: RwLockProcessPtr, v: VAddr)
     requires
         k.inv(),
+        page_ptr_valid(addr),
         k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
     ensures
         #![trigger kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v], k.pg_arr.spec_index(page_ptr2page_index(addr))]
@@ -245,7 +317,7 @@ broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k:
         let pt = k.prc_mp.spec_index(p).view().pagetable;
         kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
         pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt);
-        if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) {
+        if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) && !whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io {
             let m = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr;
             let head = page_ptr2page_index(m);
             let idx = page_ptr2page_index(addr);
@@ -255,6 +327,27 @@ broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k:
                     requires m % 0x200000 == 0, m / 4096 < NUM_PAGES, head == m / 4096, idx == addr / 4096, m <= addr < m + 0x200000, NUM_PAGES % 512 == 0;
                 if idx != head { hugepage_2m_wf_tail_forward_at(k.pg_arr, head, idx); }
             }
+        }
+    }
+    if k.prc_mp.dom().contains(p) {
+        let pt = k.prc_mp.spec_index(p).view().pagetable;
+        kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
+        pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt);
+        let m = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr;
+        if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io && m <= addr < m + 0x200000 {
+            assert(pci_bar_page(k.pci_bars.view(), addr)) by {
+                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
+                let bars = k.pci_bars.view();
+                k.default_pagetable_wf_at(pt); spec_va_2m_valid_index_roundtrip(v);
+                c.wf_mapping_2m_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                pagetable_pci_mappings_wf_held_2m_at(bars, k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && PAGE_SZ_1G == 0x40000000) by (compute);
+                assert(addr % 0x1000 == 0) by { page_ptr_valid_imply_page_index_valid(); };
+                assert(bars[pci_bar_entry_of_page(bars, m)->0].envelope_contains(addr));
+            };
+            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+            pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
         }
     }
 }
@@ -292,6 +385,7 @@ pub proof fn kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rloc
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va).present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
         spec_va_2m_valid(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va),
@@ -410,6 +504,7 @@ pub proof fn kernel_pagetable_2m_present_cleared_and_progress_changed_implies_u_
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()[va] }),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g(),
+        post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks,
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),

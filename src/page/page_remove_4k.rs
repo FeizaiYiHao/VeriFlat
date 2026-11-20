@@ -24,7 +24,6 @@ pub fn remove_last_4k_mapping_to_cache(page: &mut Page, pagetable_ptr: RwLockPag
     requires
         old(page).inv(),
         old(page).state is Mapped4k,
-        !old(page).is_io_page,
         old(page).mappings().contains((pagetable_ptr, va)),
         old(page).ref_count == 1,
         index_valid(NUM_CPUS, cpu_id),
@@ -48,31 +47,6 @@ pub fn remove_last_4k_mapping_to_cache(page: &mut Page, pagetable_ptr: RwLockPag
     page.ref_count = 0;
     page.state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
     (node_addr, node_perm)
-}
-
-pub fn remove_last_4k_io_mapping(page: &mut Page, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
-    requires
-        old(page).inv(),
-        old(page).state is Mapped4k,
-        old(page).is_io_page,
-        old(page).mappings().contains((pagetable_ptr, va)),
-        old(page).ref_count == 1,
-    ensures
-        final(page).inv(),
-        final(page).state is Unavailable,
-        final(page).mappings() == Set::<(RwLockPageTableRoot, VAddr)>::empty(),
-        final(page).mappings() == old(page).mappings().remove((pagetable_ptr, va)),
-        final(page).ref_count == 0,
-        final(page).perm_4k.view() is None,
-        *final(page) == (Page { state: PageState::Unavailable, mappings: final(page).mappings, ref_count: 0, perm_4k: final(page).perm_4k, ..*old(page) }),
-{
-    proof {
-        reveal(Page::mappings_va_valid);
-        let tracked _retired_perm = page.perm_4k.borrow_mut().tracked_take();
-    }
-    page.mappings = Ghost(Set::empty());
-    page.ref_count = 0;
-    page.state = PageState::Unavailable;
 }
 }
 
@@ -98,7 +72,6 @@ pub fn remove_last_4k_iommu_mapping_to_cache(page: &mut Page, iommu_table_ptr: R
     requires
         old(page).inv(),
         old(page).state is Mapped4k,
-        !old(page).is_io_page,
         old(page).iommu_mappings().contains((iommu_table_ptr, iova)),
         old(page).ref_count == 1,
         index_valid(NUM_CPUS, cpu_id),
@@ -123,30 +96,5 @@ pub fn remove_last_4k_iommu_mapping_to_cache(page: &mut Page, iommu_table_ptr: R
     page.ref_count = 0;
     page.state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
     (node_addr, node_perm)
-}
-
-pub fn remove_last_4k_iommu_io_mapping(page: &mut Page, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr)
-    requires
-        old(page).inv(),
-        old(page).state is Mapped4k,
-        old(page).is_io_page,
-        old(page).iommu_mappings().contains((iommu_table_ptr, iova)),
-        old(page).ref_count == 1,
-    ensures
-        final(page).inv(),
-        final(page).state is Unavailable,
-        final(page).iommu_mappings() == Set::<(RwLockPageTableRoot, VAddr)>::empty(),
-        final(page).iommu_mappings() == old(page).iommu_mappings().remove((iommu_table_ptr, iova)),
-        final(page).ref_count == 0,
-        final(page).perm_4k.view() is None,
-        *final(page) == (Page { state: PageState::Unavailable, iommu_mappings: final(page).iommu_mappings, ref_count: 0, perm_4k: final(page).perm_4k, ..*old(page) }),
-{
-    proof {
-        reveal(Page::mappings_va_valid);
-        let tracked _retired_perm = page.perm_4k.borrow_mut().tracked_take();
-    }
-    page.iommu_mappings = Ghost(Set::empty());
-    page.ref_count = 0;
-    page.state = PageState::Unavailable;
 }
 }

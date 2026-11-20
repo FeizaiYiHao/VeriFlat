@@ -41,6 +41,7 @@ pub fn map_shared_page_into_iommu_4k(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(va).0,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).present,
+        !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io,
         old(krnl).it_mp.dom().contains(iommu_table_ptr),
         old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr,
         typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),

@@ -24,6 +24,7 @@ members = [
     "crates/veriflat_syscall_schedule",
     "crates/veriflat_syscall_cpu_hotplug",
     "crates/veriflat_syscall_pci",
+    "crates/veriflat_syscall_pci_bar",
 ]
 exclude = ["verus", "noninterference", "liveness", "boot"]
 

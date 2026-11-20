@@ -2,6 +2,24 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// `pagetable_pci_mappings_wf`: the removed leaf at `va` was the RAM leaf the page lists, so no BAR mapping record names it, and every
+/// other leaf and record is unchanged.
+proof fn remove_4k_mapping_without_free_eof_pagetable_pci_mappings_wf(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+    requires
+        pre.inv(),
+        remove_4k_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{
+    reveal(remove_4k_mapping_without_free_eof_transition_framing);
+    page_ptr_valid_imply_page_index_valid();
+    mapped_4k_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
+    reveal(pagetable_pci_mappings_wf);
+    broadcast use spec_va_4k_valid_index_roundtrip;
+}
+
 /// Removes the non-present 4K leaf `va` from `pagetable` and its mapping record from a page that keeps other references
 /// or is an I/O page; the table keeps its L2 entries and every other held leaf, and every other kernel field is unchanged.
 #[verifier::opaque]
@@ -45,10 +63,8 @@ pub(super) open spec fn remove_4k_mapping_without_free_eof_transition_framing(pr
     &&& new_page.view().mappings() == old_page.view().mappings().remove((pagetable, va))
     &&& new_page.view().iommu_mappings() == old_page.view().iommu_mappings()
     &&& new_page.view().ref_count == old_page.view().ref_count - 1
-    &&& new_page.view().state == if old_page.view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable }
-    &&& old_page.view().ref_count > 1 ==> new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
-    &&& old_page.view().ref_count == 1 ==> new_page.view() == (Page { state: PageState::Unavailable, mappings: new_page.view().mappings, ref_count: 0, perm_4k: new_page.view().perm_4k, ..old_page.view() })
-        && new_page.view().perm_4k.view() is None
+    &&& new_page.view().state == PageState::Mapped4k
+    &&& new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
 proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
@@ -61,7 +77,7 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: 
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
@@ -95,7 +111,6 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: 
     };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(mapped_4k_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by {
-        assert(pre.pg_arr.spec_index(pg_idx).view().view().ref_count == 1 ==> pre.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().len() == 0);
         reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf);
     };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
@@ -105,6 +120,7 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: 
 
 proof fn remove_4k_mapping_without_free_eof_memory_management_inv(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
+        pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
         pre.inv(),
         remove_4k_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         pre.pt_mp.dom().contains(pagetable),
@@ -112,7 +128,7 @@ proof fn remove_4k_mapping_without_free_eof_memory_management_inv(pre: KernelK, 
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
@@ -135,6 +151,7 @@ proof fn remove_4k_mapping_without_free_eof_memory_management_inv(pre: KernelK, 
     ensures post.memory_management_inv(),
 {
     reveal(remove_4k_mapping_without_free_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -177,7 +194,7 @@ pub(super) proof fn remove_4k_mapping_without_free_eof(pre: KernelK, post: Kerne
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
@@ -196,6 +213,7 @@ pub(super) proof fn remove_4k_mapping_without_free_eof(pre: KernelK, post: Kerne
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
     assert(post.subsystems_inv()) by { reveal(page_array_wf); reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     remove_4k_mapping_without_free_eof_pagetable_pages(pre, post, pagetable, va, pg_ptr);
+    remove_4k_mapping_without_free_eof_pagetable_pci_mappings_wf(pre, post, pagetable, va, pg_ptr);
     remove_4k_mapping_without_free_eof_memory_management_inv(pre, post, pagetable, va, pg_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
@@ -203,5 +221,6 @@ pub(super) proof fn remove_4k_mapping_without_free_eof(pre: KernelK, post: Kerne
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
     };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 }

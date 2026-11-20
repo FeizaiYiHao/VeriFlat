@@ -800,6 +800,166 @@ pub(super) proof fn pagetable_map_unlink_hidden_l1_page_rlocked_eof(
     assert(pagetable_window_typed_lock_map_aligned(pt_mp, post_lower, window_lock_map, pagetable_lock_map, thread_id)) by { reveal(pagetable_window_typed_lock_map_aligned); };
 }
 
+/// S of `pagetable_map_hide_l1_page`: under the big write lock only the window half of `pagetable_ptr` changes, by hiding one empty
+/// L1 page in a held window; the lock's payload backup is reset to the new window half, and every mapping and window lock stays.
+#[verifier::opaque]
+pub(super) open spec fn pagetable_map_hide_l1_page_eof_transition_framing(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
+) -> bool {
+    &&& post_pt.perms_wf()
+    &&& post_pt.unchanged_except(&pre_pt, pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).is_init()
+    &&& post_pt.spec_index(pagetable_ptr).locking_thread() == pre_pt.spec_index(pagetable_ptr).locking_thread()
+    &&& post_pt.spec_index(pagetable_ptr).being_killed() == pre_pt.spec_index(pagetable_ptr).being_killed()
+    &&& post_pt.spec_index(pagetable_ptr).view_rodata() == pre_pt.spec_index(pagetable_ptr).view_rodata()
+    &&& post_pt.lock_id_by_key(pagetable_ptr) == pre_pt.lock_id_by_key(pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).view().lower_backup.view() == post_lower.spec_index(pagetable_ptr)
+    &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
+    &&& post_lower.dom() =~= pre_lower.dom()
+    &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post_pt, post_lower, r)] pre_pt.dom().contains(r) && r != pagetable_ptr ==> whole_pagetable(post_pt, post_lower, r) == whole_pagetable(pre_pt, pre_lower, r)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.pagetable_window_locks
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_owner(p, i)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.window_stale_cpus == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.window_stale_cpus
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_4k()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_2m()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_1g()
+    &&& whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows()
+}
+
+/// EOF closure of `pagetable_map_hide_l1_page`: the big-lock and window-half invariants after an empty L1 page of the write-held table
+/// is hidden inside a window this thread holds.
+pub(super) proof fn pagetable_map_hide_l1_page_eof(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
+    window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
+)
+    requires
+        pagetable_perms_wf(pre_pt),
+        pre_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(pre_pt, pre_lower),
+        pagetable_window_holders_hold_pagetable(pre_pt, pre_lower),
+        pagetable_hidden_leaves_only_when_locked(pre_pt, pre_lower),
+        pagetable_hidden_l1_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_stale_cpus_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_typed_lock_map_aligned(pre_pt, pre_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(pre_pt, pre_lower),
+        pre_pt.dom().contains(pagetable_ptr),
+        pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
+        pagetable_map_hide_l1_page_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
+    ensures
+        pagetable_perms_wf(post_pt),
+        post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(post_pt, post_lower),
+        pagetable_window_holders_hold_pagetable(post_pt, post_lower),
+        pagetable_hidden_leaves_only_when_locked(post_pt, post_lower),
+        pagetable_hidden_l1_only_when_locked(post_pt, post_lower),
+        pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
+        pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(post_pt, post_lower),
+{
+    reveal(pagetable_map_hide_l1_page_eof_transition_framing);
+    assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
+    assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
+        reveal(LockedMap::typed_lock_map_aligned);
+        assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
+    };
+    assert(pagetable_lower_wf(post_pt, post_lower)) by { reveal(pagetable_lower_wf); };
+    assert(pagetable_window_holders_hold_pagetable(post_pt, post_lower)) by { reveal(pagetable_window_holders_hold_pagetable); };
+    assert(pagetable_hidden_leaves_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_hidden_l1_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_l1_only_when_locked); };
+    assert(pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
+    assert(pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id)) by {
+        reveal(pagetable_window_typed_lock_map_aligned);
+    };
+}
+
+/// S of `pagetable_map_unlink_hidden_l1_page`: under the big write lock only the window half of `pagetable_ptr` changes, by taking one
+/// hidden L1 page out of a held window; the lock's payload backup is reset to the new window half, and every mapping and window lock stays.
+#[verifier::opaque]
+pub(super) open spec fn pagetable_map_unlink_hidden_l1_page_eof_transition_framing(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
+) -> bool {
+    &&& post_pt.perms_wf()
+    &&& post_pt.unchanged_except(&pre_pt, pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).is_init()
+    &&& post_pt.spec_index(pagetable_ptr).locking_thread() == pre_pt.spec_index(pagetable_ptr).locking_thread()
+    &&& post_pt.spec_index(pagetable_ptr).being_killed() == pre_pt.spec_index(pagetable_ptr).being_killed()
+    &&& post_pt.spec_index(pagetable_ptr).view_rodata() == pre_pt.spec_index(pagetable_ptr).view_rodata()
+    &&& post_pt.lock_id_by_key(pagetable_ptr) == pre_pt.lock_id_by_key(pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).view().lower_backup.view() == post_lower.spec_index(pagetable_ptr)
+    &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
+    &&& post_lower.dom() =~= pre_lower.dom()
+    &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post_pt, post_lower, r)] pre_pt.dom().contains(r) && r != pagetable_ptr ==> whole_pagetable(post_pt, post_lower, r) == whole_pagetable(pre_pt, pre_lower, r)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.pagetable_window_locks
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_owner(p, i)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.window_stale_cpus == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.window_stale_cpus
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_4k()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_2m()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_1g()
+    &&& whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows()
+}
+
+/// EOF closure of `pagetable_map_unlink_hidden_l1_page`: the big-lock and window-half invariants after a hidden L1 page of the
+/// write-held table leaves a window this thread holds.
+pub(super) proof fn pagetable_map_unlink_hidden_l1_page_eof(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
+    window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
+)
+    requires
+        pagetable_perms_wf(pre_pt),
+        pre_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(pre_pt, pre_lower),
+        pagetable_window_holders_hold_pagetable(pre_pt, pre_lower),
+        pagetable_hidden_leaves_only_when_locked(pre_pt, pre_lower),
+        pagetable_hidden_l1_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_stale_cpus_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_typed_lock_map_aligned(pre_pt, pre_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(pre_pt, pre_lower),
+        pre_pt.dom().contains(pagetable_ptr),
+        pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
+        pagetable_map_unlink_hidden_l1_page_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
+    ensures
+        pagetable_perms_wf(post_pt),
+        post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(post_pt, post_lower),
+        pagetable_window_holders_hold_pagetable(post_pt, post_lower),
+        pagetable_hidden_leaves_only_when_locked(post_pt, post_lower),
+        pagetable_hidden_l1_only_when_locked(post_pt, post_lower),
+        pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
+        pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(post_pt, post_lower),
+{
+    reveal(pagetable_map_unlink_hidden_l1_page_eof_transition_framing);
+    assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
+    assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
+        reveal(LockedMap::typed_lock_map_aligned);
+        assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
+    };
+    assert(pagetable_lower_wf(post_pt, post_lower)) by { reveal(pagetable_lower_wf); };
+    assert(pagetable_window_holders_hold_pagetable(post_pt, post_lower)) by { reveal(pagetable_window_holders_hold_pagetable); };
+    assert(pagetable_hidden_leaves_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_hidden_l1_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_l1_only_when_locked); };
+    assert(pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
+    assert(pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id)) by {
+        reveal(pagetable_window_typed_lock_map_aligned);
+    };
+}
+
 /// S of `pagetable_map_remove_table_page`: under the big write lock only the entry and window half of `pagetable_ptr` change, by
 /// unlinking one table page; the lock's payload backup is reset to the new window half, every mapping and every window lock of a valid
 /// user index stay, and every held 4K, 2M or 1G leaf left was held before.
@@ -840,6 +1000,7 @@ pub(super) open spec fn pagetable_map_remove_table_page_eof_transition_framing(
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) is Some
             ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i)
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_remove_table_page`: the big-lock and window-half invariants after one table page is unlinked; no page
@@ -961,6 +1122,91 @@ pub(super) proof fn pagetable_map_insert_4k_wlocked_eof(
         pagetable_lower_backup_wf(post_pt, post_lower),
 {
     reveal(pagetable_map_insert_4k_wlocked_eof_transition_framing);
+    assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
+    assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
+        reveal(LockedMap::typed_lock_map_aligned);
+        assert(post_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id));
+        assert(post_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id));
+        assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
+    };
+    assert(pagetable_lower_wf(post_pt, post_lower)) by { reveal(pagetable_lower_wf); };
+    assert(pagetable_window_holders_hold_pagetable(post_pt, post_lower)) by { reveal(pagetable_window_holders_hold_pagetable); };
+    assert(pagetable_hidden_leaves_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_hidden_l1_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_l1_only_when_locked); };
+    assert(pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
+    assert(pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id)) by {
+        reveal(pagetable_window_typed_lock_map_aligned);
+    };
+}
+
+/// S of `pagetable_map_insert_2m_wlocked`: under the big write lock only the window half of `pagetable_ptr` changes, by the present 2M
+/// leaf `target_entry` at `va`; the lock's payload backup is reset to the new window half and every window lock stays.
+#[verifier::opaque]
+pub(super) open spec fn pagetable_map_insert_2m_wlocked_eof_transition_framing(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
+    target_entry: MapEntry,
+) -> bool {
+    &&& post_pt.perms_wf()
+    &&& post_pt.unchanged_except(&pre_pt, pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).is_init()
+    &&& post_pt.spec_index(pagetable_ptr).locking_thread() == pre_pt.spec_index(pagetable_ptr).locking_thread()
+    &&& post_pt.spec_index(pagetable_ptr).being_killed() == pre_pt.spec_index(pagetable_ptr).being_killed()
+    &&& post_pt.spec_index(pagetable_ptr).view_rodata() == pre_pt.spec_index(pagetable_ptr).view_rodata()
+    &&& post_pt.lock_id_by_key(pagetable_ptr) == pre_pt.lock_id_by_key(pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).view().lower_backup.view() == post_lower.spec_index(pagetable_ptr)
+    &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
+    &&& post_lower.dom() =~= pre_lower.dom()
+    &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post_pt, post_lower, r)] pre_pt.dom().contains(r) && r != pagetable_ptr ==> whole_pagetable(post_pt, post_lower, r) == whole_pagetable(pre_pt, pre_lower, r)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.pagetable_window_locks
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_owner(p, i)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.window_stale_cpus == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.window_stale_cpus
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_2m().insert(va, target_entry)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_4k()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_1g()
+    &&& whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows()
+}
+
+/// EOF closure of `pagetable_map_insert_2m_wlocked`: the big-lock and window-half invariants after one present 2M leaf of the
+/// write-held table is installed.
+pub(super) proof fn pagetable_map_insert_2m_wlocked_eof(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
+    target_entry: MapEntry, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
+    thread_id: LockThreadId,
+)
+    requires
+        pagetable_perms_wf(pre_pt),
+        pre_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(pre_pt, pre_lower),
+        pagetable_window_holders_hold_pagetable(pre_pt, pre_lower),
+        pagetable_hidden_leaves_only_when_locked(pre_pt, pre_lower),
+        pagetable_hidden_l1_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_stale_cpus_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_typed_lock_map_aligned(pre_pt, pre_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(pre_pt, pre_lower),
+        pre_pt.dom().contains(pagetable_ptr),
+        pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
+        target_entry.present,
+        pagetable_map_insert_2m_wlocked_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr, va, target_entry),
+    ensures
+        pagetable_perms_wf(post_pt),
+        post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(post_pt, post_lower),
+        pagetable_window_holders_hold_pagetable(post_pt, post_lower),
+        pagetable_hidden_leaves_only_when_locked(post_pt, post_lower),
+        pagetable_hidden_l1_only_when_locked(post_pt, post_lower),
+        pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
+        pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(post_pt, post_lower),
+{
+    reveal(pagetable_map_insert_2m_wlocked_eof_transition_framing);
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
@@ -1343,6 +1589,7 @@ pub(super) open spec fn pagetable_map_hide_l4_entry_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_hide_l4_entry`: the big-lock and window-half invariants after one user root entry is hidden; the
@@ -1438,6 +1685,7 @@ pub(super) open spec fn pagetable_map_unlink_unresolvable_l1_page_eof_transition
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) is Some
             ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i)
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_unlink_unresolvable_l1_page`: the big-lock and window-half invariants after one L1 page leaves an
@@ -1530,6 +1778,7 @@ pub(super) open spec fn pagetable_map_clear_held_4k_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_clear_held_4k_leaf`: the big-lock and window-half invariants after one held 4K leaf under an
@@ -1616,6 +1865,7 @@ pub(super) open spec fn pagetable_map_clear_held_2m_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_clear_held_2m_leaf`: the big-lock and window-half invariants after one held 2M leaf under an
@@ -1692,6 +1942,7 @@ pub(super) open spec fn pagetable_map_insert_1g_eof_transition_framing(
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pt_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_insert_1g`: the big-lock and window-half invariants after installing one present 1G leaf.
@@ -1767,6 +2018,7 @@ pub(super) open spec fn pagetable_map_hide_1g_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pt_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_hide_1g_leaf`: the big-lock and window-half invariants after hiding one 1G leaf.
@@ -1842,6 +2094,7 @@ pub(super) open spec fn pagetable_map_clear_held_1g_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pt_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_clear_held_1g_leaf`: the big-lock and window-half invariants after clearing one held 1G leaf.
@@ -1919,6 +2172,7 @@ pub(super) open spec fn pagetable_map_hide_l3_entry_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_hide_l3_entry`: the big-lock and window-half invariants after one non-huge L3 entry is hidden; no window under the entry was locked, so every window lock stays.

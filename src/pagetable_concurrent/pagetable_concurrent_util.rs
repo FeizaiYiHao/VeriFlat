@@ -32,12 +32,13 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             ret.mapping_1g.view() == Map::<VAddr, MapEntry>::empty(),
             ret.proc_ptr == proc_ptr,
             ret.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            ret.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
     {
         let mut ret = Self {
             cr3: page_map_ptr, pcid, did: None, kernel_l4_end: mem_end_l4_index, l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()), l3_tables: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l2_rev_map: Ghost(Map::<PageMapPtr, (L4Index, L3Index)>::empty()), mapping_1g: Ghost(Map::<VAddr, MapEntry>::empty()), kernel_entries: kernel_entries_ghost,
-            proc_ptr, table_stale_cpus: Ghost(Set::<CpuId>::empty()),
+            proc_ptr, table_stale_cpus: Ghost(Set::<CpuId>::empty()), pci: PciFunctionArray::new_empty(),
         };
         proof {
             ret.l4_table.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);
@@ -212,7 +213,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// Word of entry `target_l3i` of the L3 page that the held root entry `l4_entry` links: a held L3 link when present or kernel-present
-    /// and not huge, a held 1G leaf when kernel-present and huge.
+    /// and not huge, a held 1G leaf when kernel-present and huge; under a present root entry it resolves the same way.
     pub fn get_l3_entry_word(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: PageEntry)
         requires
             self.inv(),
@@ -222,6 +223,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         ensures
             self.spec_held_l3(target_l4i, target_l3i) =~= (if (ret.perm.present || ret.perm.kernel_present) && !ret.perm.ps { Some(ret) } else { None }),
             self.spec_held_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
+            self.spec_resolve_mapping_l4(target_l4i) is Some ==> self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= (if ret.perm.present && !ret.perm.ps { Some(ret) } else { None }),
+            self.spec_resolve_mapping_l4(target_l4i) is Some ==> self.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
     {
         proof {
             self.wf_l4_at(target_l4i);

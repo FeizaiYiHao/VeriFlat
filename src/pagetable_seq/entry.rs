@@ -4,6 +4,7 @@ use crate::*;
 
 #[derive(Debug)]
 pub struct PageEntryPerm {
+    pub is_io: bool,
     pub present: bool,
     pub ps: bool,
     pub write: bool,
@@ -17,7 +18,8 @@ impl Clone for PageEntryPerm {
         ensures
             self == ret,
     {
-        PageEntryPerm { present: self.present, ps: self.ps, write: self.write, execute_disable: self.execute_disable, user: self.user, kernel_present: self.kernel_present }
+        PageEntryPerm { is_io: self.is_io, present: self.present, ps: self.ps, write: self.write,
+            execute_disable: self.execute_disable, user: self.user, kernel_present: self.kernel_present }
     }
 }
 
@@ -41,6 +43,7 @@ impl PageEntry {
         &&& self.perm.ps == false
         &&& self.perm.write == false
         &&& self.perm.execute_disable == false
+        &&& self.perm.is_io == false
         &&& self.perm.user == false
         &&& self.perm.kernel_present == false
     }
@@ -49,11 +52,12 @@ impl PageEntry {
         ensures
             ret.is_empty(),
     {
-        PageEntry { addr: 0, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }
+        PageEntry { addr: 0, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }
     }
 }
 
 pub struct MapEntry {
+    pub is_io: bool,
     pub addr: PAddr,
     pub write: bool,
     pub execute_disable: bool,
@@ -67,8 +71,25 @@ pub struct TLBEntry {
     pub execute_disable: bool,
 }
 
+/// An IO leaf of `size` at `addr` is aligned and lies below 2^48.
+#[verifier::opaque]
+pub open spec fn io_page_range_valid(addr: PAddr, size: usize) -> bool {
+    &&& size == PAGE_SZ_4K || size == PAGE_SZ_2M
+    &&& mem_valid(addr)
+    &&& addr % size == 0
+    &&& addr <= 0x0001_0000_0000_0000usize - size
+}
+
+pub open spec fn mapping_4k_target_valid(addr: PAddr, is_io: bool) -> bool {
+    if is_io { io_page_range_valid(addr, PAGE_SZ_4K) } else { page_ptr_valid(addr) }
+}
+
+pub open spec fn mapping_2m_target_valid(addr: PAddr, is_io: bool) -> bool {
+    if is_io { io_page_range_valid(addr, PAGE_SZ_2M) } else { page_ptr_2m_valid(addr) }
+}
+
 pub open spec fn spec_page_entry_to_map_entry(p: &PageEntry, owning_container: Ghost<RwLockContainerPtr>) -> MapEntry {
-    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present: p.perm.present, owning_container }
+    MapEntry { is_io: p.perm.is_io, addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present: p.perm.present, owning_container }
 }
 
 #[verifier(when_used_as_spec(spec_page_entry_to_map_entry))]
@@ -76,8 +97,10 @@ pub fn page_entry_to_map_entry(p: &PageEntry, owning_container: Ghost<RwLockCont
     ensures
         ret =~= spec_page_entry_to_map_entry(p, owning_container),
 {
-    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present: p.perm.present, owning_container }
+    MapEntry { is_io: p.perm.is_io, addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present: p.perm.present, owning_container }
 }
+
+pub open spec fn usize2is_io(v: usize) -> bool { (v & PAGE_ENTRY_IO_MASK as usize) != 0 }
 
 pub open spec fn usize2present(v: usize) -> bool { (v & PAGE_ENTRY_PRESENT_MASK as usize) != 0 }
 pub open spec fn usize2ps(v: usize) -> bool { (v & PAGE_ENTRY_PS_MASK as usize) != 0 }
@@ -101,7 +124,8 @@ pub proof fn mem_valid_zero()
 }
 
 pub open spec fn spec_usize2page_entry_perm(v: usize) -> PageEntryPerm {
-    PageEntryPerm { present: usize2present(v), ps: usize2ps(v), write: usize2write(v), execute_disable: usize2execute_disable(v), user: usize2user(v), kernel_present: usize2kernel_present(v) }
+    PageEntryPerm { is_io: usize2is_io(v), present: usize2present(v), ps: usize2ps(v), write: usize2write(v),
+        execute_disable: usize2execute_disable(v), user: usize2user(v), kernel_present: usize2kernel_present(v) }
 }
 
 #[verifier(when_used_as_spec(spec_usize2page_entry_perm))]
@@ -110,6 +134,7 @@ pub fn usize2page_entry_perm(v: usize) -> (ret: PageEntryPerm)
         ret =~= spec_usize2page_entry_perm(v),
 {
     PageEntryPerm {
+        is_io: (v & PAGE_ENTRY_IO_MASK as usize) != 0,
         present: (v & PAGE_ENTRY_PRESENT_MASK as usize) != 0, ps: (v & PAGE_ENTRY_PS_MASK as usize) != 0, write: (v & PAGE_ENTRY_WRITE_MASK as usize) != 0,
         execute_disable: (v & PAGE_ENTRY_EXECUTE_MASK as usize) != 0, user: (v & PAGE_ENTRY_USER_MASK as usize) != 0, kernel_present: (v & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize) != 0,
     }
@@ -152,6 +177,7 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     ensures
         usize2pa(ret) == page_entry.addr,
         usize2page_entry_perm(ret) =~= page_entry.perm,
+        ret & PAGE_ENTRY_IO_CACHE_MASK as usize == if page_entry.perm.is_io { PAGE_ENTRY_IO_CACHE_MASK as usize } else { 0 },
 {
     let addr = page_entry.addr;
     let present = page_entry.perm.present;
@@ -160,8 +186,11 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     let execute_disable = page_entry.perm.execute_disable;
     let user = page_entry.perm.user;
     let kernel_present = page_entry.perm.kernel_present;
-    let ret = addr | if present { (PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_ACCESSED_MASK | PAGE_ENTRY_DIRTY_MASK) as usize } else { 0 } | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
-        | if execute_disable { PAGE_ENTRY_EXECUTE_MASK as usize } else { 0 } | if user { PAGE_ENTRY_USER_MASK as usize } else { 0 } | if kernel_present { PAGE_ENTRY_KERNEL_PRESENT_MASK as usize } else { 0 };
+    let is_io = page_entry.perm.is_io;
+    let ret = addr | if present { (PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_ACCESSED_MASK | PAGE_ENTRY_DIRTY_MASK) as usize } else { 0 }
+        | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
+        | if execute_disable { PAGE_ENTRY_EXECUTE_MASK as usize } else { 0 } | if user { PAGE_ENTRY_USER_MASK as usize } else { 0 } | if kernel_present { PAGE_ENTRY_KERNEL_PRESENT_MASK as usize } else { 0 }
+        | if is_io { (PAGE_ENTRY_IO_MASK | PAGE_ENTRY_IO_CACHE_MASK) as usize } else { 0 };
     assert({
         &&& ret & MEM_MASK as usize == addr
         &&& (ret & PAGE_ENTRY_PRESENT_MASK as usize != 0) == present
@@ -170,11 +199,15 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
         &&& (ret & PAGE_ENTRY_EXECUTE_MASK as usize != 0) == execute_disable
         &&& (ret & PAGE_ENTRY_USER_MASK as usize != 0) == user
         &&& (ret & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0) == kernel_present
+        &&& (ret & PAGE_ENTRY_IO_MASK as usize != 0) == is_io
+        &&& ret & PAGE_ENTRY_IO_CACHE_MASK as usize == if is_io { PAGE_ENTRY_IO_CACHE_MASK as usize } else { 0 }
     }) by (bit_vector)
         requires
             addr & (!MEM_MASK) as usize == 0,
-            ret == addr | if present { (PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_ACCESSED_MASK | PAGE_ENTRY_DIRTY_MASK) as usize } else { 0 } | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
-                | if execute_disable { PAGE_ENTRY_EXECUTE_MASK as usize } else { 0 } | if user { PAGE_ENTRY_USER_MASK as usize } else { 0 } | if kernel_present { PAGE_ENTRY_KERNEL_PRESENT_MASK as usize } else { 0 },
+            ret == addr | if present { (PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_ACCESSED_MASK | PAGE_ENTRY_DIRTY_MASK) as usize } else { 0 }
+                | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
+                | if execute_disable { PAGE_ENTRY_EXECUTE_MASK as usize } else { 0 } | if user { PAGE_ENTRY_USER_MASK as usize } else { 0 } | if kernel_present { PAGE_ENTRY_KERNEL_PRESENT_MASK as usize } else { 0 }
+                | if is_io { (PAGE_ENTRY_IO_MASK | PAGE_ENTRY_IO_CACHE_MASK) as usize } else { 0 },
     ;
     ret
 }

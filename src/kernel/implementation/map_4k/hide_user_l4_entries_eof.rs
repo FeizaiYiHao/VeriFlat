@@ -22,7 +22,7 @@ pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: K
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
     &&& old_c.kernel_l4_end() <= l4i && pei_valid(l4i)
     &&& old_c.spec_resolve_mapping_l4(l4i) is Some
-    &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
+    &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.pci == old_h.pci && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
     &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
     &&& new_h.l3_tables == old_h.l3_tables && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
     &&& new_c.lower.l2_perms == old_c.lower.l2_perms && new_c.lower.l1_rev_map == old_c.lower.l1_rev_map && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
@@ -36,7 +36,7 @@ pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: K
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && i4 != l4i ==> new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
     &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) && i4 != l4i ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4)
     &&& new_c.spec_held_l4(l4i) == Some(PageEntry { addr: old_c.spec_held_l4(l4i)->0.addr,
-            perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+            perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
     &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
     &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_l2(i4, i3, i2)]
@@ -68,6 +68,7 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
     ensures post.inv(),
 {
     reveal(hide_user_l4_entry_eof_transition_framing);
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     pre.default_pagetable_wf_at(pagetable);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
@@ -88,6 +89,7 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
         broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; reveal(cpu_tlb_wf);
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// Once no user root entry of `pagetable` resolves, the table maps nothing and records no window.

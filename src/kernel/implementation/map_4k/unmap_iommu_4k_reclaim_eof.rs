@@ -50,7 +50,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_tables(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -107,7 +106,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_free_4k_pages(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -157,7 +155,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -292,7 +289,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -310,6 +306,9 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
+    assert(pci_bar_table_wf(post.pci_bars.view())) by { reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pagetable_pci_mappings_wf); };
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(pre, post, iommu_table, indices, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(pre, post, iommu_table, indices, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing); };
@@ -350,7 +349,6 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)

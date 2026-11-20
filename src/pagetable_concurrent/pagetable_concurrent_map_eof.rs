@@ -27,7 +27,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|p: PageMapPtr, i: L2Index, j: L1Index| #![trigger post.lower.l1_page(p, i).spec_index(j)]
             p == l2_p && i == target_l2i && pei_valid(j) && j != target_l1i ==> post.lower.l1_page(p, i).spec_index(j) =~= pre.lower.l1_page(p, i).spec_index(j)
         &&& post.lower.l1_page(l2_p, target_l2i).spec_index(target_l1i) =~= (PageEntry { addr: target_entry.addr,
-            perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
+            perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
         &&& post.lower.mapping_4k == pre.lower.mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), target_entry)
     }
 
@@ -44,7 +44,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.lower.l1_rev_map.dom().contains(target_l1_p),
-            page_ptr_valid(target_entry.addr),
+            mapping_4k_target_valid(target_entry.addr, target_entry.is_io),
             target_entry.present,
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures
@@ -73,7 +73,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         requires
             pre.va_addr_valid(),
             page_table_key_4k_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            page_ptr_valid(target_entry.addr),
+            mapping_4k_target_valid(target_entry.addr, target_entry.is_io),
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures
             post.va_addr_valid(),
@@ -308,7 +308,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (target_l4i, target_l3i, target_l2i, target_l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
             post.spec_held_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
-                perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
+                perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
     {
         reveal(WholePageTable::map_4k_page_eof_transition_framing);
         broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;

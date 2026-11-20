@@ -69,7 +69,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& pei_valid(indices.3)
                 &&& self.mapping_4k().dom().contains(va)
                 &&& self.mapping_4k().spec_index(va).present
-                &&& page_ptr_valid(self.mapping_4k().spec_index(va).addr)
+                &&& mapping_4k_target_valid(self.mapping_4k().spec_index(va).addr, self.mapping_4k().spec_index(va).is_io)
                 &&& {
                     let resolved = self.spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3);
                     &&& resolved is Some
@@ -77,6 +77,18 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                     &&& resolved->0.perm.present
                 }
             }
+    }
+
+    /// No mapped address in the 4K range maps device memory.
+    pub open spec fn spec_mapping_4k_va_range_ram(&self, range: &VaRange4K) -> bool {
+        forall|i: int| #![trigger self.mapping_4k().dom().contains(range.view().spec_index(i))]
+            0 <= i < range.len && self.mapping_4k().dom().contains(range.view().spec_index(i)) ==> !self.mapping_4k().spec_index(range.view().spec_index(i)).is_io
+    }
+
+    /// No mapped address in the 2M range maps device memory.
+    pub open spec fn spec_mapping_2m_va_range_ram(&self, range: &VaRange2M) -> bool {
+        forall|i: int| #![trigger self.mapping_2m().dom().contains(range.view().spec_index(i))]
+            0 <= i < range.len && self.mapping_2m().dom().contains(range.view().spec_index(i)) ==> !self.mapping_2m().spec_index(range.view().spec_index(i)).is_io
     }
 
     pub broadcast proof fn mapping_4k_index_range_empty_implies_va_empty_at(&self, start_l4i: L4Index, start_l3i: L3Index, start_l2i: L2Index, start_l1i: L1Index, end_l4i: L4Index, end_l3i: L3Index,
@@ -770,22 +782,28 @@ impl PageTableHigher<PT_TYPE> {
         true
     }
 
-    /// Check whether every address in a 4K range has a user-present leaf. This scans only the page table and does
-    /// not mutate any page-table state.
-    pub fn mapping_4k_va_range_present(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, range: &VaRange4K) -> (ret: bool)
+    /// Check whether every address in a 4K range has a user-present leaf (`ret.0`) and, when it has, whether none of them
+    /// maps device memory (`ret.1`). This scans only the page table and does not mutate any page-table state.
+    pub fn mapping_4k_va_range_present(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, range: &VaRange4K) -> (ret: (bool, bool))
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             range.wf(),
             self.kernel_l4_end <= spec_va2index(range.start).0,
         ensures
-            ret == (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_va_range_present(range),
-            ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len
+            ret.0 == (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_va_range_present(range),
+            ret.0 == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len
                 ==> lower.mapping_4k.dom().contains(range.view().spec_index(j)) && lower.mapping_4k.spec_index(range.view().spec_index(j)).present,
+            ret.0 ==> ret.1 == (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_va_range_ram(range),
+            ret.0 ==> ret.1 == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len
+                ==> lower.mapping_4k.dom().contains(range.view().spec_index(j)) && lower.mapping_4k.spec_index(range.view().spec_index(j)).present
+                && !lower.mapping_4k.spec_index(range.view().spec_index(j)).is_io,
     {
         let ghost c = WholePageTable { higher: *self, lower: *lower };
         let range_start = range.start;
         let range_len = range.len;
         let mut i: usize = 0;
+        let mut ram = true;
+        let ghost mut io_at: int = 0;
         while i < range_len
             invariant
                 c == (WholePageTable { higher: *self, lower: *lower }),
@@ -809,7 +827,8 @@ impl PageTableHigher<PT_TYPE> {
                         &&& pei_valid(indices.3)
                         &&& lower.mapping_4k.dom().contains(va)
                         &&& lower.mapping_4k.spec_index(va).present
-                        &&& page_ptr_valid(lower.mapping_4k.spec_index(va).addr)
+                        &&& mapping_4k_target_valid(lower.mapping_4k.spec_index(va).addr, lower.mapping_4k.spec_index(va).is_io)
+                        &&& ram ==> !lower.mapping_4k.spec_index(va).is_io
                         &&& {
                             let resolved = c.spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3);
                             &&& resolved is Some
@@ -817,6 +836,7 @@ impl PageTableHigher<PT_TYPE> {
                             &&& resolved->0.perm.present
                         }
                     },
+                !ram ==> 0 <= io_at < i && lower.mapping_4k.spec_index(range.view().spec_index(io_at)).is_io,
             decreases range_len - i,
         {
             let va = va_add_range(range_start, i);
@@ -826,7 +846,7 @@ impl PageTableHigher<PT_TYPE> {
             let resolved = self.resolve_mapping_4k_l1(Tracked(lower), l4i, l3i, l2i, l1i);
             if resolved.2.is_none() {
                 proof { assert(!lower.mapping_4k.dom().contains(range.view().spec_index(i as int))) by { range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }
-                return false;
+                return (false, false);
             }
             let entry = resolved.2.unwrap();
             if !entry.present {
@@ -834,7 +854,11 @@ impl PageTableHigher<PT_TYPE> {
                     assert(!c.spec_mapping_4k_va_range_present(range)) by { range.wf_implies_view_index_is_start_plus_offset(); assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; };
                     assert(!lower.mapping_4k.spec_index(range.view().spec_index(i as int)).present) by { range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
                 }
-                return false;
+                return (false, false);
+            }
+            if entry.is_io {
+                ram = false;
+                proof { io_at = i as int; }
             }
             proof {
                 assert({
@@ -847,7 +871,8 @@ impl PageTableHigher<PT_TYPE> {
                     &&& pei_valid(checked_indices.3)
                     &&& lower.mapping_4k.dom().contains(checked_va)
                     &&& lower.mapping_4k.spec_index(checked_va).present
-                    &&& page_ptr_valid(lower.mapping_4k.spec_index(checked_va).addr)
+                    &&& mapping_4k_target_valid(lower.mapping_4k.spec_index(checked_va).addr, lower.mapping_4k.spec_index(checked_va).is_io)
+                    &&& lower.mapping_4k.spec_index(checked_va).is_io == entry.is_io
                     &&& {
                         let spec_resolved = c.spec_resolve_mapping_4k_l1(checked_indices.0, checked_indices.1, checked_indices.2, checked_indices.3);
                         &&& spec_resolved is Some
@@ -858,7 +883,16 @@ impl PageTableHigher<PT_TYPE> {
             }
             i = i + 1;
         }
-        true
+        proof {
+            if !ram {
+                assert(!c.spec_mapping_4k_va_range_ram(range)) by {
+                    assert(0 <= io_at < range.len && lower.mapping_4k.dom().contains(range.view().spec_index(io_at)) && c.mapping_4k().spec_index(range.view().spec_index(io_at)).is_io) by {
+                        range.wf_implies_view_index_is_start_plus_offset();
+                    };
+                };
+            }
+        }
+        (true, ram)
     }
 
     pub fn mapping_4k_va_range_buildable(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, range: &VaRange4K) -> (ret: bool)

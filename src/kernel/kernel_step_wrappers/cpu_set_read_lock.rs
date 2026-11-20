@@ -81,6 +81,7 @@ pub proof fn kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_impli
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_4k() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_4k()
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_2m() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_2m()
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_1g() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_1g()
+            &&& pre.pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == snap.pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).lower.pagetable_window_locks
         },
         pre.ctn_mp.dom().contains(ctn_ptr),
@@ -138,6 +139,7 @@ impl KernelK {
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k()
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_2m() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_1g() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
+                &&& old(self).pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == old(steps).snapshot_k().pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
                 &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).lower.pagetable_window_locks
                     == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
             },
@@ -199,7 +201,7 @@ impl KernelK {
         };
         kernel_cpu_set_lock_mode_changed_implies_u_step(&snap, &mid, ctn_ptr); kernel_container_projection_at(&snap, ctn_ptr);
         assert(kernel_k_to_kernel_u(*self) == (KernelU { cpu_tlb: self.cpu_tlb.view(), ..locked })) by {
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             kernel_cpu_tlb_updated_implies_u_step(&mid, &*self);
         };
         assert(locked != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(locked, kernel_k_to_kernel_u(*self), pcid)) by {

@@ -2,7 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Every page mapped at a source-range address of `source_pagetable` is owned by `target_container` or one of its ancestors.
+/// Every page mapped at a source-range address of `source_pagetable` is owned by `target_container` or one of its ancestors, so
+/// the source range is owner-compatible exactly when it maps no device memory.
 pub(super) proof fn ipc_share_pages_source_owners_in_target_uppertree(
     krnl: &KernelK, cpu_id: CpuId, caller_thread: RwLockThreadPtr, peer_thread: RwLockThreadPtr, source_thread: RwLockThreadPtr,
     source_pagetable: RwLockPageTableRoot, source_container: RwLockContainerPtr, target_container: RwLockContainerPtr, source_range: &VaRange4K,
@@ -21,7 +22,8 @@ pub(super) proof fn ipc_share_pages_source_owners_in_target_uppertree(
         source_container == target_container || krnl.ctn_mp.spec_index(target_container).view().uppertree_seq.view().contains(source_container),
         share_mapping_4k_source_range_present(krnl, source_pagetable, source_range),
     ensures
-        share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range),
+        share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)
+            == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_mapping_4k_va_range_ram(source_range),
 {
     thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thread);
     process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread);

@@ -24,6 +24,22 @@ pub proof fn mapped_4k_page_ref_count_lt_usize_max(
         page_array.spec_index(pg_idx).view().view().ref_count < usize::MAX,
 {}
 
+/// A function's recorded BAR mappings are keys of distinct 4K or 2M user leaves of one page table, a finite product of aligned
+/// 48-bit addresses and two sizes; its cardinality bounds the mapping count.
+#[verifier::external_body]
+pub proof fn pci_function_mapping_count_lt_usize_max(
+    pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, bars: Seq<PciBarEntry>, pagetable_ptr: RwLockPageTableRoot, f: PciBdf,
+)
+    requires
+        pagetable_perms_wf(pagetable_map),
+        pagetable_lower_wf(pagetable_map, pt_lower),
+        pagetable_pci_mappings_wf(bars, pagetable_map, pt_lower),
+        pagetable_map.dom().contains(pagetable_ptr),
+        pagetable_map.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains(f),
+    ensures
+        pagetable_map.spec_index(pagetable_ptr).view().higher.pci.view()[f].len() < usize::MAX,
+{}
+
 /// A duplicate-free sequence drawn from the process/thread object maps is
 /// bounded by the finite physical-page domain backing both object families.
 #[verifier::external_body]

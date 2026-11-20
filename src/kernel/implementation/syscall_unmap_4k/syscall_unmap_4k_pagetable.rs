@@ -7,8 +7,8 @@ use super::syscall_unmap_4k_helpers::unmap_4k_unmap_and_finish;
 verus! {
 /// With cpu `cpu_id` and its running thread write-held since the entry snapshot `entry_lctx` was aligned with: read-locks
 /// the pagetable of the thread's process, locks the 2M windows of the range whose L3 entry links an L2 page, and
-/// unmaps the range when every page of it is a present user 4K leaf; otherwise releases every lock with no step and returns
-/// Error.
+/// unmaps the range when every page of it is a present user 4K RAM leaf; otherwise, also when a page holds an IO leaf, releases
+/// every lock with no step and returns Error.
 pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize,
     prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, Ghost(entry_lctx): Ghost<LocalContext>, Tracked(cpu_perm): Tracked<LockPerm>, Tracked(thread_perm): Tracked<LockPerm>,
@@ -148,7 +148,8 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     proof { assert(va_range == spec_va_range_4k(va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); }; }
     if l4_ok {
         let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));
-        if share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
+        let (present, ram) = share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm));
+        if present && ram {
             proof { va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int); }
             unmap_4k_unmap_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, &va_range, prc_ptr, thrd_ptr, pagetable, cr3, pcid, Ghost(entry_lctx),
                 Tracked(cpu_perm), Tracked(thread_perm), Tracked(pagetable_perm), Tracked(window_perms));

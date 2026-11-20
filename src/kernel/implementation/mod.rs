@@ -50,6 +50,8 @@ pub mod rebalance_pull;
 pub mod syscall_cpu_hotplug;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_pci;
+#[cfg(not(feature = "split-crates"))]
+pub mod syscall_pci_bar;
 pub mod locker_unlocker;
 pub mod attach_endpoint_reference_and_unlock;
 mod attach_endpoint_reference_and_unlock_eof;

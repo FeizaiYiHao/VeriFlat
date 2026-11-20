@@ -30,7 +30,6 @@ pub fn page_array_retype_owned_4k(
         final(page_array).spec_index(pg_idx).view().view().state == new_state,
         final(page_array).spec_index(pg_idx).view().view().perm_4k.view().is_none(),
         final(page_array).spec_index(pg_idx).view().view().addr == old(page_array).spec_index(pg_idx).view().view().addr,
-        final(page_array).spec_index(pg_idx).view().view().is_io_page == old(page_array).spec_index(pg_idx).view().view().is_io_page,
         final(page_array).spec_index(pg_idx).view().view().ref_count == old(page_array).spec_index(pg_idx).view().view().ref_count,
         final(page_array).spec_index(pg_idx).view().view().owning_container == old(page_array).spec_index(pg_idx).view().view().owning_container,
         final(page_array).spec_index(pg_idx).view().view().mappings() == old(page_array).spec_index(pg_idx).view().view().mappings(),
@@ -80,7 +79,6 @@ pub fn page_array_add_4k_mapping(page_array: &mut PageLockedArray, pg_idx: PageI
         final(page_array).spec_index(pg_idx).view().view().ref_count == old(page_array).spec_index(pg_idx).view().view().ref_count + 1,
         final(page_array).spec_index(pg_idx).view().view().addr == old(page_array).spec_index(pg_idx).view().view().addr,
         final(page_array).spec_index(pg_idx).view().view().state == old(page_array).spec_index(pg_idx).view().view().state,
-        final(page_array).spec_index(pg_idx).view().view().is_io_page == old(page_array).spec_index(pg_idx).view().view().is_io_page,
         final(page_array).spec_index(pg_idx).view().view().owning_container == old(page_array).spec_index(pg_idx).view().view().owning_container,
         final(page_array).spec_index(pg_idx).view().view().free_list_node_storage == old(page_array).spec_index(pg_idx).view().view().free_list_node_storage,
         final(page_array).spec_index(pg_idx).view().view().free_list == old(page_array).spec_index(pg_idx).view().view().free_list,
@@ -126,7 +124,6 @@ pub fn page_array_add_4k_iommu_mapping(page_array: &mut PageLockedArray, pg_idx:
         final(page_array).spec_index(pg_idx).view().view().ref_count == old(page_array).spec_index(pg_idx).view().view().ref_count + 1,
         final(page_array).spec_index(pg_idx).view().view().addr == old(page_array).spec_index(pg_idx).view().view().addr,
         final(page_array).spec_index(pg_idx).view().view().state == old(page_array).spec_index(pg_idx).view().view().state,
-        final(page_array).spec_index(pg_idx).view().view().is_io_page == old(page_array).spec_index(pg_idx).view().view().is_io_page,
         final(page_array).spec_index(pg_idx).view().view().owning_container == old(page_array).spec_index(pg_idx).view().view().owning_container,
         final(page_array).spec_index(pg_idx).view().view().free_list_node_storage == old(page_array).spec_index(pg_idx).view().view().free_list_node_storage,
         final(page_array).spec_index(pg_idx).view().view().free_list == old(page_array).spec_index(pg_idx).view().view().free_list,
@@ -154,7 +151,7 @@ pub fn page_array_remove_4k_mapping_without_free(page_array: &mut PageLockedArra
         page_lock_perm.lock_id() == old(page_array).spec_index(pg_idx).view().locking_thread()->Write_lock_id,
         old(page_array).spec_index(pg_idx).view().view().state is Mapped4k,
         old(page_array).spec_index(pg_idx).view().view().mappings().contains((pagetable_ptr, va)),
-        old(page_array).spec_index(pg_idx).view().view().ref_count > 1 || old(page_array).spec_index(pg_idx).view().view().is_io_page,
+        old(page_array).spec_index(pg_idx).view().view().ref_count > 1,
     ensures
         page_array_wf(*final(page_array)),
         final(page_array).inv(),
@@ -171,21 +168,15 @@ pub fn page_array_remove_4k_mapping_without_free(page_array: &mut PageLockedArra
         final(page_array).spec_index(pg_idx).view().view().mappings() == old(page_array).spec_index(pg_idx).view().view().mappings().remove((pagetable_ptr, va)),
         final(page_array).spec_index(pg_idx).view().view().iommu_mappings() == old(page_array).spec_index(pg_idx).view().view().iommu_mappings(),
         final(page_array).spec_index(pg_idx).view().view().ref_count == old(page_array).spec_index(pg_idx).view().view().ref_count - 1,
-        final(page_array).spec_index(pg_idx).view().view().state == if old(page_array).spec_index(pg_idx).view().view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable },
+        final(page_array).spec_index(pg_idx).view().view().state == PageState::Mapped4k,
         forall|i: PageIndex| #![trigger old(page_array).spec_index(i).view().view().state] #![trigger final(page_array).spec_index(i).view().view().state]
             index_valid(NUM_PAGES, i) && i != pg_idx ==> final(page_array).spec_index(i).view().view().state == old(page_array).spec_index(i).view().view().state,
-        old(page_array).spec_index(pg_idx).view().view().ref_count > 1
-            ==> final(page_array).spec_index(pg_idx).view().view() == (Page { mappings: final(page_array).spec_index(pg_idx).view().view().mappings,
-                ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
-        old(page_array).spec_index(pg_idx).view().view().ref_count == 1
-            ==> final(page_array).spec_index(pg_idx).view().view() == (Page { state: PageState::Unavailable, mappings: final(page_array).spec_index(pg_idx).view().view().mappings, ref_count: 0,
-                perm_4k: final(page_array).spec_index(pg_idx).view().view().perm_4k, ..old(page_array).spec_index(pg_idx).view().view() })
-            && final(page_array).spec_index(pg_idx).view().view().perm_4k.view() is None,
+        final(page_array).spec_index(pg_idx).view().view() == (Page { mappings: final(page_array).spec_index(pg_idx).view().view().mappings,
+            ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
 {
     assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
-    if page.ref_count > 1 { remove_shared_4k_mapping(page, pagetable_ptr, va); }
-    else { remove_last_4k_io_mapping(page, pagetable_ptr, va); }
+    remove_shared_4k_mapping(page, pagetable_ptr, va);
     proof {
         assert(page_array_remove_4k_mapping_without_free_eof_transition_framing(*old(page_array), *page_array, pg_idx)) by { reveal(page_array_remove_4k_mapping_without_free_eof_transition_framing); };
         page_array_remove_4k_mapping_without_free_eof(*old(page_array), *page_array, pg_idx);
@@ -248,7 +239,6 @@ pub fn page_array_remove_last_4k_mapping_to_cache(
         page_lock_perm.thread_id() == lctx.thread_id(),
         page_lock_perm.lock_id() == old(page_array).spec_index(pg_idx).view().locking_thread()->Write_lock_id,
         old(page_array).spec_index(pg_idx).view().view().state is Mapped4k,
-        !old(page_array).spec_index(pg_idx).view().view().is_io_page,
         old(page_array).spec_index(pg_idx).view().view().mappings().contains((pagetable_ptr, va)),
         old(page_array).spec_index(pg_idx).view().view().ref_count == 1,
         index_valid(NUM_CPUS, cpu_id),
@@ -345,7 +335,7 @@ pub fn page_array_remove_4k_iommu_mapping_without_free(page_array: &mut PageLock
         page_lock_perm.lock_id() == old(page_array).spec_index(pg_idx).view().locking_thread()->Write_lock_id,
         old(page_array).spec_index(pg_idx).view().view().state is Mapped4k,
         old(page_array).spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table_ptr, iova)),
-        old(page_array).spec_index(pg_idx).view().view().ref_count > 1 || old(page_array).spec_index(pg_idx).view().view().is_io_page,
+        old(page_array).spec_index(pg_idx).view().view().ref_count > 1,
     ensures
         page_array_wf(*final(page_array)),
         final(page_array).inv(),
@@ -363,21 +353,15 @@ pub fn page_array_remove_4k_iommu_mapping_without_free(page_array: &mut PageLock
         final(page_array).spec_index(pg_idx).view().view().mappings() == old(page_array).spec_index(pg_idx).view().view().mappings(),
         final(page_array).spec_index(pg_idx).view().view().owning_container == old(page_array).spec_index(pg_idx).view().view().owning_container,
         final(page_array).spec_index(pg_idx).view().view().ref_count == old(page_array).spec_index(pg_idx).view().view().ref_count - 1,
-        final(page_array).spec_index(pg_idx).view().view().state == if old(page_array).spec_index(pg_idx).view().view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable },
+        final(page_array).spec_index(pg_idx).view().view().state == PageState::Mapped4k,
         forall|i: PageIndex| #![trigger old(page_array).spec_index(i).view().view().state] #![trigger final(page_array).spec_index(i).view().view().state]
             index_valid(NUM_PAGES, i) && i != pg_idx ==> final(page_array).spec_index(i).view().view().state == old(page_array).spec_index(i).view().view().state,
-        old(page_array).spec_index(pg_idx).view().view().ref_count > 1
-            ==> final(page_array).spec_index(pg_idx).view().view() == (Page { iommu_mappings: final(page_array).spec_index(pg_idx).view().view().iommu_mappings,
-                ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
-        old(page_array).spec_index(pg_idx).view().view().ref_count == 1
-            ==> final(page_array).spec_index(pg_idx).view().view() == (Page { state: PageState::Unavailable, iommu_mappings: final(page_array).spec_index(pg_idx).view().view().iommu_mappings,
-                ref_count: 0, perm_4k: final(page_array).spec_index(pg_idx).view().view().perm_4k, ..old(page_array).spec_index(pg_idx).view().view() })
-            && final(page_array).spec_index(pg_idx).view().view().perm_4k.view() is None,
+        final(page_array).spec_index(pg_idx).view().view() == (Page { iommu_mappings: final(page_array).spec_index(pg_idx).view().view().iommu_mappings,
+            ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
 {
     assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
-    if page.ref_count > 1 { remove_shared_4k_iommu_mapping(page, iommu_table_ptr, iova); }
-    else { remove_last_4k_iommu_io_mapping(page, iommu_table_ptr, iova); }
+    remove_shared_4k_iommu_mapping(page, iommu_table_ptr, iova);
     proof {
         assert(page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(*old(page_array), *page_array, pg_idx)) by { reveal(page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing); };
         page_array_remove_4k_iommu_mapping_without_free_eof(*old(page_array), *page_array, pg_idx);
@@ -397,7 +381,6 @@ pub fn page_array_remove_last_4k_iommu_mapping_to_cache(
         page_lock_perm.thread_id() == lctx.thread_id(),
         page_lock_perm.lock_id() == old(page_array).spec_index(pg_idx).view().locking_thread()->Write_lock_id,
         old(page_array).spec_index(pg_idx).view().view().state is Mapped4k,
-        !old(page_array).spec_index(pg_idx).view().view().is_io_page,
         old(page_array).spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table_ptr, iova)),
         old(page_array).spec_index(pg_idx).view().view().ref_count == 1,
         index_valid(NUM_CPUS, cpu_id),

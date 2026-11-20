@@ -15,13 +15,11 @@ pub open spec fn process_invariant_fields_except_quota_unchanged(pre: ProcessLoc
             &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
             &&& post.spec_index(p_ptr).view().pcid == pre.spec_index(p_ptr).view().pcid
             &&& post.spec_index(p_ptr).view().iommu_table == pre.spec_index(p_ptr).view().iommu_table
-            &&& post.spec_index(p_ptr).view_ghost().owned_pci_functions == pre.spec_index(p_ptr).view_ghost().owned_pci_functions
             &&& post.spec_index(p_ptr).view().parent_linkedlist_node == pre.spec_index(p_ptr).view().parent_linkedlist_node
             &&& post.spec_index(p_ptr).view().children == pre.spec_index(p_ptr).view().children
             &&& post.spec_index(p_ptr).view().uppertree_seq == pre.spec_index(p_ptr).view().uppertree_seq
             &&& post.spec_index(p_ptr).view_ghost().subtree_set == pre.spec_index(p_ptr).view_ghost().subtree_set
             &&& post.spec_index(p_ptr).view().owned_threads == pre.spec_index(p_ptr).view().owned_threads
-            &&& post.spec_index(p_ptr).view().pci_cleared == pre.spec_index(p_ptr).view().pci_cleared
         }
 }
 
@@ -117,12 +115,12 @@ pub proof fn iommu_root_table_process_wf_preserved_for_process_fields_except_quo
             iommu_root_table_process_wf(root_table, pre, iommu_table_map) && process_invariant_fields_except_quota_unchanged(pre, post) ==> iommu_root_table_process_wf(root_table, post, iommu_table_map),
 { reveal(iommu_root_table_process_wf); }
 
-pub proof fn process_pci_function_ownership_wf_preserved_for_process_fields_except_quota()
+pub proof fn pci_function_ownership_wf_preserved_for_process_fields_except_quota()
     ensures
-        forall|root_table: IommuRootTable, pre: ProcessLockedMap, post: ProcessLockedMap|
-            #![trigger process_pci_function_ownership_wf(root_table, pre), process_pci_function_ownership_wf(root_table, post)]
-            process_pci_function_ownership_wf(root_table, pre) && process_invariant_fields_except_quota_unchanged(pre, post) ==> process_pci_function_ownership_wf(root_table, post),
-{ reveal(process_pci_function_ownership_wf); }
+        forall|root_table: IommuRootTable, pre: ProcessLockedMap, post: ProcessLockedMap, pt_mp: PageTableLockedMap|
+            #![trigger pci_function_ownership_wf(root_table, pre, pt_mp), pci_function_ownership_wf(root_table, post, pt_mp)]
+            pci_function_ownership_wf(root_table, pre, pt_mp) && process_invariant_fields_except_quota_unchanged(pre, post) ==> pci_function_ownership_wf(root_table, post, pt_mp),
+{ reveal(pci_function_ownership_wf); }
 
 pub proof fn iommu_tlb_wf_spec_preserved_for_process_fields_except_quota()
     ensures

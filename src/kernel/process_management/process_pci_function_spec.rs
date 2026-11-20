@@ -2,44 +2,48 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Bidirectional ownership index between the static BDF metadata table and
-/// each process's lock-free ghost reverse set.  Both directions change only
-/// under the root-table lock.
+/// The root table's owners and the page tables' PCI function arrays agree: an owned function sits in the array of its
+/// owner's page table, and a function in a page table's array is owned by that table's process. Both sides change only
+/// under the page-table lock and the root-table lock together.
 #[verifier::opaque]
-pub open spec fn process_pci_function_ownership_wf(root_table: IommuRootTable, prc_mp: ProcessLockedMap) -> bool {
-    &&& root_table.wf()
-    // Root table -> process reverse set.
+pub open spec fn pci_function_ownership_wf(irt: IommuRootTable, prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap) -> bool {
     &&& forall|bus: usize, device: usize, function: usize|
-        #![trigger root_table.spec_index_owner(bus, device, function)]
-        pci_bdf_valid(bus, device, function) ==> {
-            let prc_ptr = root_table.spec_index_owner(bus, device, function);
-            &&& prc_mp.dom().contains(prc_ptr)
-            &&& prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))
-            // a process whose PCI functions were cleared owns no slot
-            &&& !prc_mp.spec_index(prc_ptr).view().pci_cleared.view()
+        #![trigger irt.spec_index_owner(bus, device, function)]
+        pci_bdf_valid(bus, device, function) && irt.spec_index_owner(bus, device, function) is Some ==> {
+            let p = irt.spec_index_owner(bus, device, function)->Some_0;
+            &&& prc_mp.dom().contains(p)
+            &&& pt_mp.dom().contains(prc_mp.spec_index(p).view().pagetable)
+            &&& pt_mp.spec_index(prc_mp.spec_index(p).view().pagetable).view().higher.pci.view().dom().contains((bus, device, function))
         }
-    // Process reverse set -> root table.
-    &&& forall|p: RwLockProcessPtr, bdf: PciBdf|
-        #![trigger prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(bdf)]
-        prc_mp.dom().contains(p) && prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(bdf) ==> {
-            &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
-            &&& root_table.spec_index_owner(bdf.0, bdf.1, bdf.2) == p
-        }
+    &&& forall|pt: RwLockPageTableRoot, f: PciBdf|
+        #![trigger pt_mp.spec_index(pt).view().higher.pci.view().dom().contains(f)]
+        pt_mp.dom().contains(pt) && pt_mp.spec_index(pt).view().higher.pci.view().dom().contains(f)
+            ==> pci_bdf_valid(f.0, f.1, f.2) && irt.spec_index_owner(f.0, f.1, f.2) == Some(pt_mp.spec_index(pt).view().higher.proc_ptr)
 }
 
-/// Both directions of `process_pci_function_ownership_wf` at function `bdf` and process `prc_ptr`.
-pub proof fn process_pci_function_ownership_wf_at(root_table: IommuRootTable, prc_mp: ProcessLockedMap, bdf: PciBdf, prc_ptr: RwLockProcessPtr)
-    requires process_pci_function_ownership_wf(root_table, prc_mp),
+/// `pci_function_ownership_wf` at the owned function `(bus, device, function)`.
+pub proof fn pci_function_ownership_wf_function_at(irt: IommuRootTable, prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap, bus: usize, device: usize, function: usize)
+    requires
+        pci_function_ownership_wf(irt, prc_mp, pt_mp),
+        pci_bdf_valid(bus, device, function),
+        irt.spec_index_owner(bus, device, function) is Some,
     ensures
-        pci_bdf_valid(bdf.0, bdf.1, bdf.2) ==> ({
-            let owner = root_table.spec_index_owner(bdf.0, bdf.1, bdf.2);
-            &&& prc_mp.dom().contains(owner)
-            &&& prc_mp.spec_index(owner).view_ghost().owned_pci_functions.view().contains(bdf)
-            &&& !prc_mp.spec_index(owner).view().pci_cleared.view()
+        ({
+            let p = irt.spec_index_owner(bus, device, function)->Some_0;
+            &&& prc_mp.dom().contains(p)
+            &&& pt_mp.dom().contains(prc_mp.spec_index(p).view().pagetable)
+            &&& pt_mp.spec_index(prc_mp.spec_index(p).view().pagetable).view().higher.pci.view().dom().contains((bus, device, function))
         }),
-        prc_mp.dom().contains(prc_ptr) && prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains(bdf) ==> {
-            &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
-            &&& root_table.spec_index_owner(bdf.0, bdf.1, bdf.2) == prc_ptr
-        },
-{ reveal(process_pci_function_ownership_wf); }
+{ reveal(pci_function_ownership_wf); }
+
+/// `pci_function_ownership_wf` at the function `f` in the array of page table `pt`.
+pub proof fn pci_function_ownership_wf_pagetable_at(irt: IommuRootTable, prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap, pt: RwLockPageTableRoot, f: PciBdf)
+    requires
+        pci_function_ownership_wf(irt, prc_mp, pt_mp),
+        pt_mp.dom().contains(pt),
+        pt_mp.spec_index(pt).view().higher.pci.view().dom().contains(f),
+    ensures
+        pci_bdf_valid(f.0, f.1, f.2),
+        irt.spec_index_owner(f.0, f.1, f.2) == Some(pt_mp.spec_index(pt).view().higher.proc_ptr),
+{ reveal(pci_function_ownership_wf); }
 }

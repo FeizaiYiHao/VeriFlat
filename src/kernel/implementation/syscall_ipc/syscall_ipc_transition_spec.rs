@@ -122,6 +122,7 @@ pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
     &&& forall|key: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(key)] #![trigger post.thrd_mp.spec_index(key)]
         #![trigger pre.thrd_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_2m]

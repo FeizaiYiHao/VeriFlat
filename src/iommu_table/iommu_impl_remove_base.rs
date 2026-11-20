@@ -34,7 +34,8 @@ impl IommuTable {
             final(self).did == old(self).did,
             final(self).page_closure() =~= old(self).page_closure(),
             final(self).mapping_4k() == old(self).mapping_4k().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
-                MapEntry { addr: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).addr,
+                MapEntry { is_io: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).is_io,
+                    addr: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).addr,
                     write: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).write,
                     execute_disable: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).execute_disable, present: false,
                     owning_container: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).owning_container }),
@@ -53,11 +54,18 @@ impl IommuTable {
         let tracked l1_perm = self.l1_tables.borrow().tracked_borrow(target_l1_p);
         let l1_tbl: &IommuPageMap = PPtr::<IommuPageMap>::from_usize(target_l1_p).borrow(Tracked(l1_perm));
         let mut l1_entry = l1_tbl.get(target_l1i);
+        proof {
+            let raw = l1_tbl.ar.view().spec_index(target_l1i as int);
+            assert(!l1_entry.perm.is_io) by {
+                l1_tbl.wf_at(target_l1i);
+                assert(raw & PAGE_ENTRY_IO_MASK as usize == 0) by (bit_vector) requires raw & !IOMMU_WORD_MASK == 0;
+            };
+        }
         l1_entry.perm.present = false;
         l1_entry.perm.write = false;
         iommu_page_map_set_published_in_map(target_l1_p, Tracked(self.l1_tables.borrow_mut()), target_l1i, l1_entry, Tracked(&mut *lctx));
         proof {
-            self.mapping_4k = Ghost(self.mapping_4k.view().insert(va.view(), MapEntry {
+            self.mapping_4k = Ghost(self.mapping_4k.view().insert(va.view(), MapEntry { is_io: old(self).mapping_4k.view().spec_index(va.view()).is_io,
                 addr: old(self).mapping_4k.view().spec_index(va.view()).addr, write: old(self).mapping_4k.view().spec_index(va.view()).write,
                 execute_disable: old(self).mapping_4k.view().spec_index(va.view()).execute_disable, present: false,
                 owning_container: old(self).mapping_4k.view().spec_index(va.view()).owning_container }));
@@ -160,7 +168,7 @@ impl IommuTable {
         let tracked mut l2_perm = self.l2_tables.borrow_mut().tracked_remove(target_l2_p);
         assert(mem_valid(0)) by { mem_valid_zero(); };
         iommu_page_map_set_published(target_l2_p, Tracked(&mut l2_perm), target_l2i,
-            PageEntry { addr: 0, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } },
+            PageEntry { addr: 0, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } },
             Tracked(&mut *lctx));
         proof { self.l2_tables.borrow_mut().tracked_insert(target_l2_p, l2_perm); self.l1_rev_map = Ghost(self.l1_rev_map.view().remove(target_l1_p)); }
         let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
@@ -213,7 +221,7 @@ impl IommuTable {
         let tracked mut l3_perm = self.l3_tables.borrow_mut().tracked_remove(target_l3_p);
         assert(mem_valid(0)) by { mem_valid_zero(); };
         iommu_page_map_set_published(target_l3_p, Tracked(&mut l3_perm), target_l3i,
-            PageEntry { addr: 0, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } },
+            PageEntry { addr: 0, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } },
             Tracked(&mut *lctx));
         proof { self.l3_tables.borrow_mut().tracked_insert(target_l3_p, l3_perm); self.l2_rev_map = Ghost(self.l2_rev_map.view().remove(target_l2_p)); }
         let tracked mut l2_perm = self.l2_tables.borrow_mut().tracked_remove(target_l2_p);
@@ -260,7 +268,7 @@ impl IommuTable {
         }
 
         let tracked mut l4_perm = self.l4_table.borrow_mut().tracked_remove(self.cr3);
-        let zero_entry = PageEntry { addr: 0, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } };
+        let zero_entry = PageEntry { addr: 0, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } };
         assert(mem_valid(zero_entry.addr)) by { mem_valid_zero(); };
         iommu_page_map_set_published(self.cr3, Tracked(&mut l4_perm), target_l4i, zero_entry, Tracked(&mut *lctx));
         proof { self.l4_table.borrow_mut().tracked_insert(self.cr3, l4_perm); self.l3_rev_map = Ghost(self.l3_rev_map.view().remove(target_l3_p)); }

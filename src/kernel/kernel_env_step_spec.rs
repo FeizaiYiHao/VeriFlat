@@ -30,7 +30,7 @@ pub open spec fn iommu_tlb_within_may_cache(k: KernelK, did: VtdDomainId, tlb: S
     let anchor = pci_bdf_of_did(did);
     let root_table = k.irt.view();
     if root_table.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did) {
-        let iommu_table = k.it_mp.spec_index(k.prc_mp.spec_index(root_table.spec_index_owner(anchor.0, anchor.1, anchor.2)).view().iommu_table->Some_0);
+        let iommu_table = k.it_mp.spec_index(k.prc_mp.spec_index(root_table.spec_index_owner(anchor.0, anchor.1, anchor.2)->Some_0).view().iommu_table->Some_0);
         single_tlb_subset_of_present_pagetable(tlb, iommu_table.view())
     } else {
         tlb.is_empty()
@@ -158,8 +158,9 @@ pub open spec fn cpu_tlb_va_range_flushed_u(u: KernelU, cpu_id: CpuId, pcid: Pci
 /// the anchor is attached and that table carries `did`, nothing otherwise.
 pub open spec fn iommu_tlb_within_may_cache_u(u: KernelU, did: VtdDomainId, tlb: SingleTLB) -> bool {
     let anchor = pci_bdf_of_did(did);
-    let owner = u.iommu_root_table.owners[anchor.0 as int][anchor.1 as int][anchor.2 as int];
-    if u.iommu_root_table.attached[anchor.0 as int][anchor.1 as int][anchor.2 as int] && u.process_map.dom().contains(owner) && u.process_map[owner].iommu_table is Some
+    let owner = u.iommu_root_table.owners[anchor.0 as int][anchor.1 as int][anchor.2 as int]->Some_0;
+    if u.iommu_root_table.attached[anchor.0 as int][anchor.1 as int][anchor.2 as int] && u.iommu_root_table.owners[anchor.0 as int][anchor.1 as int][anchor.2 as int] is Some
+        && u.process_map.dom().contains(owner) && u.process_map[owner].iommu_table is Some
         && u.process_map[owner].iommu_table->Some_0.did == Some(did) {
         single_tlb_subset_of_pagetable_u(tlb, u.process_map[owner].iommu_table->Some_0)
     } else {

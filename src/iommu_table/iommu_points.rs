@@ -212,6 +212,7 @@ impl IommuTable {
                 &&& mapping.addr == entry.addr
                 &&& entry.perm.present ==> mapping.write == entry.perm.write
                 &&& mapping.execute_disable == entry.perm.execute_disable
+                &&& mapping.is_io == entry.perm.is_io
                 &&& mapping.present == entry.perm.present
             },
     {
@@ -230,6 +231,7 @@ impl IommuTable {
                 ==> self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
                 && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
                 && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
+                && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).is_io == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.is_io
                 && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present,
     { reveal(IommuTable::wf_mapping_2m); }
 
@@ -244,6 +246,7 @@ impl IommuTable {
                 ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
                 && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
                 && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
+                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).is_io == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.is_io
                 && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present,
     { reveal(IommuTable::wf_mapping_1g); }
 

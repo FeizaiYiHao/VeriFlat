@@ -87,6 +87,7 @@ pub fn create_process_from_staged_pages(
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
             old(krnl).pt_mp.dom().contains(pt) ==> final(krnl).pt_mp.spec_index(pt) == old(krnl).pt_mp.spec_index(pt),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_pg_ptr).is_empty(),
+        final(krnl).pt_mp.spec_index(pagetable_pg_ptr).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         final(krnl).pt_mp.spec_index(pagetable_pg_ptr).view().higher.proc_ptr == process_pg_ptr,
         final(krnl).prc_mp.spec_index(process_pg_ptr).view().pagetable == pagetable_pg_ptr,
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
@@ -223,7 +224,7 @@ pub fn create_process_from_staged_pages(
         owning_container: ctn_ptr, container_depth: krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().depth, parent: Some(parent_ptr), depth: parent_depth + 1,
         pagetable: pagetable_pg_ptr, cr3, iommu_cr3: None, iommu_table_ptr: None, pcid,
     });
-    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
+    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()) };
     let Tracked(process_page_perm) = page_array_retype_owned_4k(
         &mut krnl.pg_arr, process_pg_idx,
         PageState::Allocated4k { state: Allocated4KPageState::AsProcess },
