@@ -124,9 +124,20 @@ proof fn update_pci_entry_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>, post: 
         post.lower == pre.lower,
     ensures post.wf_mapping_4k(),
 {
-    update_pci_entry_eof_higher_inv(pre.higher, post.higher);
+    update_pci_entry_eof_resolve_4k(pre, post);
     reveal(WholePageTable::wf_mapping_4k);
 }
+
+/// EOF closure of `KernelK::update_pci_entry` for the 4K walks, which do not read the PCI function array: each resolves as
+/// before.
+proof fn update_pci_entry_eof_resolve_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+            post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+{}
 
 /// EOF closure of `KernelK::update_pci_entry` for the 2M walks, which do not read the PCI function array: each resolves as
 /// before.

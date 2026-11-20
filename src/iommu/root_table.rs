@@ -362,6 +362,10 @@ impl IommuRootTable {
             ret < PCI_BDF_COUNT,
             pci_bdf_of_did(ret) == (bus, device, function),
     {
+        proof {
+            assert(bus * PCI_DEVFN_COUNT + device * PCI_FUNCTION_COUNT + function < PCI_BDF_COUNT
+                && pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function)) by (nonlinear_arith) requires pci_bdf_valid(bus, device, function);
+        }
         bus * PCI_DEVFN_COUNT + device * PCI_FUNCTION_COUNT + function
     }
 

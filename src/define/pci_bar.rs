@@ -110,7 +110,10 @@ impl PciBarTable {
                 proof {
                     let b = self.view();
                     let k = pci_bar_entry_of_page(b, p)->0;
-                    assert(b[i as int].envelope_contains(p) && pci_bar_entry_of_page(b, p) is Some && b[k].bdf == e.bdf) by { pci_bar_table_wf_at(b, i as int, pci_bar_entry_of_page(b, p)->0, p); };
+                    assert(b[i as int].envelope_contains(p)) by {
+                        assert(e.base as int / PAGE_SZ_4K as int * PAGE_SZ_4K as int <= p as int) by (nonlinear_arith) requires e.base / 4096 * 4096 <= p, PAGE_SZ_4K == 4096;
+                    };
+                    assert(pci_bar_entry_of_page(b, p) is Some && b[k].bdf == e.bdf) by { pci_bar_table_wf_at(b, i as int, k, p); };
                 }
                 return Some(e.bdf);
             }
@@ -140,6 +143,10 @@ impl PciBarTable {
         proof {
             let b = self.view();
             assert(p % 4096 == 0) by (nonlinear_arith) requires p == e.base / 4096 * 4096 + page_index * 4096;
+            assert(b[i as int].envelope_contains(p)) by {
+                assert(e.base as int / PAGE_SZ_4K as int * PAGE_SZ_4K as int <= p as int) by (nonlinear_arith)
+                    requires p == e.base / 4096 * 4096 + page_index * 4096, PAGE_SZ_4K == 4096;
+            };
             assert(pci_bar_entry_of_page(b, p) is Some && b[pci_bar_entry_of_page(b, p)->0].bdf == e.bdf) by { pci_bar_table_wf_at(b, i as int, pci_bar_entry_of_page(b, p)->0, p); };
             assert(io_page_range_valid(p, PAGE_SZ_4K)) by {
                 reveal(io_page_range_valid);
