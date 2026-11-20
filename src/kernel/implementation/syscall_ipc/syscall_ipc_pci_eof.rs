@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_pci_spec::{ipc_pci_rendezvous_eof_pagetable_frame, ipc_pci_rendezvous_eof_pci_handoff, ipc_pci_rendezvous_eof_transition_framing};
 #[cfg(verus_keep_ghost)]
@@ -513,7 +514,6 @@ proof fn ipc_pci_rendezvous_eof_handoff(
             did is Some && mid.irt.view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == did ==> mid.irt.view().spec_index_owner(anchor.0, anchor.1, anchor.2) == Some(sender_proc)
         },
 {
-    broadcast use IommuRootTable::wf_context_entry_at;
     reveal(ipc_pci_rendezvous_eof_pci_handoff);
     assert(pci_bdf_of_did(pci_bdf_did(bdf.0, bdf.1, bdf.2)) == bdf) by (nonlinear_arith) requires pci_bdf_valid(bdf.0, bdf.1, bdf.2);
     process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc);
@@ -638,10 +638,10 @@ pub(super) proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
         reveal(scheduler_shards_of);
     };
     ipc_pci_rendezvous_eof_handoff(pre, mid, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, thread_id, iommu_table, anchor);
-    assert(transferred ==> {
-        &&& mid.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts() =~= pre.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts().remove(bdf)
-        &&& mid.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts() =~= pre.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts().insert(bdf, 0)
-    });
+    if transferred {
+        assert_maps_equal!(mid.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts(), pre.pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts().remove(bdf));
+        assert_maps_equal!(mid.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts(), pre.pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts().insert(bdf, 0));
+    }
     assert(transferred ==> {
         let sender_table = snapshot.prc_mp.spec_index(sender_proc).view().iommu_table;
         &&& sender_table == pre.prc_mp.spec_index(sender_proc).view().iommu_table

@@ -584,6 +584,7 @@ verus! {
             }
             ipc_pci_transfer_eof_pagetable_frame(pre, *krnl, sender_pt, receiver_pt, bdf);
             assert(ipc_pci_rendezvous_eof_pci_handoff(pre, *krnl, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, true, lctx.thread_id(), iommu_table, anchor)) by {
+                broadcast use IommuRootTable::wf_context_entry_at;
                 reveal(ipc_pci_rendezvous_eof_pci_handoff);
             };
         }
