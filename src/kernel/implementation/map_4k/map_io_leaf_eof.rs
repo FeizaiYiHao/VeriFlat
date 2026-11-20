@@ -212,6 +212,8 @@ pub(super) open spec fn install_io_2m_mapping_eof_transition_framing(pre: Kernel
     &&& mid_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_held_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_resolve_mapping_l2(l4i, l3i, l2i)] #![trigger old_c.spec_resolve_mapping_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_resolve_mapping_l2(l4i, l3i, l2i) == old_c.spec_resolve_mapping_l2(l4i, l3i, l2i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_held_2m_l2(l4i, l3i, l2i)]
@@ -305,6 +307,31 @@ proof fn install_io_2m_mapping_eof_pagetable_pci_mappings_wf(pre: KernelK, mid: 
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
 }
 
+/// The structure caches close: the table's held directory entries, their walks, and its window records are unchanged.
+proof fn install_io_2m_mapping_eof_structure_cache(pre: KernelK, mid: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry)
+    requires
+        pre.inv(),
+        install_io_2m_mapping_eof_transition_framing(pre, mid, post, pagetable, va, f, entry),
+        pre.pt_mp.dom().contains(pagetable),
+    ensures structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    install_io_2m_mapping_eof_resolve_l2(pre, mid, post, pagetable, va, f, entry);
+    reveal(install_io_2m_mapping_eof_transition_framing);
+    reveal(structure_cache_wf);
+}
+
+/// The L2 walks of `install_io_2m_mapping`: the new 2M leaf is huge, so no L2 entry resolves to an L1 page other than before.
+proof fn install_io_2m_mapping_eof_resolve_l2(pre: KernelK, mid: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry)
+    requires install_io_2m_mapping_eof_transition_framing(pre, mid, post, pagetable, va, f, entry),
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i)]
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i)
+                    == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i),
+{
+    reveal(install_io_2m_mapping_eof_transition_framing);
+}
+
 /// EOF closure of `install_io_2m_mapping`: the kernel invariant holds after the IO leaf joins the table and its BAR mapping is
 /// recorded.
 pub(super) proof fn install_io_2m_mapping_eof(pre: KernelK, mid: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry)
@@ -348,11 +375,7 @@ pub(super) proof fn install_io_2m_mapping_eof(pre: KernelK, mid: KernelK, post: 
         pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m);
     };
-    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        broadcast use spec_va_2m_valid_index_roundtrip;
-        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
-        reveal(structure_cache_wf);
-    };
+    install_io_2m_mapping_eof_structure_cache(pre, mid, post, pagetable, va, f, entry);
     assert(kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)) by { kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp); };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
 }

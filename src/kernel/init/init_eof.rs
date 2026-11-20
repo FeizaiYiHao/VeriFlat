@@ -589,16 +589,7 @@ pub(super) proof fn boot_dom0_pagetable_pci_eof(pre: WholePageTable<PT_TYPE>, po
     ensures
         post.wf(),
 {
-    assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
-    assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
-    assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
-    assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
-    assert(post.higher.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); };
-    assert(post.higher.user_only()) by { reveal(PageTableHigher::user_only); };
-    assert(post.higher.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
-    assert(post.higher.table_pages_wf()) by { reveal(PageTableHigher::table_pages_wf); };
-    assert(post.higher.tables_reachable_wf()) by { reveal(PageTableHigher::tables_reachable_wf); };
-    assert(post.higher.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
+    boot_dom0_pagetable_pci_eof_higher_inv(pre.higher, post.higher);
     assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
     assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
@@ -612,6 +603,53 @@ pub(super) proof fn boot_dom0_pagetable_pci_eof(pre: WholePageTable<PT_TYPE>, po
     assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
     assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
 }
+
+/// EOF closure of `finish_init_from_boot` for the big-lock payload of the adopted dom0 page table: only the PCI function array
+/// changed, and it stays well formed.
+proof fn boot_dom0_pagetable_pci_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+    requires
+        pre.inv(),
+        post == (PageTableHigher { pci: post.pci, ..pre }),
+        post.pci.wf(),
+    ensures
+        post.inv(),
+{
+    boot_dom0_pagetable_pci_eof_entries(pre, post);
+    boot_dom0_pagetable_pci_eof_wf_l4(pre, post);
+    assert(post.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
+    assert(post.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
+    assert(post.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
+    assert(post.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); };
+    assert(post.user_only()) by { reveal(PageTableHigher::user_only); };
+    assert(post.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
+    assert(post.table_pages_wf()) by { reveal(PageTableHigher::table_pages_wf); };
+    assert(post.tables_reachable_wf()) by { reveal(PageTableHigher::tables_reachable_wf); };
+    assert(post.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
+}
+
+/// EOF closure of `finish_init_from_boot` for `wf_l4` of the adopted dom0 page table: the root entries read as before.
+proof fn boot_dom0_pagetable_pci_eof_wf_l4(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+    requires
+        pre.inv(),
+        post == (PageTableHigher { pci: post.pci, ..pre }),
+    ensures
+        post.wf_l4(),
+{
+    boot_dom0_pagetable_pci_eof_entries(pre, post);
+    reveal(PageTableHigher::wf_l4);
+}
+
+/// EOF closure of `finish_init_from_boot` for the root entries and the root and 1G walks of the adopted dom0 page table, which do
+/// not read the PCI function array: each reads as before.
+proof fn boot_dom0_pagetable_pci_eof_entries(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+    requires
+        post == (PageTableHigher { pci: post.pci, ..pre }),
+    ensures
+        forall|i: L4Index| #![trigger post.l4_entry(i)] post.l4_entry(i) == pre.l4_entry(i),
+        forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_resolve_mapping_1g_l3(l4i, l3i)]
+            post.spec_resolve_mapping_1g_l3(l4i, l3i) == pre.spec_resolve_mapping_1g_l3(l4i, l3i),
+{}
 
 /// EOF closure of `finish_init_from_boot` for `wf_mapping_4k` of the adopted dom0 page table: the leaves and mappings are
 /// unchanged.

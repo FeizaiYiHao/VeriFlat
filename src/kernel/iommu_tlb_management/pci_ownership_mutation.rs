@@ -156,6 +156,7 @@ impl KernelK {
             update_pci_entry_eof(*old(self), *self, pagetable_ptr, index as int, update);
             assert(iommu_root_table_typed_lock_map_aligned(self.irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); };
             assert(typed_lock_maps_aligned(self, lctx)) by {
+                update_pci_entry_eof_tables_unchanged(*old(self), *self, pagetable_ptr, index as int, update);
                 reveal(update_pci_entry_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
         }

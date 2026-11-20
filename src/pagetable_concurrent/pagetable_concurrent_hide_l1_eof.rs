@@ -317,8 +317,31 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
+        Self::unlink_hidden_l1_page_eof_resolve_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); };
+    }
+
+    /// EOF closure of `unlink_hidden_l1_page` for the 4K walks: no walk reads the hidden entry, so each resolves as before.
+    proof fn unlink_hidden_l1_page_eof_resolve_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+        target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.lower.l2_entry_hides_l1(target_l2_p, target_l2i),
+            !pre.lower.l2_entry(target_l2_p, target_l2i).perm.ps,
+            Self::unlink_hidden_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
+                    ==> post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+    {
+        reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
+        broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at;
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: `wf_mapping_2m`.

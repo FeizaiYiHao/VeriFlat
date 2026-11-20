@@ -38,8 +38,8 @@ proof fn pagetable_map_update_pci_mapping_eof_higher_inv(pre: PageTableHigher<PT
     ensures
         post.inv(),
 {
-    assert(post.l4_table == pre.l4_table && post.cr3 == pre.cr3 && post.kernel_l4_end == pre.kernel_l4_end && post.l3_tables == pre.l3_tables);
-    assert(post.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+    pagetable_map_update_pci_mapping_eof_entries(pre, post);
+    pagetable_map_update_pci_mapping_eof_wf_l4(pre, post);
     assert(post.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
     assert(post.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
     assert(post.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
@@ -50,6 +50,30 @@ proof fn pagetable_map_update_pci_mapping_eof_higher_inv(pre: PageTableHigher<PT
     assert(post.tables_reachable_wf()) by { reveal(PageTableHigher::tables_reachable_wf); };
     assert(post.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
 }
+
+/// EOF closure of `pagetable_map_update_pci_mapping` for `wf_l4`: the root entries read as before.
+proof fn pagetable_map_update_pci_mapping_eof_wf_l4(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+    requires
+        pre.inv(),
+        post == (PageTableHigher { pci: post.pci, ..pre }),
+    ensures
+        post.wf_l4(),
+{
+    pagetable_map_update_pci_mapping_eof_entries(pre, post);
+    reveal(PageTableHigher::wf_l4);
+}
+
+/// EOF closure of `pagetable_map_update_pci_mapping` for the root entries and the root and 1G walks, which do not read the PCI
+/// function array: each reads as before.
+proof fn pagetable_map_update_pci_mapping_eof_entries(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+    requires
+        post == (PageTableHigher { pci: post.pci, ..pre }),
+    ensures
+        forall|i: L4Index| #![trigger post.l4_entry(i)] post.l4_entry(i) == pre.l4_entry(i),
+        forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_resolve_mapping_1g_l3(l4i, l3i)]
+            post.spec_resolve_mapping_1g_l3(l4i, l3i) == pre.spec_resolve_mapping_1g_l3(l4i, l3i),
+{}
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for the table itself: no table invariant other than the payload's reads the PCI
 /// function array.
