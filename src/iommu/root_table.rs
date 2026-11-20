@@ -287,11 +287,12 @@ impl IommuRootTable {
     }
 
     /// A present context entry carries both a root and a valid domain ID.
-    pub proof fn wf_context_entry_at(&self, bus: usize, device: usize, function: usize)
+    pub broadcast proof fn wf_context_entry_at(&self, bus: usize, device: usize, function: usize)
         requires
             self.wf(),
             pci_bdf_valid(bus, device, function),
         ensures
+            #![trigger self.spec_index_iommu_did(bus, device, function)]
             (self.spec_index_iommu_did(bus, device, function) is Some) == (self.spec_index_iommu_root(bus, device, function) is Some),
             self.spec_index_iommu_did(bus, device, function) is Some ==> vtd_domain_id_valid(self.spec_index_iommu_did(bus, device, function)->0),
     {
@@ -649,7 +650,7 @@ impl IommuRootTable {
                 &&& final(self).spec_index_iommu_did(b, d, f) == if owned { None } else { old(self).spec_index_iommu_did(b, d, f) }
             },
     {
-        broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+        broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at, IommuRootTable::wf_context_entry_at;
         proof { assert(old(self).context_entries.view().len() == PCI_BDF_COUNT) by { old(self).wf_implies_context_entries_wf(); }; }
         let mut i: usize = 0;
         while i < PCI_FUNCTIONS_PER_PROCESS

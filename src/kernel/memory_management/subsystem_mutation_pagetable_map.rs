@@ -1031,7 +1031,7 @@ pub fn pagetable_map_clear_4k_present(
     assert(pt_lower.dom().contains(pagetable_ptr) && whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.higher.unmap_4k_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
+    pagetable.higher.unmap_4k_page_user_view::<false>(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(indices.0, indices.1, indices.2, indices.3);
@@ -1139,7 +1139,7 @@ pub fn pagetable_map_clear_2m_present(
     assert(pt_lower.dom().contains(pagetable_ptr) && whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.higher.unmap_2m_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, Tracked(window_perm), Tracked(&mut *lctx));
+    pagetable.higher.unmap_2m_page_user_view::<false>(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).wf_mapping_2m_at(indices.0, indices.1, indices.2); whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(indices.0, indices.1, indices.2);
         pagetable.lower_backup = Ghost(*lower);
@@ -1394,6 +1394,7 @@ pub fn pagetable_map_clear_4k_present_rlocked(
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().dom().contains(spec_index2va(indices)),
+        !whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().spec_index(spec_index2va(indices)).is_io,
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -1440,7 +1441,7 @@ pub fn pagetable_map_clear_4k_present_rlocked(
     assert(pt_lower.dom().contains(pagetable_ptr) && whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.higher.unmap_4k_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
+    pagetable.higher.unmap_4k_page_user_view::<true>(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(indices.0, indices.1, indices.2, indices.3);
@@ -1485,6 +1486,7 @@ pub fn pagetable_map_clear_2m_present_rlocked(
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0))),
+        !whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_2m().spec_index(spec_index2va((indices.0, indices.1, indices.2, 0))).is_io,
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -1532,7 +1534,7 @@ pub fn pagetable_map_clear_2m_present_rlocked(
     assert(pt_lower.dom().contains(pagetable_ptr) && whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.higher.unmap_2m_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, Tracked(window_perm), Tracked(&mut *lctx));
+    pagetable.higher.unmap_2m_page_user_view::<true>(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).wf_mapping_2m_at(indices.0, indices.1, indices.2); whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(indices.0, indices.1, indices.2);
         let post_c = WholePageTable { higher: pagetable.higher, lower: *lower };
