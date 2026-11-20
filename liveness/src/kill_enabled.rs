@@ -235,7 +235,7 @@ proof fn kill_reclaim_implies_enabled(u: KernelU, c: CpuId)
             assert(u.process_map.insert(tp, t) =~= u.process_map);
             assert(labeled_step(StepLabel::KillProcessTableHidden, u, u, c));
         }
-    } else if st == (KillStage::Reclaim { flushed: true }) && t.iommu_table is Some && t.iommu_table->Some_0.lock_state != (LockStateU::WriteLocked { writer: c }) {
+    } else if st == (KillStage::Reclaim { flushed: true }) && !kill_unowned(u, c) {
         kill_unown_enabled(u, c);
     } else if st == (KillStage::Reclaim { flushed: true }) && t.iommu_table is Some && !process_iommu_4k_unmapped(t.iommu_table->Some_0) {
         reveal(kill_process_iommu_leaf_step);

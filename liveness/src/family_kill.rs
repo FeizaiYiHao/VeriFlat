@@ -112,6 +112,7 @@ pub open spec fn kill_stage_ok(u: KernelU, c: CpuId) -> bool {
     &&& kill_stage_reclaiming(st) ==> kill_tables_held(u, c)
     &&& kill_stage_flushed(st) ==> kill_table_cleared(u, c)
     &&& st is Quota ==> (t.iommu_table is Some ==> process_iommu_4k_unmapped(t.iommu_table->Some_0) && t.iommu_table->Some_0.lock_state is WriteLocked)
+    &&& st is Quota ==> t.pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty()
     &&& st is Zombie ==> !t.zombie
     &&& st is Retire ==> t.zombie
 }
@@ -235,10 +236,19 @@ pub open spec fn kill_victim_wanted(u: KernelU, c: CpuId) -> bool {
 /// Locking the empty target's page table needs it unlocked.
 pub open spec fn kill_lock_table_wanted(u: KernelU, c: CpuId) -> bool { u.process_map[kill_target(u, c)].pagetable->Some_0.lock_state is Unlocked }
 
-/// Releasing the target's PCI functions write-locks its IOMMU table, which `c` does not hold yet, so it needs it unlocked.
+/// The target of killer `c` has given up its PCI functions: its function array is empty and its IOMMU table, if any, is
+/// write-locked.
+pub open spec fn kill_unowned(u: KernelU, c: CpuId) -> bool {
+    let t = u.process_map[kill_target(u, c)];
+    &&& t.pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty()
+    &&& t.iommu_table is Some ==> t.iommu_table->Some_0.lock_state is WriteLocked
+}
+
+/// Releasing the target's PCI functions write-locks its IOMMU table, so until the target has given them up it needs the
+/// table unlocked.
 pub open spec fn kill_unown_wanted(u: KernelU, c: CpuId) -> bool {
     let t = u.process_map[kill_target(u, c)];
-    t.iommu_table is Some && t.iommu_table->Some_0.lock_state != (LockStateU::WriteLocked { writer: c }) ==> t.iommu_table->Some_0.lock_state is Unlocked
+    !kill_unowned(u, c) ==> (t.iommu_table is Some ==> t.iommu_table->Some_0.lock_state is Unlocked)
 }
 
 /// Zombifying frees the target's PCID into its container under the container's PCID allocator lock.
