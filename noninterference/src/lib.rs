@@ -34,7 +34,7 @@
 //! Object pointers and page addresses returned on success come from the shared global
 //! allocator and are guaranteed only to be fresh, so which pointer or page a domain receives can
 //! depend on allocations by other domains. This allocator channel is outside the proof.
-//! `merge_2m` labels its actual quota exchange and has local-respect and isolation obligations.
+//! Each `merge_2m` step exchanges 512 4K quota for one 2M quota and has local-respect and isolation obligations.
 //! Its fragmentation-dependent returned count is not covered by deterministic output consistency.
 #![feature(adt_const_params)]
 

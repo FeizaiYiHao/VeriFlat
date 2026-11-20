@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use veriflat_map_4k::*;
-use veriflat_map_4k::map_4k::mmap_1g_install_directory::*;
+use veriflat_map_4k::map_4k::mmap_1g_install_directory_spec::*;
 use veriflat_syscall_mmap_1g::syscall_mmap_1g::syscall_mmap_1g_spec::*;
 
 verus! {

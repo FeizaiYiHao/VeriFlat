@@ -14,7 +14,7 @@ use veriflat_syscall_ipc::syscall_ipc::{syscall_ipc_call_spec::*, syscall_ipc_sp
 use veriflat_syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k_spec::*;
 use veriflat_syscall_mmap_2m::syscall_mmap_2m::syscall_mmap_2m_spec::*;
 use veriflat_syscall_unmap_2m::syscall_unmap_2m::syscall_unmap_2m_spec::*;
-use veriflat_map_4k::map_4k::mmap_1g_install_directory::*;
+use veriflat_map_4k::map_4k::mmap_1g_install_directory_spec::*;
 use veriflat_syscall_mmap_1g::syscall_mmap_1g::syscall_mmap_1g_spec::*;
 use veriflat_syscall_unmap_1g::syscall_unmap_1g::syscall_unmap_1g_spec::*;
 use veriflat_syscall_new_container::syscall_new_container::syscall_new_container_spec::*;
@@ -41,7 +41,7 @@ pub ghost enum StepLabel {
     AllocQuota4k { alloc_amount: usize }, AllocThreadQuota4k { alloc_amount: usize },
     AllocQuota2m { alloc_amount: usize }, AllocThreadQuota2m { alloc_amount: usize },
     AllocQuota1g { alloc_amount: usize }, AllocThreadQuota1g { alloc_amount: usize },
-    Merge2m { actual_m: usize },
+    Merge2m,
     Split2m { actual_m: usize },
     Schedule { flushed_pcid: Option<Pcid> }, RebalancePull,
     CpuOfflineRequest { target: CpuId }, CpuOfflineCheckHold, CpuOfflineCheck { flushed_default_pcid: bool }, CpuOfflineCheckRelease, CpuOnline { target: CpuId },
@@ -157,7 +157,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::AllocQuota1g { alloc_amount } => alloc_quota_1g_step_pre(old_u, cpu_id, alloc_amount) && alloc_quota_1g_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::AllocThreadQuota1g { alloc_amount } => alloc_thread_quota_1g_step_pre(old_u, cpu_id, alloc_amount) && alloc_thread_quota_1g_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::Schedule { flushed_pcid } => schedule_step_pre(old_u, cpu_id) && schedule_step(old_u, new_u, cpu_id, flushed_pcid),
-        StepLabel::Merge2m { actual_m } => merge_2m_step_pre(old_u, cpu_id, actual_m) && merge_2m_step(old_u, new_u, cpu_id, actual_m),
+        StepLabel::Merge2m => merge_2m_step_pre(old_u, cpu_id) && merge_2m_step(old_u, new_u, cpu_id),
         StepLabel::Split2m { actual_m } => split_2m_step_pre(old_u, cpu_id, actual_m) && split_2m_step(old_u, new_u, cpu_id, actual_m),
         StepLabel::RebalancePull => rebalance_pull_step_pre(old_u, cpu_id) && rebalance_pull_step(old_u, new_u, cpu_id),
         StepLabel::CpuOfflineRequest { target } => cpu_offline_request_step_pre(old_u, cpu_id, target) && cpu_offline_request_step(old_u, new_u, cpu_id, target),
@@ -458,7 +458,7 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::AllocQuota1g { alloc_amount } => { alloc_quota_1g_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_quota_1g_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::AllocThreadQuota1g { alloc_amount } => { alloc_thread_quota_1g_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_thread_quota_1g_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::Schedule { flushed_pcid } => { schedule_step_lr(old_u, new_u, cpu_id, flushed_pcid, x, y); schedule_step_iso(old_u, new_u, cpu_id, flushed_pcid, x, y); },
-            StepLabel::Merge2m { actual_m } | StepLabel::Split2m { actual_m } => {
+            StepLabel::Merge2m | StepLabel::Split2m { .. } => {
                 reveal(kernel_u_cpu_ownership_wf);
                 process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, x); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, y);
                 memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, x, y);
