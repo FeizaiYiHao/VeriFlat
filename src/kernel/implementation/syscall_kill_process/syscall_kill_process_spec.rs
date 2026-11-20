@@ -395,8 +395,8 @@ pub open spec fn kill_process_quota_stage_after(stage: KillStage) -> Option<Kill
     }
 }
 
-/// The target, whose IOMMU table keeps no 4K mapping, returns the next size of quota after the kill's stage: the target's
-/// whole quota of that size moves to its container.
+/// The target, whose page table keeps no PCI function and whose IOMMU table keeps no 4K mapping, returns the next size of
+/// quota after the kill's stage: the target's whole quota of that size moves to its container.
 #[verifier::opaque]
 pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
@@ -408,6 +408,7 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
     &&& kill_process_quota_stage_after(stage) is Some
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, stage)
     &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is WriteLocked
+    &&& target.pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty()
     &&& target.iommu_table is Some ==> process_iommu_4k_unmapped(target.iommu_table->Some_0)
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(target.owning_container, match size {
@@ -426,8 +427,8 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
 }
 
 /// Unlocking the target's reclaimed page table and IOMMU table, once every quota size is returned, the page table keeps
-/// no user 4K mapping, 2M or 1G mapping, or window lock, and the IOMMU table no 4K mapping, readies the target to become
-/// a zombie.
+/// no user 4K mapping, 2M or 1G mapping, window lock, or PCI function, and the IOMMU table no 4K mapping, readies the
+/// target to become a zombie.
 #[verifier::opaque]
 pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
@@ -439,6 +440,7 @@ pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, 
     &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
     &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
     &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+    &&& pagetable.pci_functions == Map::<PciBdf, nat>::empty()
     &&& target.iommu_table is Some ==> process_iommu_4k_unmapped(target.iommu_table->Some_0)
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU {
