@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
-use vstd::{assert_sets_equal, assert_sets_equal_internal, assert_multisets_equal, assert_multisets_equal_internal, assert_seqs_equal, assert_seqs_equal_internal};
+use vstd::{assert_sets_equal, assert_sets_equal_internal, assert_multisets_equal, assert_multisets_equal_internal};
 
 verus! {
 pub open spec fn sequence_sum_step<A>(value: spec_fn(A) -> int) -> spec_fn(int, A) -> int {
@@ -9,10 +9,6 @@ pub open spec fn sequence_sum_step<A>(value: spec_fn(A) -> int) -> spec_fn(int, 
 
 pub open spec fn sequence_sum_fold<A>(values: Seq<A>, value: spec_fn(A) -> int) -> int {
     values.fold_left(0int, sequence_sum_step(value))
-}
-
-pub open spec fn sequence_projection_step<A, B, C>(map: spec_fn(A) -> B, step: spec_fn(C, B) -> C) -> spec_fn(C, A) -> C {
-    |state: C, entry: A| step(state, map(entry))
 }
 
 pub proof fn sequence_index_identity_implies_range_set(values: Seq<usize>)
@@ -55,7 +51,6 @@ pub proof fn sequence_predicate_implies_zero_failure_fold<A>(values: Seq<A>, pre
     if values.len() > 0 {
         sequence_predicate_implies_zero_failure_fold(values.drop_last(), predicate);
         values.lemma_add_last_back();
-
     }
 }
 
@@ -128,22 +123,6 @@ pub proof fn sequence_update_implies_sum_fold_delta<A>(values: Seq<A>, index: in
         vstd::seq_lib::lemma_seq_take_update_commut1(values, index, replacement, values.len() as int - 1);
     } else {
         vstd::seq_lib::lemma_seq_take_update_commut2(values, index, replacement, values.len() as int - 1);
-    }
-}
-pub proof fn sequence_map_implies_fold_projection<A, B, C>(values: Seq<A>, map: spec_fn(A) -> B,
-    step: spec_fn(C, B) -> C, initial: C)
-    ensures
-        values.map_values(map).fold_left(initial, step) == values.fold_left(initial, sequence_projection_step(map, step)),
-    decreases values.len(),
-{
-    reveal_with_fuel(Seq::fold_left, 2);
-    if values.len() > 0 {
-        sequence_map_implies_fold_projection(values.drop_last(), map, step, initial);
-        assert(values.map_values(map) =~= values.drop_last().map_values(map).push(map(values.last()))) by {
-            values.lemma_add_last_back(); values.drop_last().lemma_push_map_commute(map, values.last());
-        };
-        assert_seqs_equal!(values.map_values(map).drop_last(), values.drop_last().map_values(map));
-
     }
 }
 

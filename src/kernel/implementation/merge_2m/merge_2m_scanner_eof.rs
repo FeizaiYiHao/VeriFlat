@@ -49,11 +49,9 @@ pub proof fn merge_2m_scanner_constructor_eof_implies_wf(scanner: Merge2mScanner
     sequence_multiset_equality_implies_entry_predicate(cursors, queue.cursors.view(),
         |cursor: Merge2mCursor| Merge2mScanner::cursor_wf(krnl.allc_4k_mp.spec_index(allocator), cursor));
     sequence_multiset_equality_implies_union_fold_equality(cursors.map_values(suffix), queue.cursors.view().map_values(suffix));
-
     assert(scanner.initial_pages.view() == scanner.consumed_pages.view().union(scanner.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)))) by {
         assert_sets_equal!(scanner.initial_pages.view(), scanner.consumed_pages.view().union(scanner.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator))));
     };
-
 }
 pub proof fn merge_2m_clear_candidate_eof_implies_scanner_wf(pre: Merge2mScanner, post: Merge2mScanner,
     krnl: &KernelK, allocator: RwLockPageAllocatorPtr)
@@ -74,7 +72,6 @@ pub proof fn merge_2m_clear_candidate_eof_implies_scanner_wf(pre: Merge2mScanner
     assert(post.remaining_work(krnl.allc_4k_mp.spec_index(allocator)) >= 0) by {
         sequence_nonnegative_entries_implies_sum_fold_nonnegative(post.queue.cursors.view(), Merge2mScanner::remaining_value(krnl.allc_4k_mp.spec_index(allocator)));
     };
-
 }
 
 pub proof fn merge_2m_scan_exhausted_eof_implies_all_complete_blocks_returned(pre: Merge2mScanner, post: Merge2mScanner,
@@ -83,7 +80,6 @@ pub proof fn merge_2m_scan_exhausted_eof_implies_all_complete_blocks_returned(pr
         krnl.allc_4k_mp.dom().contains(allocator),
         pre.wf(krnl.allc_4k_mp.spec_index(allocator)),
         pre.candidate.sources.len() < 512,
-        pre.queue.cursors.view().spec_index(0).node is None,
         forall|i: int| #![trigger pre.queue.cursors.view().spec_index(i)] 0 <= i < NUM_CPUS + 1 ==> pre.queue.cursors.view().spec_index(i).node is None,
         forall|i: int| #![trigger pre.queue.cursors.view().spec_index(i)] 0 <= i < NUM_CPUS + 1 ==>
             pre.queue.cursors.view().spec_index(0).page <= pre.queue.cursors.view().spec_index(i).page,
@@ -98,7 +94,6 @@ pub proof fn merge_2m_scan_exhausted_eof_implies_all_complete_blocks_returned(pr
     let cursors = pre.queue.cursors.view();
     let sets = cursors.map_values(|cursor: Merge2mCursor| merge_2m_cursor_suffix(krnl.allc_4k_mp.spec_index(allocator), cursor));
     sequence_entries_subset_implies_union_fold_subset(sets, Set::<PagePtr>::empty());
-
 }
 
 }

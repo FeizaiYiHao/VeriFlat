@@ -83,6 +83,7 @@ pub proof fn merge_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
+        pre.thrd_mp.spec_index(thread).view().quota_2m < usize::MAX,
         pre.allc_4k_mp.dom().contains(allocator_4k),
         pre.allc_2m_mp.dom().contains(allocator_2m),
         pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
@@ -97,6 +98,7 @@ pub proof fn merge_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
                 if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }
         },
         merge_2m_commit_eof_transition_framing(pre, post, thread, allocator_4k, allocator_2m, candidate),
+        !pre.allc_2m_mp.spec_index(allocator_2m).global_pool.view().map().dom().contains(pre.pg_arr.spec_index(candidate.head).view().view().free_list_node_storage.addr()),
         post.pg_arr.inv(),
         post.thrd_mp.perms_wf(),
         post.allc_4k_mp.perms_wf(),
@@ -114,11 +116,11 @@ pub proof fn merge_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
         reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    merge_2m_commit_eof_implies_container_owned_pages_wf(pre, post, thread, allocator_4k, allocator_2m, candidate, lctx);
+    merge_2m_commit_eof_implies_container_owned_pages_wf(pre, post, thread, allocator_4k, allocator_2m, candidate);
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
-    merge_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, candidate, lctx);
-    merge_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, candidate, lctx);
+    merge_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, candidate);
+    merge_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, candidate);
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };

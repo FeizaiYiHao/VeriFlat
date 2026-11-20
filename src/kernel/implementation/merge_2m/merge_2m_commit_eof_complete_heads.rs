@@ -72,7 +72,6 @@ pub proof fn merge_2m_commit_eof_implies_source_region_removed(pre: KernelK, pos
     let outside = |pointer: PagePtr| !Set::<PageIndex>::range(candidate.head, (candidate.head + 512) as usize).contains(spec_page_ptr2page_index(pointer));
     broadcast use Seq::to_set_ensures, merge_2m_commit_eof_implies_region_page_left_source;
     sequence_pointwise_filter_implies_union_fold_filter(before_sets, after_sets, outside);
-
 }
 
 pub proof fn merge_2m_commit_eof_implies_complete_head_removed(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,

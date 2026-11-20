@@ -39,9 +39,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             ret.1 is Some ==> ret.1.unwrap() == self.addr_list.view().spec_index(self.addr_list.view().index_of(addr) + 1),
             ret.1 is Some ==> self.view().spec_index(self.addr_list.view().index_of(addr) + 1) == self.map().spec_index(ret.1.unwrap()),
     {
-        proof { self.view().to_set_ensures(); }
         proof {
-            self.wf_implies_view_len_eq_len();
+            self.view().to_set_ensures(); self.wf_implies_view_len_eq_len();
             self.wf_perms_at(addr);
             let index = self.addr_list.view().index_of(addr);
             self.wf_value_list_at(index);
