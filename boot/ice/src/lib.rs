@@ -1,7 +1,7 @@
 //! A polling, multi-queue driver core for the Intel Ethernet Controller E810 (Linux driver `ice`), written for
 //! VeriFlat's dom0 and for a Linux user-space test program. The core does not touch hardware itself: every register
 //! access, every DMA allocation and every delay goes through [`Platform`], which each front end implements (dom0:
-//! BAR0 through the loader's window and heap pages mapped at IOVA = VA; Linux: `resource0` of sysfs and hugepages).
+//! BAR0 mapped with the kernel's BAR syscalls and heap pages mapped at IOVA = VA; Linux: `resource0` of sysfs and hugepages).
 //!
 //! What it does, in the order of [`Device::new`]: PF reset, control (admin) queue bring-up, firmware version, clear of
 //! the PF configuration and of the PXE mode, function capabilities, switch configuration (logical port and switch

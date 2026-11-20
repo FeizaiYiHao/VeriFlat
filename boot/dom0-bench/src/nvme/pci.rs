@@ -1,6 +1,6 @@
 //! NVMe discovery over `sys_pci_info` and the BAR address type (Atmosphere's `pcid::utils::PciBarAddr`).
 
-use vsys::{sys_pci_info, PCI_BAR_WINDOW_BASE};
+use vsys::sys_pci_info;
 
 /// PCI class and subclass of an NVMe controller (mass storage, non-volatile memory).
 const CLASS_STORAGE: usize = 0x01;
@@ -37,10 +37,25 @@ pub struct NvmeFunction {
 }
 
 impl NvmeFunction {
-    /// Where every process of the benchmark maps BAR0: dom0's loader window, and the same address
-    /// in the driver process that receives the pages.
+    /// Where every process of the benchmark maps BAR0 (`bar::map_bar0`): dom0 and the driver process that receives
+    /// the function.
     pub fn bar_va(&self) -> usize {
-        PCI_BAR_WINDOW_BASE + self.bar_phys
+        crate::bar::bar_va(self.bar_phys)
+    }
+
+    /// Claims the function for dom0 (`bar::claim`).
+    pub fn claim(&self, who: &str) {
+        crate::bar::claim(who, self.bus, self.dev, self.fun);
+    }
+
+    /// Maps BAR0 at `bar_va` in the calling process, which owns the function.
+    pub fn map_bar(&self, who: &str) {
+        crate::bar::map_bar0(who, self.bus, self.dev, self.fun);
+    }
+
+    /// Unmaps BAR0 from the calling process, as before sending the function.
+    pub fn unmap_bar(&self, who: &str) {
+        crate::bar::unmap_bar0(who, self.bus, self.dev, self.fun);
     }
 
     pub fn bar(&self) -> PciBarAddr {

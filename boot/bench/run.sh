@@ -12,13 +12,15 @@
 # variant on the driver's software device model instead (numbers of the IPC and the model, not of a NIC).
 # VERIFLAT_BOOT_2M_BLOCKS=n (default 4) sets the free 2M blocks of the kernel build, the root container's 2M quota;
 # VERIFLAT_BOOT_1G_BLOCKS=0|1 (default 1) sets the free 1G block [1 GiB, 2 GiB) of the kernel build, the root container's
-# 1G quota (0 without CPUID pdpe1gb). The page array covers [0, 4 GiB); `-m 2304` is RAM, the rest stays Unavailable
-# except the BAR0 pages of the recorded PCI functions.
+# 1G quota (0 without CPUID pdpe1gb). The page array covers [0, 4 GiB); `-m 2304` is RAM, the rest stays Unavailable,
+# BAR pages included: device memory is described by the PCI table's BAR slots, not by the page array.
 # Devices: `intel-iommu` (VT-d, required), `edu` (DMA self-test), and an NVMe controller behind the PCIe root port
 # rp1 (`-device pcie-root-port,id=rp1,chassis=1 -drive file=$OUT/nvme.img,if=none,id=nvm,format=raw
 # -device nvme,drive=nvm,serial=veriflat0,bus=rp1`), as an SSD sits on a real server, so every boot takes the loader
 # across a PCI-to-PCI bridge; it is backed by a 64 MiB sparse raw image created once in the build output directory.
-# The loader maps the BAR0 of the NVMe and edu functions into dom0 at 0xd0_0000_0000 + physical address.
+# The loader reports every assigned memory BAR and maps none: every function starts unowned, dom0 claims the ones it
+# uses (sys_pci_claim) and a process maps BAR0 of a function it owns with map_pci_bar_4k/2m at 0xd0_0000_0000 + physical
+# address (boot/dom0-bench/src/bar.rs).
 # `+invtsc` makes the TSC rate known to QEMU, which then reports it in the hypervisor leaf 4000_0010H that the NVMe
 # benchmark reads when the host CPU has no CPUID leaf 16H.
 # NVME_BLOCK_SIZE=4096 (default 512) formats the emulated NVMe namespace with that logical block size.

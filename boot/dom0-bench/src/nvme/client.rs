@@ -9,11 +9,12 @@
 //! 3. `twocore`: the same driver process polling the ring on CPU 1 while the client spins on CPU 0, as
 //!    in Atmosphere's ring-buffer client (`test_nvme_with_ring_buffer_ap`).
 //!
-//! The driver process shares dom0's image (and so the statics below) and gets the function with
-//! `send_pci`, BAR0 and the ring pages with `send_pages`; it maps its DMA memory into its own IOMMU table.
+//! dom0 claims the function and maps BAR0 for `linked`, then unmaps it so that it can send the function. The
+//! driver process shares dom0's image (and so the statics below), gets the function with `send_pci` and maps
+//! BAR0 itself, gets the ring pages with `send_pages`, and maps its DMA memory into its own IOMMU table.
 //! CPU 1 is Off during the first two configurations, so the driver process cannot move off CPU 0, and
 //! online again from the third on. Each configuration ends with the controller disabled, and the child
-//! killed, which returns the function to dom0 detached.
+//! killed, which leaves the function unowned and detached; dom0 claims it again.
 //!
 //! Not in Atmosphere, which sends 8 LBAs per request: each 4 KiB request covers 4 KiB of namespace 1's LBAs as
 //! Identify Namespace in the `linked` configuration reports them; an LBA size above 4 KiB skips the benchmark.
@@ -108,6 +109,8 @@ pub fn run(image: usize, pages: usize) {
     take_driver_cpu_off();
 
     // 1. linked, whose Identify Namespace also gives the LBA size every configuration sizes its requests with.
+    f.claim("nvme pci_claim");
+    f.map_bar("nvme map BAR0 (dom0)");
     check("nvme pci_attach_dma (dom0)", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     {
         let mut dev = NvmeDevice::new(f.bar());
@@ -115,6 +118,7 @@ pub fn run(image: usize, pages: usize) {
         if blocks_per_4k().is_none() {
             // CPU 1 stays Off, as after a run without the `twocore` configuration.
             dev.shutdown();
+            f.unmap_bar("nvme unmap BAR0 (dom0)");
             log::info!("nvme bench skipped: namespace 1's LBA size {} bytes does not divide the 4 KiB request", 1u64 << lba_shift());
             return;
         }
@@ -126,6 +130,7 @@ pub fn run(image: usize, pages: usize) {
         }
         dev.shutdown();
     }
+    f.unmap_bar("nvme unmap BAR0 (dom0)");
 
     // 2. ipc and 3. twocore, over one ring that dom0 maps and shares with each driver process.
     fund("nvme ring funding", 3 * RING_PAGES);
@@ -172,7 +177,6 @@ fn ring_configuration(f: &NvmeFunction, mode: usize, image: usize, pages: usize)
         sys_new_process_with_iommu_and_endpoint(image, pages, NVME_ENDPOINT, entry(nvme_driver_process), sp)
     });
     check("nvme send_pci", unsafe { sys_send_pci(NVME_ENDPOINT, f.bus, f.dev, f.fun) });
-    check("nvme send_pages (BAR0)", unsafe { sys_send_pages(NVME_ENDPOINT, f.bar_va(), f.bar_pages) });
     check("nvme send_pages (ring)", unsafe { sys_send_pages(NVME_ENDPOINT, RING_VA, RING_PAGES) });
     wait_yield("the NVMe driver process to initialize the controller", || DRIVER_READY.load(Ordering::SeqCst));
     if mode == MODE_TWOCORE {
@@ -198,6 +202,7 @@ fn ring_configuration(f: &NvmeFunction, mode: usize, image: usize, pages: usize)
         unsafe { sys_debug_exit(1) };
     }
     check("nvme kill_process(0) (driver)", unsafe { sys_kill_process(0) });
+    f.claim("nvme pci_claim after the driver's kill");
 }
 
 /// The client of the ring configurations, after Atmosphere's ring-buffer client: each round takes up to
@@ -269,16 +274,16 @@ fn run_ring_client(config: &str, ipc: bool, is_write: bool, batch_sz: u64) {
     report(config, is_write, batch_sz, completed, elapsed, if ipc { "batch+call" } else { "batch period" }, &mut samples);
 }
 
-/// First thread of the driver process: takes the function, BAR0, and the ring from dom0, maps the ring
+/// First thread of the driver process: takes the function and the ring from dom0, maps BAR0, maps the ring
 /// into its IOMMU table, attaches the function, initializes the controller, and serves the ring, once
 /// per call (`ipc`) or polling on CPU 1 (`twocore`) until dom0 sets `STOP`. Then it disables the
 /// controller and blocks until dom0 kills it.
 extern "C" fn nvme_driver_process() -> ! {
     let f = shared_function();
     // A receiver holds 3 4K quota per page for the worst case of page tables (as do mmap and IOMMU maps).
-    fund("nvme driver receive funding", 3 * (f.bar_pages + RING_PAGES));
+    fund("nvme driver receive funding", 3 * RING_PAGES);
     quiet("nvme driver receive_pci", unsafe { sys_receive_pci(0, f.bus, f.dev, f.fun) });
-    quiet("nvme driver receive_pages (BAR0)", unsafe { sys_receive_pages(0, f.bar_va(), f.bar_pages) });
+    f.map_bar("nvme driver map BAR0");
     quiet("nvme driver receive_pages (ring)", unsafe { sys_receive_pages(0, RING_VA, RING_PAGES) });
     crate::slab_alloc::init();
     fund("nvme driver ring IOMMU funding", 3 * RING_PAGES);

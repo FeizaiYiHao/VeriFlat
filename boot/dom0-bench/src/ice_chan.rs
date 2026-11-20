@@ -13,12 +13,12 @@
 //!   `receive_call`/`reply_and_receive` on pair k's endpoint, which runs one `Driver::control` + `Driver::step` on CPU
 //!   k and answers, as `ice_xproc` does.
 //!
-//! The driver process gets the E810 function (`send_pci`, then its own `pci_attach_dma`), BAR0 and the shared region
-//! (`send_pages`; it maps the region into its IOMMU table at IOVA = VA) and, in the IPC shape, the pair endpoints. It
-//! brings the device up with one queue pair per CPU, so that a generator spreading its frames over the steering MACs
-//! of all of them loads every pair count (pair k of c polls queues k, k + c, ..), with every Rx buffer in the shared
-//! region; driver k sends on Tx queue k. The shared region holds per pair its `ice::chan::Shared` block and Tx slots,
-//! then every queue's Rx buffers.
+//! The driver process gets the E810 function (`send_pci` of the function dom0 claimed; it maps BAR0 and attaches the
+//! function with its own `pci_attach_dma`), the shared region (`send_pages`; it maps the region into its IOMMU table at
+//! IOVA = VA) and, in the IPC shape, the pair endpoints. It brings the device up with one queue pair per CPU, so that a
+//! generator spreading its frames over the steering MACs of all of them loads every pair count (pair k of c polls
+//! queues k, k + c, ..), with every Rx buffer in the shared region; driver k sends on Tx queue k. The shared region
+//! holds per pair its `ice::chan::Shared` block and Tx slots, then every queue's Rx buffers.
 //!
 //! Per mode, batch size and pair count c (`VERIFLAT_ICE_QUEUES`), pairs 0..c run one phase over one shared TSC window
 //! after a quarter window of warm-up: each starts the phase on its driver, steps until the window closes counting
@@ -34,7 +34,7 @@
 //! fwd phase after a tx phase forwards the frames the tx phase left in the Rx rings, over and over); numbers of the
 //! model, not a NIC.
 
-use crate::ice_bench::{bar_va, count_cpus, env_list, env_mac, env_num, fail, find_e810, pick, IceFunction, MAX_WORKERS};
+use crate::ice_bench::{count_cpus, env_list, env_mac, env_num, fail, find_e810, pick, IceFunction, MAX_WORKERS};
 use crate::ice_xproc::XPlatform;
 use crate::nvme::time::{rdtsc, tsc_rate};
 use crate::{check, current_cpu, entry, fund, quiet, stack_top, wait_for, wait_yield};
@@ -222,7 +222,6 @@ static DRV_PAIRS: AtomicUsize = AtomicUsize::new(0);
 static DRV_QUEUES: AtomicUsize = AtomicUsize::new(0);
 static DRV_BDF: AtomicUsize = AtomicUsize::new(0);
 static DRV_BAR_PHYS: AtomicUsize = AtomicUsize::new(0);
-static DRV_BAR_PAGES: AtomicUsize = AtomicUsize::new(0);
 static DRV_MAC: AtomicU64 = AtomicU64::new(0);
 static DRV_READY: AtomicBool = AtomicBool::new(false);
 static DRV_NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -510,7 +509,6 @@ pub fn run() {
     if let Some(f) = f {
         DRV_BDF.store(f.bus << 8 | f.dev << 3 | f.fun, Ordering::SeqCst);
         DRV_BAR_PHYS.store(f.bar_phys, Ordering::SeqCst);
-        DRV_BAR_PAGES.store(f.bar_pages, Ordering::SeqCst);
     }
     let (image, image_pages) = crate::image_range();
     fund("ice chan driver process funding", 6 + 3 * image_pages);
@@ -574,13 +572,16 @@ pub fn run() {
     wait_for("the ice chan driver to reset the PF", || DRV_STOPPED.load(Ordering::SeqCst));
     if ipc {
         check("ice chan kill_process(0) (driver)", unsafe { sys_kill_process(0) });
+        if let Some(f) = f {
+            crate::bar::claim("ice chan pci_claim after the driver's kill", f.bus, f.dev, f.fun);
+        }
     }
     log::info!("ice chan bench passed");
 }
 
 fn send_function(f: &IceFunction) {
+    crate::bar::claim("ice chan pci_claim", f.bus, f.dev, f.fun);
     check("ice chan send_pci", unsafe { sys_send_pci(PAIR_EP, f.bus, f.dev, f.fun) });
-    check("ice chan send_pages (BAR0)", unsafe { sys_send_pages(PAIR_EP, bar_va(f), f.bar_pages) });
 }
 
 /// First thread of the driver process (pair endpoint 0 in descriptor 0): takes what dom0 sends, brings the device up
@@ -589,15 +590,14 @@ fn send_function(f: &IceFunction) {
 extern "C" fn driver_main() -> ! {
     let (pairs, queues) = (DRV_PAIRS.load(Ordering::SeqCst), DRV_QUEUES.load(Ordering::SeqCst));
     let pages = shared_pages(pairs, queues);
-    let bar_pages = DRV_BAR_PAGES.load(Ordering::SeqCst);
-    let bar = PCI_BAR_WINDOW_BASE + DRV_BAR_PHYS.load(Ordering::SeqCst);
+    let bar = crate::bar::bar_va(DRV_BAR_PHYS.load(Ordering::SeqCst));
     let bdf = DRV_BDF.load(Ordering::SeqCst);
     let (bus, dev, fun) = (bdf >> 8, (bdf >> 3) & 0x1f, bdf & 7);
     let ipc = shape() == Shape::Ipc;
-    fund("ice chan driver receive funding", 3 * (if MOCK { 0 } else { bar_pages } + pages));
+    fund("ice chan driver receive funding", 3 * pages);
     if !MOCK {
         quiet("ice chan driver receive_pci", unsafe { sys_receive_pci(0, bus, dev, fun) });
-        quiet("ice chan driver receive_pages (BAR0)", unsafe { sys_receive_pages(0, bar, bar_pages) });
+        crate::bar::map_bar0("ice chan driver map BAR0", bus, dev, fun);
     }
     quiet("ice chan driver receive_pages (shared region)", unsafe { sys_receive_pages(0, SHARED_VA, pages) });
     if ipc {

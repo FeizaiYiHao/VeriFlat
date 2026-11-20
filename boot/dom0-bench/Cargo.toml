@@ -15,8 +15,8 @@ split-test = []
 zero-test = []
 # Focused EDU device-to-RAM DMA revocation regression.
 dma-write-test = []
-# Reads a few registers of every recorded Intel Ethernet function through its BAR0 window, low or high (above 4 GiB,
-# mapped by the loader alone), and logs them (`bar_probe` in src/main.rs).
+# Claims every recorded Intel Ethernet function, maps its BAR0 (src/bar.rs), reads a few registers through it and logs
+# them (`bar_probe` in src/main.rs).
 bar-probe = []
 # The E810 (ice) packet benchmark, run first and alone; skipped without an E810 function (see src/ice_bench.rs).
 ice-bench = []

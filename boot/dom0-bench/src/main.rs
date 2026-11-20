@@ -5,6 +5,7 @@
 
 extern crate alloc;
 
+mod bar;
 mod ice_bench;
 mod ice_chan;
 mod ice_xproc;
@@ -2297,12 +2298,12 @@ extern "C" fn kill_driver() -> ! {
     exit_thread("kill driver")
 }
 
-/// Phase 9. (a) dom0's three children: the IOMMU child's DMA function comes back to dom0 detached;
-/// a zombie child is reaped. (b) The helper threads exit, so dom0's other CPU idles. (c) Children
-/// spinning on that CPU are killed through running-to-idle IPIs. (d) The kill loop: each round a
-/// fresh driver thread kills a victim subtree with every thread state, a zombie, and a grandchild,
-/// and the free 4K quota of dom0's container and process must grow by exactly the driver's thread
-/// page.
+/// Phase 9. (a) dom0's three children: the IOMMU child's DMA function becomes unowned and detached,
+/// and dom0 claims it again; a zombie child is reaped. (b) The helper threads exit, so dom0's other
+/// CPU idles. (c) Children spinning on that CPU are killed through running-to-idle IPIs. (d) The kill
+/// loop: each round a fresh driver thread kills a victim subtree with every thread state, a zombie,
+/// and a grandchild, and the free 4K quota of dom0's container and process must grow by exactly the
+/// driver's thread page.
 fn test_kill_process(image: usize, pages: usize) {
     let (bus, dev, fun) = dma_bdf();
     let has_dma_device = HAS_DMA_DEVICE.load(Ordering::SeqCst);
@@ -2313,7 +2314,9 @@ fn test_kill_process(image: usize, pages: usize) {
     check("kill_process(0) (IOMMU child)", unsafe { sys_kill_process(0) });
     if has_dma_device {
         expect_dma_fault("after the kill", FAULT_CONTEXT_NOT_PRESENT);
-        check("pci_attach_dma of the reassigned function", unsafe { sys_pci_attach_dma(bus, dev, fun) });
+        expect_error("pci_attach_dma of the unowned function", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
+        check("pci_claim of the released function", unsafe { sys_pci_claim(bus, dev, fun) });
+        check("pci_attach_dma of the reclaimed function", unsafe { sys_pci_attach_dma(bus, dev, fun) });
         expect_dma_fault("after dom0 attached it again", FAULT_READ_NOT_PRESENT);
     } else {
         log::info!("DMA checks of the kill skipped: no DMA test device");
@@ -2421,6 +2424,7 @@ fn test_dma_write_revocation() {
     HAS_DMA_DEVICE.store(true, Ordering::SeqCst);
     let (bus, dev, fun) = dma_bdf();
     write_probe("before attach", FAULT_CONTEXT_NOT_PRESENT);
+    check("DMA write claim", unsafe { sys_pci_claim(bus, dev, fun) });
     check("DMA write attach", unsafe { sys_pci_attach_dma(bus, dev, fun) });
     write_probe("before map", FAULT_WRITE_PERMISSION);
     fund("DMA write mapping quota", 128);
@@ -2719,8 +2723,8 @@ pub extern "C" fn _start() -> ! {
     check("receive_empty", unsafe { sys_receive_empty(ENDPOINT) });
     log::info!("IPC done, pings = {}", PINGS.load(Ordering::SeqCst));
 
-    // 4. VT-d: DMA of an unattached function faults at its context entry; once attached it
-    // faults inside dom0's empty IOMMU table. Sending the function to a child process detaches it
+    // 4. VT-d: DMA of an unattached function faults at its context entry; dom0 claims the unowned
+    // function, and once attached it faults inside dom0's empty IOMMU table. Sending the function to a child process detaches it
     // (the context-cache invalidation must drop the stale entry) until the child attaches it.
     // Without the DMA test device only the IOMMU child is created, which the kill tests count on.
     let bdf = unsafe { sys_debug_dma_device() };
@@ -2734,6 +2738,8 @@ pub extern "C" fn _start() -> ! {
     let (bus, dev, fun) = dma_bdf();
     if has_dma_device {
         expect_dma_fault("before attach", FAULT_CONTEXT_NOT_PRESENT);
+        expect_error("pci_attach_dma of the unowned function", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
+        check("pci_claim", unsafe { sys_pci_claim(bus, dev, fun) });
         check("pci_attach_dma", unsafe { sys_pci_attach_dma(bus, dev, fun) });
         expect_dma_fault("after attach", FAULT_READ_NOT_PRESENT);
         expect_error("pci_attach_dma again", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciAlreadyAttached");
@@ -2872,9 +2878,9 @@ pub extern "C" fn _start() -> ! {
     unsafe { sys_debug_exit(0) };
 }
 
-/// Feature `bar-probe`: for every recorded Intel Ethernet function, reads E810 registers the Linux ice driver reads
-/// first through dom0's BAR0 window at `PCI_BAR_WINDOW_BASE + base` (the same address for a BAR0 below and above 4 GiB)
-/// and logs them, to compare with the values Linux reads through the function's sysfs resource0.
+/// Feature `bar-probe`: for every recorded Intel Ethernet function, claims it, maps BAR0 (`bar::map_bar0`), reads E810
+/// registers the Linux ice driver reads first and logs them, to compare with the values Linux reads through the
+/// function's sysfs resource0, then unmaps BAR0 again.
 #[cfg(feature = "bar-probe")]
 fn bar_probe() {
     use core::fmt::Write;
@@ -2889,7 +2895,9 @@ fn bar_probe() {
                 if rax < 0 || (rax as usize >> 16) & 0xffff != 0x8086 || (rax as usize >> 48) & 0xff != 2 {
                     continue;
                 }
-                let va = PCI_BAR_WINDOW_BASE + base;
+                bar::claim("bar-probe pci_claim", bus, dev, fun);
+                bar::map_bar0("bar-probe map BAR0", bus, dev, fun);
+                let va = bar::bar_va(base);
                 let mut line = alloc::string::String::new();
                 for (name, off) in REGS {
                     if off + 4 <= pages * 4096 {
@@ -2898,6 +2906,7 @@ fn bar_probe() {
                     }
                 }
                 log::info!("bar-probe {:02x}:{:02x}.{} BAR0 {:#x} ({} pages) at VA {:#x}:{}", bus, dev, fun, base, pages, va, line);
+                bar::unmap_bar0("bar-probe unmap BAR0", bus, dev, fun);
             }
         }
     }

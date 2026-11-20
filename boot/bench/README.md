@@ -196,7 +196,9 @@ Run: `PARALLEL=unmapcpus boot/bench/build-parallel-call-image.sh boot/bench/out/
 The timer build of dom0 runs a port of Atmosphere's user-level NVMe driver and benchmark
 (`boot/dom0-bench/src/nvme/`, `boot/dom0-bench/src/slab_alloc.rs`) after the kill tests, against the emulated
 `-device nvme` that `boot/bench/run.sh` attaches behind a PCIe root port (64 MiB raw image). It finds the controller
-with `pci_info` (class 01, subclass 08, on any bus: the loader scans all 256 buses, so that the root buses of a server's further host bridges and the buses behind PCI-to-PCI bridges are covered), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
+with `pci_info` (class 01, subclass 08, on any bus: the loader scans all 256 buses, so that the root buses of a server's further host bridges and the buses behind PCI-to-PCI bridges are covered), claims it (`pci_claim`: every function
+starts unowned), maps BAR0 at `0xd0_0000_0000 + base` (`boot/dom0-bench/src/bar.rs`: `map_pci_bar_2m` when BAR0 is
+2M-aligned and at least 2 MiB, `map_pci_bar_4k` otherwise), drives it by polling through it, and
 maps every DMA buffer at IOVA = VA (`mmap_4k` + `iommu_map_4k` in the heap's pager). Without an NVMe
 function it logs `nvme bench skipped`. Each run is sequential 4 KiB I/O for 2 s, 4 KiB of namespace 1's LBAs per
 request (8 at 512-byte LBAs, 1 at 4 KiB LBAs; `nvme: LBA size ..` logs it after the linked configuration's Identify
@@ -233,7 +235,9 @@ else the "@ x.xxGHz" end of the CPUID brand string; with none of these the bench
 Atmosphere, the batch is how many requests a round submits, not a queue depth: the linked client allocates a
 new batch whenever no request waits, and the ring clients push whenever a ring buffer is free, so up to 1023
 (linked) or 1024 (ring) requests are in flight at batch 1 too; only `ipc` at batch 1 stays near one request
-per call. The child is killed after each ring configuration, which returns the function to dom0.
+per call. dom0 unmaps BAR0 before it sends the function to the driver process (a function cannot be sent while a BAR
+page of it is mapped), and the driver process maps BAR0 itself. The child is killed after each ring configuration,
+which leaves the function unowned; dom0 claims it again.
 
 Measured 2026-11-11, QEMU-emulated NVMe (not a real device: every doorbell is a VM exit into QEMU, which
 caps the rate near 75K IOPS), KVM on the i9-13900HX, TSC 2419 MHz from the hypervisor leaf, 2 s runs, `boot/bench/run.sh`
@@ -287,7 +291,7 @@ that pass work by IPC, one pair per CPU; one boot gives per core count the linke
 cross-process IOPS, and their ratio is the cost of the IPC. `nvme_xproc` alone runs only the second.
 
 - Driver process: a child of dom0 sharing dom0's image, with its own IOMMU table. Its first thread takes the NVMe
-  function (`send_pci`) and BAR0 (`send_pages`) from dom0, attaches the function to its IOMMU table, resets the
+  function (`send_pci`) from dom0, maps BAR0 itself, attaches the function to its IOMMU table, resets the
   controller, sends Set Features Number of Queues and creates I/O queue pair k + 1 (rings in its own heap) for each
   worker k, then creates driver thread k, which owns that queue pair alone; the first thread keeps only the admin
   queue and, after the last run, disables the controller.
@@ -313,8 +317,8 @@ Workers = min(CPUs, the queue pairs the controller allocates, 24), as for `paral
 phases, `VERIFLAT_NVME_PARALLEL_MS` and the drive selection are the same. The lines are those of `parallel_nvme`
 with the prefix `parallel_nvme_xproc` (`total_conc` is the total IOPS of the concurrent phase), plus per run
 `parallel_nvme_xproc calls op=.. batch=b n=.. calls=C per_call=P`: the round trips of the concurrent phase and its
-completions per round trip. Afterwards the driver process is killed, which returns the function to dom0, and dom0
-unmaps the regions. Without the NVMe function it logs `parallel_nvme_xproc skipped`; an LBA size above 4 KiB skips it
+completions per round trip. Afterwards the driver process is killed, which leaves the function unowned, dom0 claims
+it again and unmaps the regions. Without the NVMe function it logs `parallel_nvme_xproc skipped`; an LBA size above 4 KiB skips it
 too.
 
 Under KVM (2026-11-12, emulated NVMe, so the device is the bottleneck and the numbers show only that it works),
@@ -338,10 +342,10 @@ build --profile release -p aloader -p kernel -p dom0-bench --features kernel/no-
 ### Real hardware
 
 Not yet tried on a real machine. The target is a CloudLab d430 (2x Xeon E5-2630 v3, Haswell: no RDPID, no
-CPUID leaf 16H; the NVMe SSD sits behind a PCIe root port). The machine needs VT-d on, and the firmware must place
-the SSD's BAR0 below 4 GiB (turn above-4G decoding off): the loader moves a 64-bit BAR0 only on bus 0, and on any
-other bus it skips an NVMe, Ethernet or `edu` function whose BAR0 is unassigned or not below 4 GiB with a warning
-that names the function, so that such a device stays out of dom0 but does not stop the boot.
+CPUID leaf 16H; the NVMe SSD sits behind a PCIe root port). The machine needs VT-d on. An assigned BAR0 stays where
+the firmware put it, below or above 4 GiB, and dom0 maps it with the BAR syscalls; the loader moves an unassigned BAR0
+only on bus 0, and on any other bus it skips an NVMe, Ethernet or `edu` function whose BAR0 is unassigned with a
+warning that names the function, so that such a device stays out of dom0 but does not stop the boot.
 
 The GRUB `multiboot2` path below has been booted under QEMU (KVM, q35, the devices of `boot/bench/run.sh`) and passes
 the NVMe benchmark and the dom0 tests: from a `grub-mkrescue` ISO with GRUB 2.12 on SeaBIOS, with `serial=com2`
@@ -456,7 +460,8 @@ Linux user space and from dom0 (bare-metal scripts and results: the artifact rep
   options.
 - `boot/dom0-bench/src/ice_bench.rs`: the dom0 front end, built with feature `ice-bench` (`ICE_BENCH=1 boot/bench/run.sh`). It runs
   first and alone, finds the E810 with `sys_pci_info` (`VERIFLAT_ICE_BDF=bb:dd.f`, else the first E810-C, else the
-  first E810), attaches it with `pci_attach_dma`, drives BAR0 at `0xd0_0000_0000 + base` and takes DMA memory from
+  first E810), claims it, maps BAR0 at `0xd0_0000_0000 + base` (`boot/dom0-bench/src/bar.rs`; 2M pages for the
+  E810's 2M-aligned BAR0), attaches it with `pci_attach_dma`, drives BAR0 there and takes DMA memory from
   the heap (IOVA = VA). Worker k runs on CPU k (placed as the parallel call timing places its clients) and owns
   queue pair k. The device comes up once with one queue pair per worker; then one round runs per frame size, mode and
   queue count. Build-time settings: `VERIFLAT_ICE_SECS` (5, per round), the comma-separated lists
@@ -481,8 +486,8 @@ Linux user space and from dom0 (bare-metal scripts and results: the artifact rep
   to about 11.5 Mpps): first `ice_linked`, the driver called
   directly, then `ice_xproc`, the driver in a child process (`new_process_with_iommu_and_endpoint`) with one thread per
   pair, one `call` + `reply_and_receive` round trip per batch on the pair's endpoint, CPU k switching straight between
-  the two threads. The driver process gets the function (`send_pci`, then its own `pci_attach_dma`), BAR0 and the
-  shared region (`send_pages`, the same pages mapped in both; it maps the region into its IOMMU table at IOVA = VA) and
+  the two threads. The driver process gets the function (`send_pci`; dom0 unmapped its own BAR0 mapping after
+  `ice_linked`), maps BAR0 and attaches the function itself, and gets the shared region (`send_pages`, the same pages mapped in both; it maps the region into its IOMMU table at IOVA = VA) and
   the endpoints (`send_endpoint`). At most 31 cross-process pairs (endpoint descriptors per thread).
   `VERIFLAT_ICE_QUEUES` lists pair counts c at which the first c pairs also run at once before all do
   (`ice_linked|ice_xproc conc batch=b n=c total_conc=.. rx_total_conc=..`). Lines:
@@ -565,17 +570,16 @@ Untested on hardware, each following the Linux driver's encoding of the datashee
 | Rx lookup switch rules: MAC (recipe 1) to queue / to VSI, default (recipe 5) to VSI | switch rules | whether Rx MAC rules are accepted (the Linux driver adds MAC filters as Tx rules); queue index device-wide (`rxq_first` + q) |
 | Get Link Status (32-byte buffer), Restart Autonegotiation | link | whether a down link needs Set PHY Config first |
 | `GLPRT_*` port counters | statistics | counter latching |
-| dom0: worker placement on CPUs coming online, heap DMA at IOVA = VA above 4 GiB, BAR0 window as UC through MTRRs | VeriFlat | untested with any NIC |
-| `ice_xproc`: function, BAR0 and shared region handed to the driver process, its IOMMU table, per-frame report status | VeriFlat | run on the model only |
+| dom0: worker placement on CPUs coming online, heap DMA at IOVA = VA above 4 GiB, BAR0 as uncached 2M IO leaves of `map_pci_bar_2m` | VeriFlat | untested with any NIC |
+| `ice_xproc`: function and shared region handed to the driver process, which maps BAR0 itself, its IOMMU table, per-frame report status | VeriFlat | run on the model only |
 
-Kernel and loader gaps (nothing changed for them):
+Kernel and loader gaps:
 
 - BAR0 placement: the E810's BAR0 is a 64-bit prefetchable BAR (32 MiB on the E810-C: Atmosphere's c6620 run found
-  it at 0xfa000000, size 0x2000000). The loader records a function off bus 0 only when the firmware placed BAR0 below
-  4 GiB, because io pages must lie in the page array, which covers [0, 4 GiB); with above-4G decoding on (usual on UEFI
-  servers) the E810 is skipped with a warning. Turn above-4G decoding off, or the page array and loader must learn
-  BARs above 4 GiB (a kernel and model change). The loader also panics unless the MTRRs make BAR0 uncacheable.
-- No MSI-X or interrupts are needed (polling); BAR3 (MSI-X table) stays unmapped. No new syscall is needed.
+  it at 0xfa000000, size 0x2000000). The loader now reports every assigned memory BAR, above 4 GiB too, and maps none;
+  dom0 claims the function and maps BAR0 as 16 uncached 2M IO pages (`map_pci_bar_2m`, `boot/dom0-bench/src/bar.rs`),
+  so above-4G decoding may stay on. The bare-metal runs of 2026-11-14 predate this and used the loader's BAR0 mapping.
+- No MSI-X or interrupts are needed (polling); BAR3 (MSI-X table) stays unmapped.
 - At most 16 recorded functions (`MAX_PCI_DEVICES`); a c6620 has 2 + 2 E810 ports plus NVMe and other NICs.
 - 28 CPUs at most (`NUM_CPUS`): the loader takes the first 28 processors of the ACPI MADT list; boot with `maxcpus=` on a machine with more logical processors.
 

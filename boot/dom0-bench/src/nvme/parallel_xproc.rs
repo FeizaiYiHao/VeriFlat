@@ -3,7 +3,7 @@
 //! of a no-timer dom0).
 //!
 //! The driver is a child process of dom0 that shares dom0's image and has its own IOMMU table. Its first thread
-//! takes the NVMe function (`send_pci`) and BAR0 (`send_pages`) from dom0, attaches the function, resets the
+//! takes the NVMe function (`send_pci`) from dom0, which claimed it, maps BAR0, attaches the function, resets the
 //! controller, sends Set Features Number of Queues and creates I/O queue pair k + 1 with its rings in its own heap
 //! for each worker k, then creates driver thread k, which owns that queue pair alone. The application is dom0: worker
 //! k is dom0's first thread on CPU 0 for k = 0, else the client of parallel call pair k on CPU k, as in
@@ -29,8 +29,8 @@
 //! each run gives the round trips of the concurrent phase and its completions per round trip.
 //!
 //! Worker count = min(CPUs, `MAX_QUEUES` = 24, the I/O queue pairs the controller allocates). Afterwards dom0 has
-//! the driver disable the controller, kills the driver process, which returns the function to dom0 detached, and
-//! unmaps the regions.
+//! the driver disable the controller, kills the driver process, which leaves the function unowned and detached,
+//! claims it again, and unmaps the regions.
 
 use super::cmd as nvme_cmd;
 use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
@@ -185,7 +185,8 @@ pub fn run(n: usize) {
         f.bus, f.dev, f.fun, f.vendor, f.device, f.bar_phys, hz / 1_000_000, source
     );
 
-    // The driver process: dom0's image, its own IOMMU table, the handoff endpoint; then the function and BAR0.
+    // The driver process: dom0's image, its own IOMMU table, the handoff endpoint; then the function, which dom0 claims
+    // first and the driver maps BAR0 of.
     unsafe { FUNCTION = Some(f) };
     WANTED.store(n.min(MAX_QUEUES), Ordering::SeqCst);
     for flag in [&STATUS, &WORKERS, &CREATE, &CREATING] {
@@ -201,12 +202,13 @@ pub fn run(n: usize) {
     quiet("parallel_nvme_xproc new_process_with_iommu_and_endpoint (driver)", unsafe {
         sys_new_process_with_iommu_and_endpoint(image, pages, HANDOFF_ENDPOINT, entry(driver_main), sp)
     });
+    f.claim("parallel_nvme_xproc pci_claim");
     quiet("parallel_nvme_xproc send_pci", unsafe { sys_send_pci(HANDOFF_ENDPOINT, f.bus, f.dev, f.fun) });
-    quiet("parallel_nvme_xproc send_pages (BAR0)", unsafe { sys_send_pages(HANDOFF_ENDPOINT, f.bar_va(), f.bar_pages) });
     wait_yield("the parallel_nvme_xproc driver to initialize the controller", || STATUS.load(Ordering::SeqCst) != 0);
     if STATUS.load(Ordering::SeqCst) == SKIPPED {
         wait_yield("the parallel_nvme_xproc driver to park", || PARKED.load(Ordering::SeqCst));
         quiet("parallel_nvme_xproc kill_process(0) (driver)", unsafe { sys_kill_process(0) });
+        f.claim("parallel_nvme_xproc pci_claim after the driver's kill");
         log::info!("parallel_nvme_xproc skipped: namespace 1's LBA size {} bytes does not divide the 4 KiB request", 1u64 << lba_shift());
         return;
     }
@@ -251,9 +253,10 @@ pub fn run(n: usize) {
     }
 
     // The driver disables the controller, which deletes every queue, so no DMA reaches the regions after it; killing
-    // the driver process returns the function to dom0.
+    // the driver process leaves the function unowned, and dom0 claims it again.
     quiet("parallel_nvme_xproc call (stop)", unsafe { sys_call(HANDOFF_ENDPOINT) });
     quiet("parallel_nvme_xproc kill_process(0) (driver)", unsafe { sys_kill_process(0) });
+    f.claim("parallel_nvme_xproc pci_claim after the driver's kill");
     for k in 0..workers {
         quiet("parallel_nvme_xproc unmap_4k (region)", unsafe { sys_unmap_4k(region(k), REGION_PAGES) });
     }
@@ -336,16 +339,14 @@ pub fn worker(k: usize, phase: usize) {
     pair.done.store(phase, Ordering::SeqCst);
 }
 
-/// First thread of the driver process, holding the handoff endpoint in descriptor 0: takes the function and BAR0,
+/// First thread of the driver process, holding the handoff endpoint in descriptor 0: takes the function, maps BAR0,
 /// attaches the function to the process's IOMMU table, brings the controller up with one I/O queue pair per worker,
 /// creates the driver threads one at a time as dom0 asks, and blocks until dom0's stop call, when it disables the
 /// controller and answers.
 extern "C" fn driver_main() -> ! {
     let f = unsafe { FUNCTION }.unwrap();
-    // A receiver holds 3 4K quota per page for the worst case of page tables.
-    fund("parallel_nvme_xproc driver receive funding", 3 * f.bar_pages);
     quiet("parallel_nvme_xproc driver receive_pci", unsafe { sys_receive_pci(0, f.bus, f.dev, f.fun) });
-    quiet("parallel_nvme_xproc driver receive_pages (BAR0)", unsafe { sys_receive_pages(0, f.bar_va(), f.bar_pages) });
+    f.map_bar("parallel_nvme_xproc driver map BAR0");
     crate::slab_alloc::init();
     quiet("parallel_nvme_xproc driver pci_attach_dma", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     let mut dev = NvmeDevice::new(f.bar());

@@ -12,12 +12,12 @@
 //! thread k blocked in `receive_call`/`reply_and_receive` (the call queues nothing: the driver thread is waiting), the
 //! driver thread serves the request and answers with `reply_and_receive`, which switches back.
 //!
-//! The driver process is a child of dom0 with an IOMMU table of its own (`new_process_with_iommu_and_endpoint`), as
-//! the single-queue NVMe `ipc` configuration: it receives the E810 function (`send_pci`, then attaches it to its
-//! table with `pci_attach_dma`), BAR0 (`send_pages` of dom0's window pages), the shared region (`send_pages`, which
-//! maps the same pages in both processes; the driver maps them into its IOMMU table at IOVA = VA) and the pair
-//! endpoints (`send_endpoint`); its rings and admin buffers come from its own heap (IOVA = VA). The shared region
-//! holds, per pair, the mailbox page and the Tx slots, then every queue's Rx buffers, which the driver allocates
+//! The driver process is a child of dom0 with an IOMMU table of its own (`new_process_with_iommu_and_endpoint`), as the
+//! single-queue NVMe `ipc` configuration: it receives the E810 function (`send_pci`, then attaches it to its table with
+//! `pci_attach_dma`; dom0 claimed it and unmapped its own BAR0 mapping first), maps BAR0 itself, gets the shared region
+//! (`send_pages`, which maps the same pages in both processes; the driver maps them into its IOMMU table at IOVA = VA)
+//! and the pair endpoints (`send_endpoint`); its rings and admin buffers come from its own heap (IOVA = VA). The shared
+//! region holds, per pair, the mailbox page and the Tx slots, then every queue's Rx buffers, which the driver allocates
 //! from it, so frames go to and from the device without a copy. The driver's first thread brings the device up with
 //! one queue pair per application thread and creates driver thread k for each other pair; every driver thread blocks
 //! in `receive_call` on its pair endpoint, so the first call of application thread k brings it to CPU k and each
@@ -271,7 +271,6 @@ static TSC_HZ: AtomicU64 = AtomicU64::new(0);
 static DRV_PAIRS: AtomicUsize = AtomicUsize::new(0);
 static DRV_BDF: AtomicUsize = AtomicUsize::new(0);
 static DRV_BAR_PHYS: AtomicUsize = AtomicUsize::new(0);
-static DRV_BAR_PAGES: AtomicUsize = AtomicUsize::new(0);
 static DRV_MAC: AtomicU64 = AtomicU64::new(0);
 static DRV_READY: AtomicBool = AtomicBool::new(false);
 static DRV_NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -631,6 +630,8 @@ fn empty_mailbox() -> Mailbox {
 fn run_linked(f: Option<IceFunction>, s: &Settings, n: usize, counts: &[usize], out: &mut [[Measured; MAX_WORKERS]; 2]) {
     let bar = f.map_or(0, |f| bar_va(&f));
     if let Some(f) = f {
+        crate::bar::claim("ice pci_claim", f.bus, f.dev, f.fun);
+        crate::bar::map_bar0("ice map BAR0 (dom0)", f.bus, f.dev, f.fun);
         check("ice pci_attach_dma (dom0)", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     }
     let p = XPlatform::new(bar, TSC_HZ.load(Ordering::SeqCst));
@@ -650,11 +651,14 @@ fn run_linked(f: Option<IceFunction>, s: &Settings, n: usize, counts: &[usize], 
     if let Err(e) = dev.shutdown() {
         log::warn!("ice: PF reset after ice_linked: {}", e);
     }
+    if let Some(f) = f {
+        crate::bar::unmap_bar0("ice unmap BAR0 (dom0)", f.bus, f.dev, f.fun);
+    }
 }
 
 /// `ice_xproc`: the driver in a child process with one thread per pair, `m` pairs. dom0 maps the shared region,
-/// starts the driver process and hands it the function, BAR0, the shared region and the pair endpoints over pair
-/// endpoint 0, then times the pairs, and at the end has the driver reset the PF and kills it.
+/// starts the driver process and hands it the function, the shared region and the pair endpoints over pair endpoint
+/// 0, then times the pairs, and at the end has the driver reset the PF, kills it and claims the function again.
 fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, counts: &[usize], out: &mut [[Measured; MAX_WORKERS]; 2]) {
     let pages = shared_pages(m);
     fund("ice xproc shared region funding", 4 * pages);
@@ -663,7 +667,6 @@ fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, counts: &[usize], o
     if let Some(f) = f {
         DRV_BDF.store(f.bus << 8 | f.dev << 3 | f.fun, Ordering::SeqCst);
         DRV_BAR_PHYS.store(f.bar_phys, Ordering::SeqCst);
-        DRV_BAR_PAGES.store(f.bar_pages, Ordering::SeqCst);
     }
     let (image, image_pages) = crate::image_range();
     fund("ice xproc driver process funding", 6 + 3 * image_pages);
@@ -673,7 +676,6 @@ fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, counts: &[usize], o
     });
     if let Some(f) = f {
         check("ice xproc send_pci", unsafe { sys_send_pci(PAIR_EP, f.bus, f.dev, f.fun) });
-        check("ice xproc send_pages (BAR0)", unsafe { sys_send_pages(PAIR_EP, bar_va(&f), f.bar_pages) });
     }
     check("ice xproc send_pages (shared region)", unsafe { sys_send_pages(PAIR_EP, SHARED_VA, pages) });
     for k in 1..m {
@@ -706,6 +708,9 @@ fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, counts: &[usize], o
     quiet("ice xproc call (stop)", unsafe { sys_call(PAIR_EP) });
     wait_for("the ice driver to reset the PF", || DRV_STOPPED.load(Ordering::SeqCst));
     check("ice xproc kill_process(0) (driver)", unsafe { sys_kill_process(0) });
+    if let Some(f) = f {
+        crate::bar::claim("ice xproc pci_claim after the driver's kill", f.bus, f.dev, f.fun);
+    }
 }
 
 /// First thread of the driver process, holding pair endpoint 0 in descriptor 0: takes what dom0 sends, brings the
@@ -713,16 +718,15 @@ fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, counts: &[usize], o
 extern "C" fn driver_main() -> ! {
     let m = DRV_PAIRS.load(Ordering::SeqCst);
     let pages = shared_pages(m);
-    let bar_pages = DRV_BAR_PAGES.load(Ordering::SeqCst);
-    let bar = PCI_BAR_WINDOW_BASE + DRV_BAR_PHYS.load(Ordering::SeqCst);
+    let bar = crate::bar::bar_va(DRV_BAR_PHYS.load(Ordering::SeqCst));
     let bdf = DRV_BDF.load(Ordering::SeqCst);
     let (bus, dev, fun) = (bdf >> 8, (bdf >> 3) & 0x1f, bdf & 7);
     let hw = !cfg!(feature = "mock-device");
     // A receiver holds 3 4K quota per page for the worst case of page tables (as do mmap and IOMMU maps).
-    fund("ice driver receive funding", 3 * (if hw { bar_pages } else { 0 } + pages));
+    fund("ice driver receive funding", 3 * pages);
     if hw {
         quiet("ice driver receive_pci", unsafe { sys_receive_pci(0, bus, dev, fun) });
-        quiet("ice driver receive_pages (BAR0)", unsafe { sys_receive_pages(0, bar, bar_pages) });
+        crate::bar::map_bar0("ice driver map BAR0", bus, dev, fun);
     }
     quiet("ice driver receive_pages (shared region)", unsafe { sys_receive_pages(0, SHARED_VA, pages) });
     for k in 1..m {

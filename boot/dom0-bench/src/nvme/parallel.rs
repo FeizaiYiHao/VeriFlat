@@ -166,11 +166,14 @@ pub fn run(n: usize) {
     if !HEAP_READY.swap(true, Ordering::SeqCst) {
         crate::slab_alloc::init();
     }
+    f.claim("parallel_nvme pci_claim");
+    f.map_bar("parallel_nvme map BAR0");
     check("parallel_nvme pci_attach_dma", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     let mut dev = NvmeDevice::new(f.bar());
     dev.init_admin_only();
     let Some(blocks) = blocks_per_4k() else {
         dev.shutdown();
+        f.unmap_bar("parallel_nvme unmap BAR0");
         log::info!("parallel_nvme skipped: namespace 1's LBA size {} bytes does not divide the 4 KiB request", 1u64 << lba_shift());
         return;
     };
@@ -227,6 +230,7 @@ pub fn run(n: usize) {
         unsafe { (*(&raw mut QUEUES))[k] = None };
     }
     WORKERS.store(0, Ordering::SeqCst);
+    f.unmap_bar("parallel_nvme unmap BAR0");
     log::info!("parallel_nvme passed");
 }
 

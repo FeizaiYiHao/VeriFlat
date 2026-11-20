@@ -1,4 +1,4 @@
-//! E810 (ice) packet benchmark in dom0: the `boot/ice` driver core over BAR0 in the loader's window and DMA memory
+//! E810 (ice) packet benchmark in dom0: the `boot/ice` driver core over BAR0, which dom0 claims and maps, and DMA memory
 //! from dom0's heap (mapped at IOVA = VA), one queue pair per CPU. Worker k runs on CPU k (worker 0 is dom0's first
 //! thread) and owns queue pair k: it sends one fixed UDP frame in batches and counts what its Rx queue receives, for
 //! `VERIFLAT_ICE_SECS` seconds; dom0 then reports per-queue and total packets per second from the TSC and the port
@@ -100,7 +100,7 @@ pub fn probe() {
     }
 }
 
-/// BAR0 in dom0's loader window, DMA memory from the heap at IOVA = VA, delays from the TSC.
+/// BAR0 as `bar::map_bar0` maps it, DMA memory from the heap at IOVA = VA, delays from the TSC.
 pub struct Dom0Platform {
     bar: usize,
     bar_len: usize,
@@ -353,6 +353,8 @@ pub fn run() {
         f.bus, f.dev, f.fun, f.device, f.bar_phys, f.bar_pages, cpus, workers, sweep, modes, frames, pool, secs, hz / 1_000_000, source
     );
 
+    crate::bar::claim("ice pci_claim", f.bus, f.dev, f.fun);
+    crate::bar::map_bar0("ice map BAR0", f.bus, f.dev, f.fun);
     check("ice pci_attach_dma", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     let p: &'static Dom0Platform =
         Box::leak(Box::new(Dom0Platform { bar: bar_va(&f), bar_len: f.bar_pages * 4096, tsc_hz: hz }));
@@ -467,13 +469,13 @@ pub fn run() {
     if let Err(e) = dev.shutdown() {
         log::warn!("ice: PF reset after the run: {}", e);
     }
+    crate::bar::unmap_bar0("ice unmap BAR0", f.bus, f.dev, f.fun);
     log::info!("ice bench passed");
 }
 
-/// BAR0's virtual address in dom0 (the one place that forms it): the loader's window over physical addresses below
-/// 4 GiB.
+/// BAR0's virtual address in every process of the E810 benchmarks (`bar::map_bar0` maps it there).
 pub(crate) fn bar_va(f: &IceFunction) -> usize {
-    PCI_BAR_WINDOW_BASE + f.bar_phys
+    crate::bar::bar_va(f.bar_phys)
 }
 
 /// Queue q's frame: from steering MAC `src_q` (a reflector that swaps the MACs returns it to queue `src_q`), to
