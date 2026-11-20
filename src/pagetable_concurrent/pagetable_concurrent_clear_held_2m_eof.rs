@@ -18,8 +18,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             p == l2_p && i != target_l2i ==> post.lower.l2_page(p).entry_lock(i) == pre.lower.l2_page(p).entry_lock(i)
         &&& post.lower.l2_entry(l2_p, target_l2i).is_empty()
         &&& post.lower.l2_owner(l2_p, target_l2i) == pre.lower.l2_owner(l2_p, target_l2i)
-        &&& pre.lower.l2_page(l2_p).entry_lock(target_l2i).l1() is None
-        &&& post.lower.l2_page(l2_p).entry_lock(target_l2i).l1() is None
+        &&& post.lower.l2_page(l2_p).entry_lock(target_l2i).l1() == pre.lower.l2_page(l2_p).entry_lock(target_l2i).l1()
     }
 
     /// EOF closure of `clear_held_2m_leaf`: every page-table invariant leaf and the unchanged page closure. No path to the leaf
@@ -33,6 +32,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             pre.spec_held_l3(target_l4i, target_l3i) is Some,
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.wf(),
             post.page_closure() =~= pre.page_closure(),
@@ -40,7 +40,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         Self::clear_held_2m_leaf_eof_frame(pre, post, target_l4i, target_l3i, target_l2i);
         Self::clear_held_2m_leaf_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i);
-        Self::clear_held_2m_leaf_eof_mappings(pre, post, target_l4i, target_l3i, target_l2i);
+        Self::clear_held_2m_leaf_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i);
+        Self::clear_held_2m_leaf_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l2i);
     }
 
     /// EOF closure of `clear_held_2m_leaf`: the leaves that read no walk, and the unchanged page closure.
@@ -49,6 +50,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.higher.inv(),
             post.va_addr_valid(),
@@ -80,6 +82,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.l3_links_l2_wf(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::l3_links_l2_wf); }
@@ -90,6 +93,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.wf_l2(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::wf_l2); }
@@ -100,6 +104,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.wf_l1(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::wf_l1); }
@@ -110,6 +115,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.disjoint_l2(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::disjoint_l2); }
@@ -120,6 +126,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.user_only(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::user_only); }
@@ -130,6 +137,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.rwx_upper_level_entries(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::rwx_upper_level_entries); }
@@ -140,6 +148,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.table_pages_wf(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::table_pages_wf); }
@@ -150,6 +159,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.wf(),
             pei_valid(target_l2i),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.wf_window_locks(),
     { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::wf_window_locks); }
@@ -159,29 +169,12 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         requires
             pre.wf(),
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.tables_reachable_wf(),
     {
         reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing);
         assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
-    }
-
-    /// EOF closure of `clear_held_2m_leaf`: the 4K and 2M abstract-mapping leaves; a resolving leaf sits under a resolving L3 path, whose
-    /// L2 page is not the target's.
-    proof fn clear_held_2m_leaf_eof_mappings(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index)
-        requires
-            pre.wf(),
-            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pei_valid(target_l3i),
-            pre.spec_resolve_mapping_l4(target_l4i) is None,
-            pre.spec_held_l3(target_l4i, target_l3i) is Some,
-            Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
-        ensures
-            post.wf_mapping_4k(),
-            post.wf_mapping_2m(),
-    {
-        Self::clear_held_2m_leaf_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i);
-        Self::clear_held_2m_leaf_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l2i);
     }
 
     /// EOF closure of `clear_held_2m_leaf`: every resolving 4K and 2M walk is unchanged; it sits under a resolving L3 path, whose L2
@@ -196,6 +189,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             pre.spec_held_l3(target_l4i, target_l3i) is Some,
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
                 #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
@@ -221,6 +215,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             pre.spec_held_l3(target_l4i, target_l3i) is Some,
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.wf_mapping_4k(),
     {
@@ -240,6 +235,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             pre.spec_held_l3(target_l4i, target_l3i) is Some,
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.wf_mapping_2m(),
     {
@@ -257,6 +253,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             pre.spec_held_l3(target_l4i, target_l3i) is Some,
             Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
