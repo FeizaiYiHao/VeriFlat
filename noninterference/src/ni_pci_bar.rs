@@ -14,7 +14,7 @@ pub proof fn bar_slot_page_implies_function_of_page(bars: Seq<PciBarEntry>, slot
 {
     let e = bars[slot as int];
     let p = e.spec_page_4k(page_index)->0;
-    pci_bar_table_wf_at(bars, slot as int, slot as int, p);
+    pci_bar_table_wf_at(bars, slot as int);
     assert(PAGE_SZ_4K == 0x1000 && MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute);
     assert(p as int == e.base as int / 4096 * 4096 + page_index as int * 4096 && p % 4096 == 0 && e.base as int / 4096 * 4096 <= p) by (nonlinear_arith)
         requires p as int == e.base as int / 4096 * 4096 + page_index as int * 4096, p as int == e.base as int / PAGE_SZ_4K as int * PAGE_SZ_4K as int + page_index as int * PAGE_SZ_4K as int,
@@ -37,7 +37,7 @@ pub proof fn bar_slot_chunk_page_implies_function_of_page(bars: Seq<PciBarEntry>
 {
     let e = bars[slot as int];
     let c = e.spec_chunk_2m(index)->0;
-    pci_bar_table_wf_at(bars, slot as int, slot as int, p);
+    pci_bar_table_wf_at(bars, slot as int);
     assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && MEM_4K_MASK == 0x0000_ffff_ffff_f000) by (compute);
     assert(c % 0x200000 == 0 && e.base <= c && e.base as int / 4096 * 4096 <= e.base) by (nonlinear_arith)
         requires c as int == (e.base as int + 0x200000 - 1) / 0x200000 * 0x200000 + index as int * 0x200000, c as int + 0x200000 <= e.base as int + e.size as int,

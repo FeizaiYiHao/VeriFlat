@@ -370,7 +370,7 @@ pub proof fn bar_envelope_implies_function_of_page(bars: Seq<PciBarEntry>, i: in
     ensures pci_bar_page(bars, p), pci_bar_function_of_page(bars, p) == Some(bars[i].bdf),
 {
     let k = pci_bar_entry_of_page(bars, p)->0;
-    assert(pci_bar_entry_of_page(bars, p) is Some && bars[k].bdf == bars[i].bdf) by { pci_bar_table_wf_at(bars, i, k, p); };
+    assert(pci_bar_entry_of_page(bars, p) is Some && bars[k].bdf == bars[i].bdf) by { pci_bar_table_wf_pair_at(bars, i, k, p); };
 }
 
 /// A 4K-aligned page inside the 2M BAR chunk at `d` is a BAR page of the chunk's function.
