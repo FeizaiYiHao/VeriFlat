@@ -87,6 +87,14 @@ pub(super) proof fn hide_empty_l1_in_window_eof_hidden_l1_empty(pre: KernelK, po
     };
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn hide_empty_l1_in_window_eof_pci_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        hide_empty_l1_in_window_eof_transition_framing(pre, post, pagetable, va, l2_ptr),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(hide_empty_l1_in_window_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+
 pub(super) proof fn hide_empty_l1_in_window_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
         pre.inv(),
@@ -112,7 +120,7 @@ pub(super) proof fn hide_empty_l1_in_window_eof(pre: KernelK, post: KernelK, pag
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(hide_empty_l1_in_window_eof_transition_framing);
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { hide_empty_l1_in_window_eof_pci_mappings(pre, post, pagetable, va, l2_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(post.memory_management_inv()) by {
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
@@ -291,6 +299,22 @@ pub(super) proof fn hide_empty_l1_in_window_wlocked_eof_no_held_4k(pre: KernelK,
     reveal(WholePageTable::wf_mapping_4k);
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn hide_empty_l1_in_window_wlocked_eof_pci_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        hide_empty_l1_in_window_wlocked_eof_transition_framing(pre, post, pagetable, va, l2_ptr),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn hide_empty_l1_in_window_wlocked_eof_pci_ownership(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        hide_empty_l1_in_window_wlocked_eof_transition_framing(pre, post, pagetable, va, l2_ptr),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
 pub(super) proof fn hide_empty_l1_in_window_wlocked_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
         pre.inv(),
@@ -316,7 +340,7 @@ pub(super) proof fn hide_empty_l1_in_window_wlocked_eof(pre: KernelK, post: Kern
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing);
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { hide_empty_l1_in_window_wlocked_eof_pci_mappings(pre, post, pagetable, va, l2_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(post.memory_management_inv()) by {
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
@@ -339,7 +363,7 @@ pub(super) proof fn hide_empty_l1_in_window_wlocked_eof(pre: KernelK, post: Kern
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
     };
     hide_empty_l1_in_window_wlocked_eof_structure_cache(pre, post, pagetable, va, l2_ptr);
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { hide_empty_l1_in_window_wlocked_eof_pci_ownership(pre, post, pagetable, va, l2_ptr); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);

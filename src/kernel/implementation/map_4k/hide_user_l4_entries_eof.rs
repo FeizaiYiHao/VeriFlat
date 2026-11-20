@@ -48,6 +48,25 @@ pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: K
     &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
 }
 
+/// The hide drops only mappings and keeps the PCI function array, every held leaf, and every other table.
+proof fn hide_user_l4_entry_eof_pci_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{
+    reveal(hide_user_l4_entry_eof_transition_framing); reveal(pagetable_pci_mappings_wf);
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+}
+
+/// The hide keeps every table's PCI function array and process, the processes, and the root table.
+proof fn hide_user_l4_entry_eof_pci_ownership(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(hide_user_l4_entry_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
 /// The invariant survives hiding user root entry `l4i` of the write-held `pagetable` while every CPU is listed stale for the
 /// whole table: a translation or directory entry cached under `l4i` is covered by the table record, every page record still
 /// names a held leaf, and every other entry resolves as before.
@@ -67,8 +86,9 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
         pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
     ensures post.inv(),
 {
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { hide_user_l4_entry_eof_pci_mappings(pre, post, pagetable, l4i); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { hide_user_l4_entry_eof_pci_ownership(pre, post, pagetable, l4i); };
     reveal(hide_user_l4_entry_eof_transition_framing);
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     pre.default_pagetable_wf_at(pagetable);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
@@ -89,7 +109,6 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
         broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; reveal(cpu_tlb_wf);
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// Once no user root entry of `pagetable` resolves, the table maps nothing and records no window.

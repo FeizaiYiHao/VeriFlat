@@ -82,6 +82,27 @@ proof fn clear_2m_mapping_present_eof_structure_cache(pre: KernelK, post: Kernel
     reveal(structure_cache_wf);
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn clear_2m_mapping_present_eof_pci_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        clear_2m_mapping_present_eof_transition_framing(pre, post, pagetable, va, l2_ptr),
+        pre.pt_mp.dom().contains(pagetable),
+        va_2m_valid(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= spec_v2l4index(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == l2_ptr,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(clear_2m_mapping_present_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn clear_2m_mapping_present_eof_pci_ownership(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        clear_2m_mapping_present_eof_transition_framing(pre, post, pagetable, va, l2_ptr),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(clear_2m_mapping_present_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
 pub(super) proof fn clear_2m_mapping_present_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
         pre.inv(),
@@ -103,7 +124,7 @@ pub(super) proof fn clear_2m_mapping_present_eof(pre: KernelK, post: KernelK, pa
     ensures post.inv(),
 {
     reveal(clear_2m_mapping_present_eof_transition_framing);
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { clear_2m_mapping_present_eof_pci_mappings(pre, post, pagetable, va, l2_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(post.memory_management_inv()) by {
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
@@ -123,6 +144,6 @@ pub(super) proof fn clear_2m_mapping_present_eof(pre: KernelK, post: KernelK, pa
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     clear_2m_mapping_present_eof_tlb(pre, post, pagetable, va, l2_ptr);
     clear_2m_mapping_present_eof_structure_cache(pre, post, pagetable, va, l2_ptr);
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { clear_2m_mapping_present_eof_pci_ownership(pre, post, pagetable, va, l2_ptr); };
 }
 }

@@ -56,6 +56,22 @@ pub(super) open spec fn mmap_1g_hide_l3_entry_eof_transition_framing(pre: Kernel
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_held_4k_l1(i4, i3, i2, i1) == old_c.spec_held_4k_l1(i4, i3, i2, i1)
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn mmap_1g_hide_l3_entry_eof_pci_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        mmap_1g_hide_l3_entry_eof_transition_framing(pre, post, pagetable, l4i, l3i),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(mmap_1g_hide_l3_entry_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn mmap_1g_hide_l3_entry_eof_pci_ownership(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        mmap_1g_hide_l3_entry_eof_transition_framing(pre, post, pagetable, l4i, l3i),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(mmap_1g_hide_l3_entry_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
 /// The invariant survives hiding the resolving L3 entry `(l4i, l3i)` of the write-held `pagetable` while every CPU is listed stale for the whole table: a directory entry cached under the entry is covered by the table record, no mapping changes, and every other entry resolves as before.
 pub(super) proof fn mmap_1g_hide_l3_entry_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index)
     requires
@@ -77,7 +93,7 @@ pub(super) proof fn mmap_1g_hide_l3_entry_eof(pre: KernelK, post: KernelK, paget
     pre.default_pagetable_wf_at(pagetable);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
-        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { mmap_1g_hide_l3_entry_eof_pci_mappings(pre, post, pagetable, l4i, l3i); };
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
         assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
             broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
@@ -94,6 +110,6 @@ pub(super) proof fn mmap_1g_hide_l3_entry_eof(pre: KernelK, post: KernelK, paget
         broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; reveal(cpu_tlb_wf);
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { mmap_1g_hide_l3_entry_eof_pci_ownership(pre, post, pagetable, l4i, l3i); };
 }
 } // verus!
