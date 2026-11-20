@@ -240,15 +240,6 @@ pub open spec fn exit_unowned(u: KernelU, c: CpuId) -> bool {
     &&& pr.iommu_table is Some ==> pr.iommu_table->Some_0.lock_state is WriteLocked
 }
 
-/// Restriction `exit_quota_after_unown` (G22): the first quota step of a reclaiming exit starts once the process has no PCI
-/// function. The kernel gives up the functions before returning quota, and every complete `thread_exit` trace does too (its
-/// unlock step needs an empty array, and only the flushed reclaim stage can empty it), but `thread_exit_quota_step_pre` does
-/// not say so.
-pub open spec fn exit_quota_after_unown(u: KernelU, l: StepLabel, d: CpuId) -> bool {
-    l is ThreadExitQuota && cur_thread(u, d).syscall_progress == Some(SyscallProgress::ThreadExitReclaim { flushed: true })
-        ==> u.process_map[cur_thread(u, d).owning_proc].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty()
-}
-
 /// Not a lock (gap G11 in u_gaps.md): the endpoint of the next descriptor, when this is its last reference, has no queue,
 /// so that a drop or a release applies.
 pub open spec fn exit_endpoint_room(u: KernelU, c: CpuId) -> bool {

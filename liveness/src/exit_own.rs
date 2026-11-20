@@ -247,9 +247,7 @@ proof fn exit_refund_implies_post(u: KernelU, u2: KernelU, d: CpuId)
 }
 
 proof fn exit_quota_implies_post(u: KernelU, u2: KernelU, d: CpuId)
-    requires
-        kernel_u_ownership_wf(u), kill_world_inv(u), exit_locks_held(u), labeled_step(StepLabel::ThreadExitQuota, u, u2, d),
-        exit_quota_after_unown(u, StepLabel::ThreadExitQuota, d),
+    requires kernel_u_ownership_wf(u), kill_world_inv(u), exit_locks_held(u), labeled_step(StepLabel::ThreadExitQuota, u, u2, d),
     ensures exit_own_post(u, u2, d),
 {
     reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_quota_step_pre); reveal(thread_exit_quota_step);
@@ -340,7 +338,7 @@ proof fn exit_finish_implies_post(u: KernelU, u2: KernelU, d: CpuId)
 
 /// Every exit step in the world proves what its cpu owes.
 pub proof fn exit_step_implies_own_post(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId)
-    requires kernel_u_ownership_wf(u), kill_world_inv(u), exit_locks_held(u), exit_label(l), exit_quota_after_unown(u, l, d), labeled_step(l, u, u2, d),
+    requires kernel_u_ownership_wf(u), kill_world_inv(u), exit_locks_held(u), exit_label(l), labeled_step(l, u, u2, d),
     ensures exit_own_post(u, u2, d),
 {
     match l {
@@ -364,7 +362,7 @@ pub proof fn exit_step_implies_own_post(u: KernelU, u2: KernelU, l: StepLabel, d
 
 /// An exit step keeps every other cpu, every foreign hold, the kill invariants, and the exit holds.
 pub proof fn exit_step_implies_kill_world_inv_kept(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId)
-    requires kernel_u_ownership_wf(u), kill_world_inv(u), exit_locks_held(u), exit_label(l), exit_quota_after_unown(u, l, d), labeled_step(l, u, u2, d),
+    requires kernel_u_ownership_wf(u), kill_world_inv(u), exit_locks_held(u), exit_label(l), labeled_step(l, u, u2, d),
     ensures others_kept(u, u2, d), foreign_holds_kept(u, u2, d), kill_world_inv(u2), exit_own_post(u, u2, d), exit_locks_held(u2),
 {
     exit_step_implies_own_post(u, u2, l, d);
