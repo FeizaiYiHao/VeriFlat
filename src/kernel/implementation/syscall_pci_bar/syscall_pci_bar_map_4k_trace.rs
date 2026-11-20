@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_pci_bar_spec::*;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
@@ -70,33 +71,34 @@ pub(super) proof fn map_pci_bar_4k_lock_rejected_result_from_k(krnl: &KernelK, c
     ensures map_pci_bar_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, slot, page_index, va) == ret,
 { map_pci_bar_4k_result_from_k(krnl, cpu_id, slot, page_index, va, ret); }
 
-/// Installing the IO leaf `entry` at `va` in its held 2M window with one more mapping of function `f` (`b`), then unlocking the window,
-/// clearing the progress, and unlocking the caller's cpu, its running thread, and the write-held pagetable `pagetable_ptr` of its
-/// process (`post`) is the exit step from `krnl`'s projection.
-pub(super) proof fn map_pci_bar_4k_exit_step_from_u(
-    krnl: &KernelK, b: KernelU, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr, f: PciBdf,
-    entry: MapEntry,
+/// Installing the IO leaf `entry` at `va` in its held 2M window with one more mapping of function `f` (`b`), then unlocking the
+/// window, clearing the progress, and unlocking the caller's cpu, its running thread, and the write-held pagetable `pagetable_ptr` of
+/// its process (`post`) is the exit step from `krnl`'s projection, where the caller holds those three locks through `lctx`.
+pub(super) proof fn map_pci_bar_4k_exit_step_from_k(
+    krnl: &KernelK, lctx: &LocalContext, b: KernelU, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry,
 )
     requires
+        typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == lctx.cpu_id(),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
+        krnl.pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains(f),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some,
+        krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar4k,
+        krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va == va,
         ({
             let pre = kernel_k_to_kernel_u(*krnl);
-            let thread = pre.thread_map.spec_index(thrd_ptr);
             let process = pre.process_map.spec_index(prc_ptr);
             let t = process.pagetable->Some_0;
-            let locked = LockStateU::WriteLocked { writer: cpu_id };
-            &&& pre.cpu_array[cpu_id as int].lock_state is WriteLocked
-            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
-            &&& pre.thread_map.dom().contains(thrd_ptr)
-            &&& thread.lock_state is WriteLocked
-            &&& thread.owning_proc == prc_ptr
-            &&& t.lock_state == locked
-            &&& thread.syscall_progress is Some && thread.syscall_progress->Some_0 is MapPciBar4k && thread.syscall_progress->Some_0->MapPciBar4k_va == va
-            &&& t.pci_functions.dom().contains(f)
             &&& b == (KernelU {
                 process_map: pre.process_map.insert(prc_ptr, ProcessU {
                     pagetable: Some(PageTableU { mapping_4k: t.mapping_4k.insert(va, entry), pci_functions: t.pci_functions.insert(f, (t.pci_functions[f] + 1) as nat), ..t }), ..process
@@ -121,10 +123,13 @@ pub(super) proof fn map_pci_bar_4k_exit_step_from_u(
         map_pci_bar_4k_exit_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, va),
         map_pci_bar_4k_exit_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, va, f, entry),
 {
-    kernel_process_projection_at(krnl, prc_ptr); reveal(map_pci_bar_4k_exit_step_pre); reveal(map_pci_bar_4k_exit_step);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
+    kernel_pagetable_mappings_projection_at(krnl, prc_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    reveal(map_pci_bar_4k_exit_step_pre); reveal(map_pci_bar_4k_exit_step);
     let pre = kernel_k_to_kernel_u(*krnl);
     let t = pre.process_map[prc_ptr].pagetable->Some_0;
-    assert(post.process_map =~= pre.process_map.insert(prc_ptr, ProcessU {
+    assert_maps_equal!(post.process_map, pre.process_map.insert(prc_ptr, ProcessU {
         pagetable: Some(PageTableU {
             lock_state: LockStateU::Unlocked, mapping_4k: t.mapping_4k.insert(va, entry), pci_functions: t.pci_functions.insert(f, (t.pci_functions[f] + 1) as nat),
             pagetable_window_locks: pagetable_window_locks_after_unlocking_range(t.pagetable_window_locks, spec_va_range_4k(va, 1)), ..t
@@ -133,30 +138,46 @@ pub(super) proof fn map_pci_bar_4k_exit_step_from_u(
     }));
 }
 
-/// Write-locking the caller's cpu, with the cpu inside its kernel step, its running thread, and the pagetable `pagetable_ptr` of its
-/// process, and starting the progress of mapping `va`, is the enter step from `krnl`'s projection to `post` when the BAR map succeeds
-/// there.
-pub(super) proof fn map_pci_bar_4k_enter_step_from_u(
-    krnl: &KernelK, post: KernelU, windows: Map<WindowVa, LockStateU>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot,
-    slot: usize, page_index: usize, va: VAddr,
+/// Write-locking the caller's cpu, with the cpu inside its kernel step, its running thread, and the unlocked pagetable `pagetable_ptr`
+/// of its process, and starting the progress of mapping `va`, is the enter step from `krnl`'s projection to `post` when `krnl`'s K
+/// facts pass every check of the BAR map: a live running thread, the slot's page, the process owning the slot's function, `va`
+/// uncovered, and mmap's quota.
+pub(super) proof fn map_pci_bar_4k_enter_step_from_k(
+    krnl: &KernelK, post: KernelU, windows: Map<WindowVa, LockStateU>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, slot: usize, page_index: usize, va: VAddr,
 )
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         spec_va_4k_valid(va),
-        map_pci_bar_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, slot, page_index, va) is Success,
-        krnl.prc_mp.dom().contains(prc_ptr),
-        !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
-        krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
-        krnl.pt_mp.dom().contains(pagetable_ptr),
         ({
-            let pagetable = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
-            &&& kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable is Some
-            &&& pagetable.pagetable_window_locks.dom().contains(window_of(va)) ==> pagetable.pagetable_window_locks[window_of(va)] is Unlocked
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
+            let thread = krnl.thrd_mp.spec_index(thrd_ptr);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+            let bars = krnl.pci_bars.view();
+            let idx = spec_va2index(va);
+            &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
+            &&& cpu.view().view().current_thread == Some(thrd_ptr)
+            &&& cpu.view().view().current_process == Some(prc_ptr)
+            &&& krnl.thrd_mp.dom().contains(thrd_ptr)
+            &&& !thread.being_killed()
+            &&& thread.view().owning_proc == prc_ptr
+            &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& krnl.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& krnl.prc_mp.dom().contains(prc_ptr)
+            &&& !krnl.prc_mp.spec_index(prc_ptr).view().zombie
+            &&& krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
+            &&& krnl.pt_mp.dom().contains(pagetable_ptr)
+            &&& !krnl.pt_mp.spec_index(pagetable_ptr).locked()
+            &&& table.leaves_present()
+            &&& slot < bars.len() && bars[slot as int].spec_page_4k(page_index) is Some
+            &&& table.higher.pci.view().dom().contains(bars[slot as int].bdf)
+            &&& !table.mapping_1g().dom().contains(spec_index2va((idx.0, idx.1, 0, 0)))
+            &&& !table.mapping_2m().dom().contains(spec_index2va((idx.0, idx.1, idx.2, 0)))
+            &&& !table.mapping_4k().dom().contains(va)
+            &&& thread.view().quota_4k >= 4
         }),
-        krnl.thrd_mp.dom().contains(thrd_ptr),
-        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
-        krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
-        krnl.ctn_mp.dom().contains(krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container),
         ({
             let old_windows = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
             windows == if old_windows.dom().contains(window_of(va)) { old_windows.insert(window_of(va), LockStateU::WriteLocked { writer: cpu_id }) } else { old_windows }
@@ -185,12 +206,15 @@ pub(super) proof fn map_pci_bar_4k_enter_step_from_u(
         map_pci_bar_4k_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, slot, page_index, va),
         map_pci_bar_4k_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, va),
 {
+    map_pci_bar_4k_result_from_k(krnl, cpu_id, slot, page_index, va, RetValueType::Success);
+    pagetable_unlocked_implies_projected_window_unlocked(krnl, prc_ptr, window_of(va));
     kernel_u_domains_projection(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
     reveal(map_pci_bar_4k_enter_step_pre); reveal(map_pci_bar_4k_enter_step);
 }
 
 /// The enter step pushed onto an empty trace is the partial trace after the directories, with no directory yet.
-pub(super) proof fn map_pci_bar_4k_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, slot: usize, page_index: usize, va: VAddr)
+pub(super) proof fn map_pci_bar_4k_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, slot: usize, page_index: usize,
+    va: VAddr)
     requires
         before.len() == 0,
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
@@ -217,8 +241,8 @@ pub(super) proof fn map_pci_bar_4k_trace_directory_step(steps: &KernelSteps, bef
 /// The exit step pushed after the partial trace after the directories, which starts at the projection of `entry_k`, completes the
 /// syscall trace when it maps the slot's page `addr` for the thread's container `ctn_ptr` and counts it for the slot's function.
 pub(super) proof fn map_pci_bar_4k_trace_exit_step(
-    steps: &KernelSteps, before: Seq<KernelStep>, entry_k: &KernelK, pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
-    slot: usize, page_index: usize, va: VAddr, addr: PAddr, f: PciBdf, entry: MapEntry,
+    steps: &KernelSteps, before: Seq<KernelStep>, entry_k: &KernelK, pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, slot: usize, page_index: usize, va: VAddr, addr: PAddr, f: PciBdf, entry: MapEntry,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),

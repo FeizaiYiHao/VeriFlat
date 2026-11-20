@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_pci_bar_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -27,7 +28,27 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         va_2m_valid(va),
-        unmap_pci_bar_2m_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va) is Success,
+        ({
+            let s = old(steps).snapshot_k();
+            let cpu = s.cpu_arr.spec_index(cpu_id).view();
+            let thread = s.thrd_mp.spec_index(thrd_ptr);
+            let table = whole_pagetable(s.pt_mp, s.pt_lower.view(), pagetable);
+            &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
+            &&& cpu.view().view().current_thread == Some(thrd_ptr)
+            &&& cpu.view().view().current_process == Some(prc_ptr)
+            &&& s.thrd_mp.dom().contains(thrd_ptr)
+            &&& !thread.being_killed()
+            &&& thread.view().owning_proc == prc_ptr
+            &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& s.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& s.prc_mp.dom().contains(prc_ptr)
+            &&& !s.prc_mp.spec_index(prc_ptr).view().zombie
+            &&& s.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable
+            &&& s.pt_mp.dom().contains(pagetable)
+            &&& table.mapping_2m().dom().contains(va) && table.mapping_2m()[va].present && table.mapping_2m()[va].is_io
+            &&& table.mapping_2m()[va].addr == addr
+        }),
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thrd_mp: old(krnl).thrd_mp, pt_mp: old(krnl).pt_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
         old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
@@ -181,7 +202,6 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
     // exit step: remove the leaf in its window, clear the progress, and release every lock
     let ghost exit_steps = steps.view();
     let ghost exit_start = *krnl;
-    let ghost window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
     proof {
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
@@ -191,7 +211,6 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
     let Tracked(window_perm) = krnl.lock_pagetable_window::<true>(pagetable, indices.0, indices.1, indices.2, Tracked(&pagetable_perm), Tracked(&mut *lctx));
-    let ghost removing = *krnl;
     remove_io_2m_mapping(krnl, pagetable, va, addr, l2_ptr, Tracked(&mut *lctx), Tracked(&pagetable_perm), Tracked(&window_perm));
     krnl.unlock_pagetable_window::<true>(pagetable, indices.0, indices.1, indices.2, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perm));
     let ghost removed = *krnl;
@@ -199,8 +218,8 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
     proof {
         broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
         let c = whole_pagetable(exit_start.pt_mp, exit_start.pt_lower.view(), pagetable);
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= c.lower.pagetable_window_locks);
-        assert(krnl.pt_lower.view() =~= exit_start.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks, c.lower.pagetable_window_locks);
+        assert_maps_equal!(krnl.pt_lower.view(), exit_start.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
     }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
     proof { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable); }
@@ -212,25 +231,18 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
         kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&entry, &locked, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
         kernel_pagetable_2m_present_cleared_and_progress_changed_implies_u_step(&locked, &hidden, pagetable, va, thrd_ptr);
         process_cpu_wf_at(entry.prc_mp, entry.cpu_arr, cpu_id); process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
-        pagetable_unlocked_implies_projected_window_unlocked(&entry, prc_ptr, window_of(va));
-        unmap_pci_bar_2m_hide_step_from_u(&entry, kernel_k_to_kernel_u(locked), kernel_k_to_kernel_u(hidden), cpu_id, prc_ptr, thrd_ptr, pagetable, va, addr);
+        unmap_pci_bar_2m_hide_step_from_k(&entry, kernel_k_to_kernel_u(locked), kernel_k_to_kernel_u(hidden), cpu_id, prc_ptr, thrd_ptr, pagetable, va, addr);
         unmap_pci_bar_2m_trace_hide_step(&hide_steps_snap, old(steps).view(), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(hidden), cpu_id, va);
         unmap_pci_bar_2m_tlb_flush_steps_from_k(&flush_steps_snap, hidden_steps, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, va);
-        unmap_pci_bar_2m_flushed_step_from_k(&flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, va);
+        unmap_pci_bar_2m_flushed_step_from_k(&flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, va);
         let exit_k = *krnl;
         let f = pci_bar_function_of_page(entry.pci_bars.view(), addr)->0;
-        assert(exit_start.pci_bars == entry.pci_bars);
-        assert(flushed_steps[0] == hidden_steps[0]);
-        assert(hidden_steps[0].old_u == kernel_k_to_kernel_u(entry));
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
         process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
         kernel_pci_bar_unmapped_implies_u_step(&exit_start, &removed, pagetable, va, f, PageSize::SZ2m);
-        removed.pt_mp.typed_lock_map_aligned_write_at(removed_lctx.pagetable_lock_map(), removed_lctx.thread_id(), pagetable);
         process_cpu_wf_at(removed.prc_mp, removed.cpu_arr, cpu_id);
         kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&removed, &exit_k, &removed_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
-        kernel_write_held_context_projection(&exit_start, &removed_lctx, cpu_id, prc_ptr, thrd_ptr, None);
-        kernel_pagetable_mappings_projection_at(&exit_start, prc_ptr);
-        unmap_pci_bar_2m_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(removed), kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable, va, f);
+        unmap_pci_bar_2m_exit_step_from_k(&exit_start, &removed_lctx, kernel_k_to_kernel_u(removed), kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable, va, f);
         unmap_pci_bar_2m_trace_exit_steps(&*steps, flushed_steps, exit_steps, kernel_k_to_kernel_u(flushed_snap), kernel_k_to_kernel_u(flushed_k),
             kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, f);
     }

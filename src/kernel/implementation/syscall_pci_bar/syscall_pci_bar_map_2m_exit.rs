@@ -157,8 +157,7 @@ pub(super) fn map_pci_bar_2m_install_and_exit(
     proof {
         broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
         window_perms.tracked_insert(window_of(va), window_perm);
-        range.wf_implies_view_index_is_start_plus_offset();
-        assert(range.view()[0] == va && va_range_2m_windows(range).contains(window_of(va)));
+        assert(range.view()[0] == va && va_range_2m_windows(range).contains(window_of(va))) by { range.wf_implies_view_index_is_start_plus_offset(); };
     }
     krnl.unlock_pagetable_range_windows::<true>(pagetable, &range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
@@ -170,15 +169,12 @@ pub(super) fn map_pci_bar_2m_install_and_exit(
     proof {
         let exit_k = *krnl;
         let f = entry.pci_bars.view()[slot as int].bdf;
-        exit_start.pt_mp.typed_lock_map_aligned_write_at(exit_lctx.pagetable_lock_map(), exit_lctx.thread_id(), pagetable);
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
-        process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
+        process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
         kernel_pci_bar_mapped_implies_u_step(&exit_start, &installed, pagetable, va, f, PageSize::SZ2m);
         process_cpu_wf_at(installed.prc_mp, installed.cpu_arr, cpu_id);
         kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed_implies_u_step(&installed, &exit_k, &installed_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
-        kernel_write_held_context_projection(&exit_start, &exit_lctx, cpu_id, prc_ptr, thrd_ptr, None);
-        kernel_pagetable_mappings_projection_at(&exit_start, prc_ptr);
-        map_pci_bar_2m_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(installed), kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable, va, f, leaf);
+        map_pci_bar_2m_exit_step_from_k(&exit_start, &exit_lctx, kernel_k_to_kernel_u(installed), kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable, va, f, leaf);
         map_pci_bar_2m_trace_exit_step(&*steps, dir_steps, &entry, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, thrd_ptr, ctn_ptr, slot, index, va,
             addr, f, leaf);
     }
