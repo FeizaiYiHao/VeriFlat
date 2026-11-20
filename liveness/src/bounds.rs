@@ -1,4 +1,7 @@
-//! Per-call step bounds for `syscall_thread_exit` and `syscall_kill_process`.
+//! Per-call step bounds for `syscall_thread_exit`, `syscall_kill_process`, and the BAR map and unmap syscalls.
+//!
+//! The BAR syscalls (`syscall_map_pci_bar_4k`, `_2m`, `syscall_unmap_pci_bar_4k`, `_2m`) are not in the world; their
+//! complete trace specs bound their length, which the theorems read out.
 //!
 //! `thread_exit` (round 13): the trace spec carries the bound its exec contract fixes at entry,
 //! `thread_exit_step_bound(k, cpu_id) = thread_exit_reclaim_step_bound() + 40 + 34 * thread_exit_entry_call_depth(k, cpu_id)`,
@@ -10,6 +13,7 @@ use vstd::prelude::*;
 use crate::*;
 use veriflat_syscall_thread_exit::syscall_thread_exit::syscall_thread_exit_spec::*;
 use veriflat_syscall_kill_process::syscall_kill_process::syscall_kill_process_spec::*;
+use veriflat_syscall_pci_bar::syscall_pci_bar::syscall_pci_bar_spec::*;
 
 verus! {
 
@@ -52,5 +56,32 @@ pub proof fn kill_process_syscall_trace_implies_len_bounded(trace: Seq<KernelSte
     reveal(kill_process_syscall_trace); reveal(kill_process_partial_trace);
     kill_process_len_implies_phase_counts(trace.drop_last(), c);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// BAR map and unmap.
+
+/// A successful 4K BAR map records at most five steps: enter, one directory step per missing L4, L3, and L2 entry, and exit.
+pub proof fn map_pci_bar_4k_syscall_trace_implies_len_bounded(trace: Seq<KernelStep>, c: CpuId, slot: usize, page_index: usize, va: VAddr)
+    requires map_pci_bar_4k_syscall_trace(trace, c, slot, page_index, va),
+    ensures trace.len() <= 5,
+{ reveal(map_pci_bar_4k_syscall_trace); }
+
+/// A successful 2M BAR map records at most `NUM_CPUS + 4` steps: enter, its directory and empty-L1 steps, and exit.
+pub proof fn map_pci_bar_2m_syscall_trace_implies_len_bounded(trace: Seq<KernelStep>, c: CpuId, slot: usize, index: usize, va: VAddr)
+    requires map_pci_bar_2m_syscall_trace(trace, c, slot, index, va),
+    ensures trace.len() <= NUM_CPUS + 4,
+{ reveal(map_pci_bar_2m_syscall_trace); }
+
+/// A successful 4K BAR unmap records at most `NUM_CPUS + 3` steps: hide, one TLB flush per cpu, flushed, and exit.
+pub proof fn unmap_pci_bar_4k_syscall_trace_implies_len_bounded(trace: Seq<KernelStep>, c: CpuId, va: VAddr)
+    requires unmap_pci_bar_4k_syscall_trace(trace, c, va),
+    ensures trace.len() <= NUM_CPUS + 3,
+{ reveal(unmap_pci_bar_4k_syscall_trace); }
+
+/// A successful 2M BAR unmap records at most `NUM_CPUS + 3` steps: hide, one TLB flush per cpu, flushed, and exit.
+pub proof fn unmap_pci_bar_2m_syscall_trace_implies_len_bounded(trace: Seq<KernelStep>, c: CpuId, va: VAddr)
+    requires unmap_pci_bar_2m_syscall_trace(trace, c, va),
+    ensures trace.len() <= NUM_CPUS + 3,
+{ reveal(unmap_pci_bar_2m_syscall_trace); }
 
 } // verus!

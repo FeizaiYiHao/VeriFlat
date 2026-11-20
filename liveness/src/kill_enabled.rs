@@ -78,8 +78,6 @@ proof fn kill_walk_implies_enabled(u: KernelU, c: CpuId)
             };
             assert(labeled_step(StepLabel::KillProcessMarkThread, u, u2, c));
         }
-    } else if !t.owned_pci_functions.is_empty() {
-        kill_reassign_enabled(u, c);
     } else if t.zombie {
         reveal(kill_process_zombie_retire_step);
         let u2 = KernelU { thread_map: kill_moved(u, c, tp, KillStage::Retire), ..u };
@@ -87,11 +85,7 @@ proof fn kill_walk_implies_enabled(u: KernelU, c: CpuId)
     } else {
         reveal(kill_process_lock_table_step);
         let u2 = KernelU {
-            process_map: u.process_map.insert(tp, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, ..t.pagetable->Some_0 }),
-                iommu_table: match t.iommu_table { Some(x) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, ..x }), None => None },
-                ..t
-            }),
+            process_map: u.process_map.insert(tp, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, ..t.pagetable->Some_0 }), ..t }),
             thread_map: kill_moved(u, c, tp, KillStage::Reclaim { flushed: false }),
             ..u
         };
@@ -99,28 +93,39 @@ proof fn kill_walk_implies_enabled(u: KernelU, c: CpuId)
     }
 }
 
-/// An empty target owning PCI functions hands them to the killer's process.
-proof fn kill_reassign_enabled(u: KernelU, c: CpuId)
-    requires kill_stage(u, c) == KillStage::Walk, kill_process_target_empty(u, c), kill_process_step_pre(u, c),
+/// After the flush the target releases its PCI functions and write-locks its IOMMU table.
+proof fn kill_unown_enabled(u: KernelU, c: CpuId)
+    requires
+        kill_stage(u, c) == (KillStage::Reclaim { flushed: true }), kill_process_reclaim_step_pre(u, c, KillStage::Reclaim { flushed: true }),
+        kill_table_cleared(u, c), kill_process_step_pre(u, c),
+        u.process_map[kill_target(u, c)].iommu_table is Some ==> u.process_map[kill_target(u, c)].iommu_table->Some_0.lock_state is Unlocked,
     ensures kill_enabled(u, c),
 {
-    reveal(kill_process_reassign_functions_step);
+    reveal(kill_process_unown_functions_step);
     let tp = kill_target(u, c);
     let t = u.process_map[tp];
-    let owner = u.cpu_array[c as int].current_process->Some_0;
+    let pagetable = t.pagetable->Some_0;
     let table = u.iommu_root_table;
-    let owners = Seq::new(PCI_BUS_COUNT as nat, |b: int| Seq::new(PCI_DEVICE_COUNT as nat, |dv: int| Seq::new(PCI_FUNCTION_COUNT as nat, |f: int|
-        if kill_process_reassigns(table, tp, b, dv, f) { owner } else { table.owners[b][dv][f] })));
-    let attached = Seq::new(PCI_BUS_COUNT as nat, |b: int| Seq::new(PCI_DEVICE_COUNT as nat, |dv: int| Seq::new(PCI_FUNCTION_COUNT as nat, |f: int|
-        table.attached[b][dv][f] && !kill_process_reassigns(table, tp, b, dv, f))));
+    let functions = pagetable.pci_functions.dom();
     let u2 = KernelU {
         process_map: u.process_map.insert(tp, ProcessU {
-            owned_pci_functions: Set::empty(), iommu_table: match t.iommu_table { Some(x) => Some(PageTableU { did: None, ..x }), None => None }, ..t
-        }).insert(owner, ProcessU { owned_pci_functions: u.process_map[owner].owned_pci_functions.union(t.owned_pci_functions), ..u.process_map[owner] }),
-        iommu_root_table: IommuRootTableU { owners, attached },
+            pagetable: Some(PageTableU { pci_functions: Map::empty(), ..pagetable }),
+            iommu_table: match t.iommu_table { Some(x) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, did: None, ..x }), None => None },
+            ..t
+        }),
+        iommu_root_table: IommuRootTableU {
+            owners: if functions == Set::<PciBdf>::empty() { table.owners } else { pci_owners_released(table.owners, functions) },
+            attached: if t.iommu_table is Some {
+                Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat,
+                    |function: int| table.attached[bus][device][function] && !functions.contains((bus as usize, device as usize, function as usize)))))
+            } else { table.attached },
+        },
+        iommu_tlb: if t.iommu_table is Some && t.iommu_table->Some_0.did is Some {
+            u.iommu_tlb.insert(t.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        } else { u.iommu_tlb },
         ..u
     };
-    assert(labeled_step(StepLabel::KillProcessReassignFunctions, u, u2, c));
+    assert(labeled_step(StepLabel::KillProcessUnownFunctions, u, u2, c));
 }
 
 /// At a thread stage the killer dequeues its victim, forces the cpu running it to idle, or unlinks it once killed.
@@ -206,7 +211,8 @@ pub open spec fn kill_quota_witness(u: KernelU, c: CpuId, size: PageSize) -> Ker
 /// While its tables are held the killer hides, flushes, removes an IOMMU leaf, returns quota, or unlocks.
 proof fn kill_reclaim_implies_enabled(u: KernelU, c: CpuId)
     requires
-        kernel_u_ownership_wf(u), kill_world_inv(u), in_kill(u, c), kill_holds(u, c), kill_stage_reclaiming(kill_stage(u, c)), kill_process_step_pre(u, c),
+        kernel_u_ownership_wf(u), kill_world_inv(u), in_kill(u, c), kill_holds(u, c), kill_wanted_free(u, c), kill_stage_reclaiming(kill_stage(u, c)),
+        kill_process_step_pre(u, c),
     ensures kill_enabled(u, c),
 {
     reveal(kernel_u_process_ownership_wf);
@@ -229,6 +235,8 @@ proof fn kill_reclaim_implies_enabled(u: KernelU, c: CpuId)
             assert(u.process_map.insert(tp, t) =~= u.process_map);
             assert(labeled_step(StepLabel::KillProcessTableHidden, u, u, c));
         }
+    } else if st == (KillStage::Reclaim { flushed: true }) && t.iommu_table is Some && t.iommu_table->Some_0.lock_state != (LockStateU::WriteLocked { writer: c }) {
+        kill_unown_enabled(u, c);
     } else if st == (KillStage::Reclaim { flushed: true }) && t.iommu_table is Some && !process_iommu_4k_unmapped(t.iommu_table->Some_0) {
         reveal(kill_process_iommu_leaf_step);
         let it = t.iommu_table->Some_0;

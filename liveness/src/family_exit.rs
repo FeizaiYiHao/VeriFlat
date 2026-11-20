@@ -15,7 +15,7 @@ verus! {
 /// The `thread_exit` steps in the world: all but the five killed-thread reclaim steps.
 pub open spec fn exit_label(l: StepLabel) -> bool {
     ||| l is ThreadExitEnter || l is ThreadExitDrop || l is ThreadExitRelease || l is ThreadExitLockTable || l is ThreadExitTableHidden
-    ||| l is ThreadExitTlbFlush || l is ThreadExitFlushed || l is ThreadExitIommuLeaf || l is ThreadExitRefund || l is ThreadExitQuota
+    ||| l is ThreadExitTlbFlush || l is ThreadExitFlushed || l is ThreadExitUnown || l is ThreadExitIommuLeaf || l is ThreadExitRefund || l is ThreadExitQuota
     ||| l is ThreadExitUnlockTable || l is ThreadExitLockPcidAllocator || l is ThreadExitFinish
 }
 
@@ -44,7 +44,8 @@ pub open spec fn exit_returned(p: SyscallProgress, size: PageSize) -> bool {
 
 /// What exiting cpu `c` holds: its cpu runs its thread's process; it write-holds its thread, without a caller, its process,
 /// and its container; the descriptors before its position are released, all once it reclaims; a reclaiming thread is its
-/// process's last, write-holds the tables, finds them cleared after the flush, and has returned the quota sizes it records.
+/// process's last, write-holds the page table, finds it cleared after the flush and without PCI functions once it returns quota, and
+/// has returned the quota sizes it records.
 pub open spec fn exit_holds(u: KernelU, c: CpuId) -> bool {
     let cpu = u.cpu_array[c as int];
     let t = cur_thread(u, c);
@@ -63,7 +64,7 @@ pub open spec fn exit_holds(u: KernelU, c: CpuId) -> bool {
         ==> t.endpoint_descriptors[j] is None
     &&& !(prog is ThreadExit) ==> pr.owned_threads.len() == 1
     &&& exit_reclaiming(prog) ==> pr.pagetable is Some && pt.lock_state == (LockStateU::WriteLocked { writer: c })
-        && (pr.iommu_table is Some ==> pr.iommu_table->Some_0.lock_state == (LockStateU::WriteLocked { writer: c }))
+    &&& prog is ThreadExitQuota ==> pt.pci_functions == Map::<PciBdf, nat>::empty()
     &&& exit_cleared(prog) ==> pt.mapping_4k == Map::<VAddr, MapEntry>::empty() && pt.mapping_2m == Map::<VAddr, MapEntry>::empty()
         && pt.mapping_1g == Map::<VAddr, MapEntry>::empty() && pt.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
     &&& prog is ThreadExitQuota ==> (pr.iommu_table is Some ==> process_iommu_4k_unmapped(pr.iommu_table->Some_0))
@@ -216,7 +217,8 @@ pub proof fn exit_first_desc_bounds(t: ThreadU, j: int)
 pub open spec fn exit_next_desc(u: KernelU, c: CpuId) -> int { exit_first_desc(cur_thread(u, c), cur_thread(u, c).syscall_progress->Some_0->ThreadExit_next as int) }
 
 /// The objects the next step of exiting cpu `c` locks or needs free: the endpoint of its next descriptor, its process's
-/// tables before reclaiming, its container's cpu set while flushing, and its container's PCID allocator before finishing.
+/// page table before reclaiming, its container's cpu set while flushing, its process's IOMMU table before giving up the PCI
+/// functions, and its container's PCID allocator before finishing.
 pub open spec fn exit_wanted_free(u: KernelU, c: CpuId) -> bool {
     let t = cur_thread(u, c);
     let prog = t.syscall_progress->Some_0;
@@ -225,9 +227,26 @@ pub open spec fn exit_wanted_free(u: KernelU, c: CpuId) -> bool {
     let ctn = u.container_map[u.cpu_array[c as int].owning_container];
     &&& prog is ThreadExit && i < MAX_NUM_ENDPOINT_DESCRIPTORS ==> u.endpoint_map[t.endpoint_descriptors[i]->Some_0].lock_state is Unlocked
     &&& prog is ThreadExit && i >= MAX_NUM_ENDPOINT_DESCRIPTORS && pr.owned_threads.len() == 1 ==> pr.pagetable->Some_0.lock_state is Unlocked
-        && (pr.iommu_table is Some ==> pr.iommu_table->Some_0.lock_state is Unlocked)
+    &&& prog == (SyscallProgress::ThreadExitReclaim { flushed: true }) && !exit_unowned(u, c) ==> (pr.iommu_table is Some ==> pr.iommu_table->Some_0.lock_state is Unlocked)
     &&& prog == (SyscallProgress::ThreadExitReclaim { flushed: false }) ==> ctn.cpu_set_lock.read_held_by(c) || !(ctn.cpu_set_lock is WriteLocked)
     &&& prog is ThreadExitZombie ==> ctn.pcid_allocator_lock is Unlocked || ctn.pcid_allocator_lock == (LockStateU::WriteLocked { writer: c })
+}
+
+/// The process of exiting cpu `c` has given up its PCI functions: its function array is empty and its IOMMU table, if any, is
+/// write-locked.
+pub open spec fn exit_unowned(u: KernelU, c: CpuId) -> bool {
+    let pr = u.process_map[cur_thread(u, c).owning_proc];
+    &&& pr.pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty()
+    &&& pr.iommu_table is Some ==> pr.iommu_table->Some_0.lock_state is WriteLocked
+}
+
+/// Restriction `exit_quota_after_unown` (G22): the first quota step of a reclaiming exit starts once the process has no PCI
+/// function. The kernel gives up the functions before returning quota, and every complete `thread_exit` trace does too (its
+/// unlock step needs an empty array, and only the flushed reclaim stage can empty it), but `thread_exit_quota_step_pre` does
+/// not say so.
+pub open spec fn exit_quota_after_unown(u: KernelU, l: StepLabel, d: CpuId) -> bool {
+    l is ThreadExitQuota && cur_thread(u, d).syscall_progress == Some(SyscallProgress::ThreadExitReclaim { flushed: true })
+        ==> u.process_map[cur_thread(u, d).owning_proc].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty()
 }
 
 /// Not a lock (gap G11 in u_gaps.md): the endpoint of the next descriptor, when this is its last reference, has no queue,
@@ -390,18 +409,9 @@ proof fn exit_descriptors_implies_enabled(u: KernelU, c: CpuId)
         proc_wf_at_of(u, p);
         if pr.owned_threads.len() == 1 {
             reveal(thread_exit_lock_table_step_pre); reveal(thread_exit_lock_table_step);
-            let table = u.iommu_root_table;
             let u2 = KernelU {
                 thread_map: u.thread_map.insert(td, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..t }),
-                process_map: u.process_map.insert(p, ProcessU {
-                    pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, ..pr.pagetable->Some_0 }),
-                    iommu_table: match pr.iommu_table { Some(x) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, did: None, ..x }), None => None },
-                    ..pr
-                }),
-                iommu_root_table: if pr.iommu_table is Some { IommuRootTableU { attached: thread_exit_detached_attached(table, p), ..table } } else { table },
-                iommu_tlb: if pr.iommu_table is Some && pr.iommu_table->Some_0.did is Some {
-                    u.iommu_tlb.insert(pr.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-                } else { u.iommu_tlb },
+                process_map: u.process_map.insert(p, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, ..pr.pagetable->Some_0 }), ..pr }),
                 ..u
             };
             assert(labeled_step(StepLabel::ThreadExitLockTable, u, u2, c));
@@ -457,6 +467,27 @@ proof fn exit_reclaim_implies_enabled(u: KernelU, c: CpuId)
             assert(u.process_map.insert(p, pr) =~= u.process_map);
             assert(labeled_step(StepLabel::ThreadExitTableHidden, u, u, c));
         }
+    } else if prog == (SyscallProgress::ThreadExitReclaim { flushed: true }) && !exit_unowned(u, c) {
+        reveal(thread_exit_unown_step_pre); reveal(thread_exit_unown_step);
+        let pagetable = pr.pagetable->Some_0;
+        let functions = pagetable.pci_functions.dom();
+        let table = u.iommu_root_table;
+        let u2 = KernelU {
+            process_map: u.process_map.insert(p, ProcessU {
+                pagetable: Some(PageTableU { pci_functions: Map::empty(), ..pagetable }),
+                iommu_table: match pr.iommu_table { Some(x) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: c }, did: None, ..x }), None => None },
+                ..pr
+            }),
+            iommu_root_table: IommuRootTableU {
+                owners: if functions == Set::<PciBdf>::empty() { table.owners } else { pci_owners_released(table.owners, functions) },
+                attached: if pr.iommu_table is Some { thread_exit_detached_attached(table, functions) } else { table.attached },
+            },
+            iommu_tlb: if pr.iommu_table is Some && pr.iommu_table->Some_0.did is Some {
+                u.iommu_tlb.insert(pr.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+            } else { u.iommu_tlb },
+            ..u
+        };
+        assert(labeled_step(StepLabel::ThreadExitUnown, u, u2, c));
     } else if prog == (SyscallProgress::ThreadExitReclaim { flushed: true }) && pr.iommu_table is Some && !process_iommu_4k_unmapped(pr.iommu_table->Some_0) {
         reveal(thread_exit_iommu_leaf_step);
         let it = pr.iommu_table->Some_0;

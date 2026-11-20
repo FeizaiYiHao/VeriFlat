@@ -36,6 +36,7 @@ veriflat_syscall_iommu_unmap_4k = { path = "../crates/veriflat_syscall_iommu_unm
 veriflat_syscall_ipc = { path = "../crates/veriflat_syscall_ipc" }
 veriflat_syscall_cpu_hotplug = { path = "../crates/veriflat_syscall_cpu_hotplug" }
 veriflat_syscall_pci = { path = "../crates/veriflat_syscall_pci" }
+veriflat_syscall_pci_bar = { path = "../crates/veriflat_syscall_pci_bar" }
 veriflat_syscall_kill_process = { path = "../crates/veriflat_syscall_kill_process" }
 veriflat_syscall_thread_exit = { path = "../crates/veriflat_syscall_thread_exit" }
 veriflat_noninterference = { path = "../noninterference" }

@@ -37,7 +37,7 @@ pub open spec fn world_label(l: StepLabel) -> bool {
     ||| alloc_label(l) // alloc_thread_quota_4k, alloc_quota_2m, alloc_thread_quota_2m, alloc_quota_1g, alloc_thread_quota_1g
     ||| new_thread_label(l) // new_thread, new_thread_with_endpoint
     ||| cpu_label(l) // cpu_offline_request, cpu_online, cpu_offline_request_child, cpu_online_child
-    ||| pci_label(l) // pci_attach_dma
+    ||| pci_label(l) // pci_attach_dma, pci_claim
     ||| schedule_label(l) // schedule, rebalance_pull
     ||| split_merge_label(l) // split_2m, merge_2m
     ||| env_label(l) // trap entry, return, and divert, register changes, TLB and context-cache fills
@@ -48,9 +48,11 @@ pub open spec fn world_label(l: StepLabel) -> bool {
     ||| ipc_label(l) // ordinary IPC: block and rendezvous without a PCI payload
 }
 
-/// The liveness-side restrictions on world steps, each a clause U lacks (`u_gaps.md`): `offline_hold_at_rest` (G20) and
-/// `new_process_depth_room` (G21).
-pub open spec fn world_allowed(u: KernelU, l: StepLabel, d: CpuId) -> bool { offline_hold_at_rest(u, l, d) && new_process_depth_room(u, l, d) }
+/// The liveness-side restrictions on world steps, each a clause U lacks (`u_gaps.md`): `offline_hold_at_rest` (G20),
+/// `new_process_depth_room` (G21), and `exit_quota_after_unown` (G22).
+pub open spec fn world_allowed(u: KernelU, l: StepLabel, d: CpuId) -> bool {
+    offline_hold_at_rest(u, l, d) && new_process_depth_room(u, l, d) && exit_quota_after_unown(u, l, d)
+}
 
 /// `s2` follows `s` by the world step `s` records, from a well-formed state.
 pub open spec fn world_step(s: Snap, s2: Snap) -> bool {
@@ -196,7 +198,7 @@ proof fn kill_step_implies_world_base_inv_kept(u: KernelU, u2: KernelU, l: StepL
 /// An exit step keeps the base invariant: the exiting cpu is outside every other syscall, and the tables are kept or
 /// change only at its own process.
 proof fn exit_step_implies_world_base_inv_kept(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId)
-    requires kernel_u_ownership_wf(u), world_inv(u), exit_label(l), labeled_step(l, u, u2, d),
+    requires kernel_u_ownership_wf(u), world_inv(u), exit_label(l), exit_quota_after_unown(u, l, d), labeled_step(l, u, u2, d),
     ensures world_base_inv(u2), kill_world_inv(u2), exit_locks_held(u2), others_kept(u, u2, d),
 {
     exit_step_implies_kill_world_inv_kept(u, u2, l, d);

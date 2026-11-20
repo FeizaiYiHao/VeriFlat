@@ -338,19 +338,6 @@ proof fn kill_unlink_implies_post(u: KernelU, u2: KernelU, d: CpuId)
     assert(tables_kept(u, u2));
 }
 
-proof fn kill_reassign_implies_post(u: KernelU, u2: KernelU, d: CpuId)
-    requires kernel_u_ownership_wf(u), kill_world_inv(u), labeled_step(StepLabel::KillProcessReassignFunctions, u, u2, d),
-    ensures kill_own_post(u, u2, d), kill_table_post(u, u2, d),
-{
-    reveal(kill_process_reassign_functions_step);
-    kill_step_pre_implies_kill_holds(u, d);
-    assert(u2.process_map.dom() =~= u.process_map.dom() && u2.thread_map.dom() =~= u.thread_map.dom());
-    assert(in_kill(u2, d) && kill_target(u2, d) == kill_target(u, d) && kill_stage(u2, d) == kill_stage(u, d));
-    kill_same_target_implies_holds(u, u2, d);
-    proc_shapes_same_implies_processes_wf(u, u2);
-    assert(tables_kept(u, u2));
-}
-
 proof fn kill_lock_table_implies_post(u: KernelU, u2: KernelU, d: CpuId)
     requires kernel_u_ownership_wf(u), kill_world_inv(u), labeled_step(StepLabel::KillProcessLockTable, u, u2, d),
     ensures kill_own_post(u, u2, d), kill_table_post(u, u2, d),
@@ -640,6 +627,20 @@ proof fn kill_finish_implies_post(u: KernelU, u2: KernelU, d: CpuId)
     assert(tables_kept(u, u2));
 }
 
+proof fn kill_unown_implies_post(u: KernelU, u2: KernelU, d: CpuId)
+    requires kernel_u_ownership_wf(u), kill_world_inv(u), labeled_step(StepLabel::KillProcessUnownFunctions, u, u2, d),
+    ensures kill_own_post(u, u2, d), kill_table_post(u, u2, d),
+{
+    reveal(kill_process_unown_functions_step);
+    kill_step_pre_implies_kill_holds(u, d);
+    assert(u2.process_map.dom() =~= u.process_map.dom() && u2.thread_map.dom() =~= u.thread_map.dom());
+    assert(in_kill(u2, d) && kill_target(u2, d) == kill_target(u, d) && kill_stage(u2, d) == kill_stage(u, d));
+    assert(kill_stage_ok(u2, d));
+    kill_same_target_implies_holds(u, u2, d);
+    proc_shapes_same_implies_processes_wf(u, u2);
+    assert(tables_kept(u, u2));
+}
+
 /// Every step of `kill_process` in the world proves what its killer owes and keeps the tables or changes only the empty
 /// target's.
 pub proof fn kill_step_implies_own_post(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId)
@@ -655,11 +656,11 @@ pub proof fn kill_step_implies_own_post(u: KernelU, u2: KernelU, l: StepLabel, d
         StepLabel::KillProcessDequeueEndpoint => kill_dequeue_endpoint_implies_post(u, u2, d),
         StepLabel::KillProcessCpuToIdle => kill_cpu_to_idle_implies_post(u, u2, d),
         StepLabel::KillProcessUnlink => kill_unlink_implies_post(u, u2, d),
-        StepLabel::KillProcessReassignFunctions => kill_reassign_implies_post(u, u2, d),
         StepLabel::KillProcessLockTable => kill_lock_table_implies_post(u, u2, d),
         StepLabel::KillProcessTableHidden => kill_table_hidden_implies_post(u, u2, d),
         StepLabel::KillProcessTlbCleared => kill_tlb_cleared_implies_post(u, u2, d),
         StepLabel::KillProcessFlushed => kill_flushed_implies_post(u, u2, d),
+        StepLabel::KillProcessUnownFunctions => kill_unown_implies_post(u, u2, d),
         StepLabel::KillProcessIommuLeaf => kill_iommu_leaf_implies_post(u, u2, d),
         StepLabel::KillProcessRefund => kill_refund_implies_post(u, u2, d),
         StepLabel::KillProcessQuota => kill_quota_implies_post(u, u2, d),

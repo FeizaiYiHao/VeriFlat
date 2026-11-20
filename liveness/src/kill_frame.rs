@@ -402,7 +402,7 @@ pub proof fn cpu_step_implies_kill_frame(u: KernelU, u2: KernelU, l: StepLabel, 
     }
 }
 
-/// A PCI attach keeps the kill frame.
+/// A PCI attach or claim keeps the kill frame.
 pub proof fn pci_step_implies_kill_frame(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId)
     requires kernel_u_ownership_wf(u), pci_label(l), labeled_step(l, u, u2, d),
     ensures kill_frame(u, u2, d),
@@ -410,6 +410,7 @@ pub proof fn pci_step_implies_kill_frame(u: KernelU, u2: KernelU, l: StepLabel, 
     reveal(kernel_u_cpu_ownership_wf);
     match l {
         StepLabel::PciAttach { bus, device, function } => { reveal(pci_attach_dma_step_pre); reveal(kernel_u_pci_attach_changed); },
+        StepLabel::PciClaim { bus, device, function } => { reveal(pci_claim_step_pre); reveal(kernel_u_pci_claim_changed); },
         _ => {},
     }
     assert forall|p: RwLockProcessPtr| #![trigger u2.process_map[p]] u.process_map.dom().contains(p) implies proc_kept(u, u2, d, p) by {

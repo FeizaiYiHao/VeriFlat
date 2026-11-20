@@ -169,13 +169,13 @@ pub open spec fn op_holds_range_windows(u: KernelU, c: CpuId) -> bool {
 /// The 4K mapping of the pagetable `c` works on.
 pub open spec fn table_mapping(u: KernelU, c: CpuId) -> Map<VAddr, MapEntry> { u.process_map[table_proc(u, c)].pagetable->Some_0.mapping_4k }
 
-/// The pages `c` has still to map are unmapped, and those it has still to clear are mapped.
+/// The pages `c` has still to map are unmapped, and those it has still to clear are mapped to RAM.
 pub open spec fn table_op_vas(u: KernelU, c: CpuId) -> bool {
     let prog = table_progress(u, c);
     &&& prog is Mmap4k ==> forall|k: int| #![trigger prog->Mmap4k_range.view()[k]] prog->Mmap4k_mapped <= k < prog->Mmap4k_range.len
         ==> !table_mapping(u, c).dom().contains(prog->Mmap4k_range.view()[k])
     &&& prog is Unmap4k ==> forall|k: int| #![trigger prog->Unmap4k_range.view()[k]] prog->Unmap4k_unmapped <= k < prog->Unmap4k_range.len
-        ==> table_mapping(u, c).dom().contains(prog->Unmap4k_range.view()[k])
+        ==> table_mapping(u, c).dom().contains(prog->Unmap4k_range.view()[k]) && !table_mapping(u, c)[prog->Unmap4k_range.view()[k]].is_io
 }
 
 /// VA progress of every cpu inside.
@@ -694,6 +694,8 @@ proof fn table_leaf_implies_vas_kept(u: KernelU, u2: KernelU, d: CpuId, map: boo
             == u.process_map[table_proc(u, d)].pagetable->Some_0.mapping_4k.dom().insert(table_range(u, d).view()[table_index(u, d) as int]),
         !map ==> u2.process_map[table_proc(u, d)].pagetable->Some_0.mapping_4k.dom()
             == u.process_map[table_proc(u, d)].pagetable->Some_0.mapping_4k.dom().remove(table_range(u, d).view()[table_index(u, d) as int]),
+        forall|va: VAddr| #![trigger u2.process_map[table_proc(u, d)].pagetable->Some_0.mapping_4k[va]] va != table_range(u, d).view()[table_index(u, d) as int]
+            ==> u2.process_map[table_proc(u, d)].pagetable->Some_0.mapping_4k[va] == u.process_map[table_proc(u, d)].pagetable->Some_0.mapping_4k[va],
         table_op(u2, d) ==> table_op_vas(u2, d), !table_sharer(u2, d),
     ensures table_ops_vas(u2),
 {
@@ -795,7 +797,8 @@ pub proof fn traced_step_implies_table_ops_vas_kept(u: KernelU, u2: KernelU, l: 
             reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step);
             let rd = table_range(u, d);
             let m = table_index(u, d) as int;
-            assert forall|k: int| #![trigger rd.view()[k]] m + 1 <= k < rd.len implies table_mapping(u2, d).dom().contains(rd.view()[k]) by { assert(rd.view()[k] != rd.view()[m]); };
+            assert forall|k: int| #![trigger rd.view()[k]] m + 1 <= k < rd.len
+                implies table_mapping(u2, d).dom().contains(rd.view()[k]) && !table_mapping(u2, d)[rd.view()[k]].is_io by { assert(rd.view()[k] != rd.view()[m]); };
             table_leaf_implies_vas_kept(u, u2, d, false);
         },
         _ => {},

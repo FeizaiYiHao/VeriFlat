@@ -1,6 +1,6 @@
 //! Round 8: `kill_process`. A killer walks down from the child it enters on, marking and write-locking each process it
 //! descends into, marks and removes every thread of the process it stands on, reclaims an empty process under its page
-//! table and IOMMU table write locks, retires it, and walks back up to the parent; it finishes when the walk is back on
+//! table write lock (after the flush it releases the process's PCI functions and write-locks its IOMMU table), retires it, and walks back up to the parent; it finishes when the walk is back on
 //! its own process. The steps that lock an object another cpu may hold name that object in a wanted-lock spec
 //! (`kill_*_wanted`), and a cpu inside a kill whose wanted locks are free always has an enabled step
 //! (`kill_world_inv_wanted_free_implies_kill_enabled`). The five killed-thread reclaim steps are left out of the world:
@@ -17,8 +17,8 @@ verus! {
 pub open spec fn kill_label(l: StepLabel) -> bool {
     ||| l is KillProcessEnter || l is KillProcessMarkChild || l is KillProcessDangling || l is KillProcessMarkThread
     ||| l is KillProcessDequeueScheduled || l is KillProcessDequeueEndpoint || l is KillProcessCpuToIdle || l is KillProcessUnlink
-    ||| l is KillProcessReassignFunctions || l is KillProcessLockTable || l is KillProcessTableHidden || l is KillProcessTlbCleared
-    ||| l is KillProcessFlushed || l is KillProcessIommuLeaf || l is KillProcessRefund || l is KillProcessQuota || l is KillProcessUnlockTable
+    ||| l is KillProcessLockTable || l is KillProcessTableHidden || l is KillProcessTlbCleared
+    ||| l is KillProcessFlushed || l is KillProcessUnownFunctions || l is KillProcessIommuLeaf || l is KillProcessRefund || l is KillProcessQuota || l is KillProcessUnlockTable
     ||| l is KillProcessZombify || l is KillProcessZombieRetire || l is KillProcessRetire || l is KillProcessFinish
 }
 
@@ -40,10 +40,10 @@ pub open spec fn kill_on_path(u: KernelU, x: CpuId, p: RwLockProcessPtr) -> bool
     ||| u.process_map[kill_target(u, x)].uppertree_seq.contains(p) && u.process_map[p].uppertree_seq.contains(kill_own(u, x))
 }
 
-/// The stages at which the target has neither children, threads, nor PCI functions.
+/// The stages at which the target has neither children nor threads.
 pub open spec fn kill_stage_emptied(st: KillStage) -> bool { st is Reclaim || st is Quota || st is Zombie || st is Retire }
 
-/// The stages at which the killer write-holds the target's tables.
+/// The stages at which the killer write-holds the target's page table.
 pub open spec fn kill_stage_reclaiming(st: KillStage) -> bool { st is Reclaim || st is Quota }
 
 /// The stages after the flush is recorded and before the tables are unlocked.
@@ -63,13 +63,12 @@ pub open spec fn kill_victim_ok(u: KernelU, c: CpuId) -> bool {
     &&& !(vt.state is IPC_TRANSIT)
 }
 
-/// The target's page table, and its IOMMU table if any, are write-held by `c`, and the target is no zombie.
+/// The target's page table is write-held by `c`, and the target is no zombie.
 pub open spec fn kill_tables_held(u: KernelU, c: CpuId) -> bool {
     let t = u.process_map[kill_target(u, c)];
     &&& !t.zombie
     &&& t.pagetable is Some
     &&& t.pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: c })
-    &&& t.iommu_table is Some ==> t.iommu_table->Some_0.lock_state == (LockStateU::WriteLocked { writer: c })
 }
 
 /// The target's page table keeps no user 4K mapping, 2M or 1G mapping, or window lock.
@@ -109,10 +108,10 @@ pub open spec fn kill_stage_ok(u: KernelU, c: CpuId) -> bool {
     let st = kill_stage(u, c);
     let t = u.process_map[kill_target(u, c)];
     &&& st is Thread ==> kill_victim_ok(u, c)
-    &&& kill_stage_emptied(st) ==> t.children.len() == 0 && t.owned_threads.len() == 0 && t.owned_pci_functions.is_empty()
+    &&& kill_stage_emptied(st) ==> t.children.len() == 0 && t.owned_threads.len() == 0
     &&& kill_stage_reclaiming(st) ==> kill_tables_held(u, c)
     &&& kill_stage_flushed(st) ==> kill_table_cleared(u, c)
-    &&& st is Quota ==> (t.iommu_table is Some ==> process_iommu_4k_unmapped(t.iommu_table->Some_0))
+    &&& st is Quota ==> (t.iommu_table is Some ==> process_iommu_4k_unmapped(t.iommu_table->Some_0) && t.iommu_table->Some_0.lock_state is WriteLocked)
     &&& st is Zombie ==> !t.zombie
     &&& st is Retire ==> t.zombie
 }
@@ -233,11 +232,13 @@ pub open spec fn kill_victim_wanted(u: KernelU, c: CpuId) -> bool {
     &&& vt.state is RUNNING ==> u.cpu_array[vt.state->RUNNING_cpu_id as int].lock_state is Unlocked
 }
 
-/// Locking the empty target's tables needs its page table and IOMMU table unlocked.
-pub open spec fn kill_lock_table_wanted(u: KernelU, c: CpuId) -> bool {
+/// Locking the empty target's page table needs it unlocked.
+pub open spec fn kill_lock_table_wanted(u: KernelU, c: CpuId) -> bool { u.process_map[kill_target(u, c)].pagetable->Some_0.lock_state is Unlocked }
+
+/// Releasing the target's PCI functions write-locks its IOMMU table, which `c` does not hold yet, so it needs it unlocked.
+pub open spec fn kill_unown_wanted(u: KernelU, c: CpuId) -> bool {
     let t = u.process_map[kill_target(u, c)];
-    &&& t.pagetable->Some_0.lock_state is Unlocked
-    &&& t.iommu_table is Some ==> t.iommu_table->Some_0.lock_state is Unlocked
+    t.iommu_table is Some && t.iommu_table->Some_0.lock_state != (LockStateU::WriteLocked { writer: c }) ==> t.iommu_table->Some_0.lock_state is Unlocked
 }
 
 /// Zombifying frees the target's PCID into its container under the container's PCID allocator lock.
@@ -258,7 +259,8 @@ pub open spec fn kill_wanted_free(u: KernelU, c: CpuId) -> bool {
     let away = tp != kill_own(u, c);
     &&& away && st is Walk && t.children.len() > 0 ==> kill_mark_child_wanted(u, c)
     &&& away && st is Walk && t.children.len() == 0 && t.owned_threads.len() > 0 ==> kill_thread_wanted(u, c)
-    &&& away && st is Walk && kill_process_target_empty(u, c) && t.owned_pci_functions.is_empty() && !t.zombie ==> kill_lock_table_wanted(u, c)
+    &&& away && st is Walk && kill_process_target_empty(u, c) && !t.zombie ==> kill_lock_table_wanted(u, c)
+    &&& st == (KillStage::Reclaim { flushed: true }) ==> kill_unown_wanted(u, c)
     &&& st is Thread ==> kill_victim_wanted(u, c)
     &&& st is Zombie ==> kill_zombify_wanted(u, c)
     &&& st is Retire ==> kill_retire_quota_room(u, c)

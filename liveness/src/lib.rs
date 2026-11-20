@@ -46,6 +46,11 @@
 //! Round 12: the release and fill-enter steps of mmap pin the thread to the acting cpu, so `offline_window_only` is gone;
 //! publishing a process needs depth room, kept by `new_process_holds` from the restriction `new_process_depth_room`.
 //! `bounds` states per-call step bounds of `syscall_thread_exit` and `syscall_kill_process`.
+//! Round 14 (PCI functions per page table): the kill and the exit lock only the page table, then after the flush release the
+//! process's PCI functions and write-lock its IOMMU table (`KillProcessUnownFunctions`, `ThreadExitUnown`), whose wanted lock is
+//! that IOMMU table; `exit_quota_after_unown` (G22) keeps an exit from returning quota before it has given up its functions.
+//! `pci_claim` joins the PCI family, a cpu inside `unmap_4k` has only RAM leaves left to clear, and `bounds` reads the step
+//! bounds of the BAR map and unmap syscalls, which stay out of the world, from their trace specs.
 #![feature(adt_const_params)]
 
 use vstd::prelude::*;
