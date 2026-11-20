@@ -352,7 +352,59 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         reveal(WholePageTable::tables_reachable_wf);
     }
 
-    /// EOF closure of `create_entry_l4`: `wf_window_locks`.
+    /// EOF closure of `create_entry_l4`: the window-va half of `wf_window_locks`; the new L3 page links no L2 page.
+    proof fn create_entry_l4_eof_wf_window_locks_va(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_held_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+        ensures
+            forall|w: WindowVa| #![trigger post.lower.pagetable_window_locks.dom().contains(w)] post.lower.pagetable_window_locks.dom().contains(w) ==> {
+                &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
+                &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
+                &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
+                    LockStateU::WriteLocked { writer: post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))->Write_thread_id }
+                } else {
+                    LockStateU::Unlocked
+                }
+            },
+    {
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4);
+        broadcast use iova_2m_valid_index_roundtrip;
+    }
+
+    /// EOF closure of `create_entry_l4`: the L2-slot half of `wf_window_locks`.
+    proof fn create_entry_l4_eof_wf_window_locks_slot(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_held_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+        ensures
+            forall|p: PageMapPtr, i: L2Index|
+                #![trigger post.lower.l2_owner(p, i)]
+                #![trigger post.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((post.higher.l2_rev_map.view().spec_index(p).0, post.higher.l2_rev_map.view().spec_index(p).1, i, 0)) })]
+                post.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> {
+                    let (l4i, l3i) = post.higher.l2_rev_map.view().spec_index(p);
+                    if post.spec_resolve_mapping_l3(l4i, l3i) is Some {
+                        post.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, i, 0)) })
+                    } else {
+                        post.lower.l2_owner(p, i) is None
+                    }
+                },
+    {
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::tables_reachable_wf);
+    }
+
+    /// EOF closure of `create_entry_l4`: `wf_window_locks` from its two halves.
     proof fn create_entry_l4_eof_wf_window_locks(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
@@ -364,8 +416,9 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_window_locks(),
     {
-        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
-        assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::tables_reachable_wf); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; };
+        Self::create_entry_l4_eof_wf_window_locks_va(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_wf_window_locks_slot(pre, post, target_l4i, page_map_ptr);
+        assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
     }
 
     /// Operation-state summary of `create_entry_l3`: L3 entry `target_l3i` of `target_l3_p` now links the new empty L2 page

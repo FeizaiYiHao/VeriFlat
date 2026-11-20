@@ -147,8 +147,8 @@ pub(super) fn map_pci_bar_2m_drop_empty_l1(
     let ghost flush_entry = *krnl;
     let ghost flush_lctx = *lctx;
     flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_perm), Tracked(pagetable_perm));
+    let ghost flush_steps_snap = *steps;
     proof {
-        map_pci_bar_2m_tlb_flush_steps_from_k(&*steps, flush_before, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, slot, index, va);
         assert(krnl.thrd_mp.spec_index(thrd_ptr).inv() && !thread_is_dangling(krnl.thrd_mp.spec_index(thrd_ptr))) by {
             thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
         };
@@ -163,10 +163,9 @@ pub(super) fn map_pci_bar_2m_drop_empty_l1(
     let ghost flushed_k = *krnl;
     proof {
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        map_pci_bar_2m_flushed_step_from_k(&*steps, flushed_before, &flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, slot,
-            index, va);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
+    let ghost flushed_steps_snap = *steps;
     let ghost reclaim_before = steps.view();
     let (_, Ghost(mid), Ghost(mid_lctx)) = reclaim_hidden_l1_page_in_window_wlocked(krnl, pagetable, va, l2_ptr, l1_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
         Tracked(pagetable_perm), Tracked(window_perm));
@@ -177,6 +176,9 @@ pub(super) fn map_pci_bar_2m_drop_empty_l1(
         process_thread_wf_thread_at(mid.prc_mp, mid.thrd_mp, thrd_ptr); container_process_wf_process_at(mid.ctn_mp, mid.prc_mp, prc_ptr); process_perms_wf_at(mid.prc_mp, prc_ptr);
         process_pagetable_wf_process_at(mid.prc_mp, mid.pt_mp, prc_ptr);
         thread_cpu_wf_cpu_at(mid.thrd_mp, mid.cpu_arr, cpu_id); process_cpu_wf_at(mid.prc_mp, mid.cpu_arr, cpu_id);
+        map_pci_bar_2m_tlb_flush_steps_from_k(&flush_steps_snap, flush_before, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, slot, index, va);
+        map_pci_bar_2m_flushed_step_from_k(&flushed_steps_snap, flushed_before, &flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable,
+            pcid, slot, index, va);
         map_pci_bar_2m_reclaim_step_from_k(&*steps, reclaim_before, &mid, &mid_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, slot, index, va);
         let pre = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
         let flushed = whole_pagetable(flushed_k.pt_mp, flushed_k.pt_lower.view(), pagetable);

@@ -336,9 +336,9 @@ pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner
     list.wf_implies_view_len_eq_len();
     let position = list.addr_list.view().index_of(cursor.node.unwrap());
     list.view().lemma_index_contains(position);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     if cursor.source < NUM_CPUS { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.source, cursor.page); }
     assert(post.candidate_prefix_valid(krnl, allocator)) by {
+        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
         reveal(Merge2mScanner::candidate_prefix_valid); reveal(allocator_free_4k_pages_wf);
         reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf);
     };

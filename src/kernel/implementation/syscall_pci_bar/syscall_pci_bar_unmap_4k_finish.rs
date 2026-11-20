@@ -150,25 +150,20 @@ pub(super) fn unmap_pci_bar_4k_unmap_and_finish(
     // hide step: the leaf leaves the user mapping under the three locks taken since the entry
     clear_4k_mapping_present(krnl, pagetable, va, Tracked(&mut *lctx), Tracked(&pagetable_perm));
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::UnmapPciBar4k { va, flushed: false })), Tracked(&*lctx), Tracked(&thread_perm));
+    let ghost hidden = *krnl;
     proof {
-        let hidden = *krnl;
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&entry, &locked, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
-        kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&locked, &hidden, pagetable, va, thrd_ptr);
-        process_cpu_wf_at(entry.prc_mp, entry.cpu_arr, cpu_id); process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
-        pagetable_unlocked_implies_projected_window_unlocked(&entry, prc_ptr, window_of(va));
-        unmap_pci_bar_4k_hide_step_from_u(&entry, kernel_k_to_kernel_u(locked), kernel_k_to_kernel_u(hidden), cpu_id, prc_ptr, thrd_ptr, pagetable, va, addr);
-        unmap_pci_bar_4k_trace_hide_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(hidden), cpu_id, va);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     }
     // flush steps
+    let ghost hide_steps_snap = *steps;
     let ghost hidden_steps = steps.view();
     let ghost flush_entry = *krnl;
     let ghost flush_lctx = *lctx;
     flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cpu_perm), Tracked(&pagetable_perm));
+    let ghost flush_steps_snap = *steps;
     proof {
-        unmap_pci_bar_4k_tlb_flush_steps_from_k(&*steps, hidden_steps, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, va);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
     }
     // flushed step
@@ -178,10 +173,7 @@ pub(super) fn unmap_pci_bar_4k_unmap_and_finish(
     let ghost flushed_lctx = *lctx;
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::UnmapPciBar4k { va, flushed: true })), Tracked(&*lctx), Tracked(&thread_perm));
     let ghost flushed_k = *krnl;
-    proof {
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        unmap_pci_bar_4k_flushed_step_from_k(&flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, va);
-    }
+    proof { krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr); }
     // exit step: remove the leaf in its window, clear the progress, and release every lock
     let ghost exit_steps = steps.view();
     let ghost exit_start = *krnl;
@@ -214,6 +206,14 @@ pub(super) fn unmap_pci_bar_4k_unmap_and_finish(
     assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
+        kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&entry, &locked, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
+        kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&locked, &hidden, pagetable, va, thrd_ptr);
+        process_cpu_wf_at(entry.prc_mp, entry.cpu_arr, cpu_id); process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
+        pagetable_unlocked_implies_projected_window_unlocked(&entry, prc_ptr, window_of(va));
+        unmap_pci_bar_4k_hide_step_from_u(&entry, kernel_k_to_kernel_u(locked), kernel_k_to_kernel_u(hidden), cpu_id, prc_ptr, thrd_ptr, pagetable, va, addr);
+        unmap_pci_bar_4k_trace_hide_step(&hide_steps_snap, old(steps).view(), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(hidden), cpu_id, va);
+        unmap_pci_bar_4k_tlb_flush_steps_from_k(&flush_steps_snap, hidden_steps, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, va);
+        unmap_pci_bar_4k_flushed_step_from_k(&flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, va);
         let exit_k = *krnl;
         let f = pci_bar_function_of_page(entry.pci_bars.view(), addr)->0;
         assert(exit_start.pci_bars == entry.pci_bars);
