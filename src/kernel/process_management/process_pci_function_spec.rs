@@ -46,4 +46,30 @@ pub proof fn pci_function_ownership_wf_pagetable_at(irt: IommuRootTable, prc_mp:
         pci_bdf_valid(f.0, f.1, f.2),
         irt.spec_index_owner(f.0, f.1, f.2) == Some(pt_mp.spec_index(pt).view().higher.proc_ptr),
 { reveal(pci_function_ownership_wf); }
+
+/// `iommu_root_table_process_wf` and `pci_function_ownership_wf` at the IOMMU table `it_ptr`: the anchor of its DID, if any, is
+/// a valid function owned by the table's process and held in the PCI function array of that process's page table.
+pub proof fn iommu_root_table_process_and_pci_function_ownership_wf_table_at(
+    irt: IommuRootTable, prc_mp: ProcessLockedMap, it_mp: IommuTableLockedMap, pt_mp: PageTableLockedMap, it_ptr: RwLockPageTableRoot,
+)
+    requires
+        iommu_root_table_process_wf(irt, prc_mp, it_mp),
+        pci_function_ownership_wf(irt, prc_mp, pt_mp),
+        it_mp.dom().contains(it_ptr),
+    ensures
+        it_mp.spec_index(it_ptr).view().did is Some ==> {
+            let table = it_mp.spec_index(it_ptr).view();
+            let anchor = pci_bdf_of_did(table.did->Some_0);
+            &&& pci_bdf_valid(anchor.0, anchor.1, anchor.2)
+            &&& irt.spec_index_owner(anchor.0, anchor.1, anchor.2) == Some(table.proc_ptr)
+            &&& prc_mp.dom().contains(table.proc_ptr)
+            &&& pt_mp.spec_index(prc_mp.spec_index(table.proc_ptr).view().pagetable).view().higher.pci.view().dom().contains(anchor)
+        },
+{
+    reveal(iommu_root_table_process_wf);
+    reveal(pci_function_ownership_wf);
+    if let Some(did) = it_mp.spec_index(it_ptr).view().did {
+        assert(pci_bdf_valid(pci_bdf_of_did(did).0, pci_bdf_of_did(did).1, pci_bdf_of_did(did).2)) by (nonlinear_arith) requires vtd_domain_id_valid(did);
+    }
+}
 }

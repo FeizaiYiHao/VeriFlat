@@ -163,8 +163,6 @@ pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post:
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),
-        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures
         post.inv(),
         pre.it_mp.spec_index(iommu_table).view().leaves_present() ==> post.it_mp.spec_index(iommu_table).view().leaves_present(),
@@ -179,9 +177,10 @@ pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post:
     // The DID's anchor is a function of the array, so no cached context entry keeps it.
     if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
         assert(post.iommu_tlb.context_cache() =~= Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf]))
-            by { reveal(iommu_root_table_process_wf); reveal(pci_function_ownership_wf); reveal(process_iommu_table_wf); };
+            by { broadcast use IommuRootTable::wf_context_entry_at; reveal(iommu_root_table_process_wf); reveal(pci_function_ownership_wf); reveal(process_iommu_table_wf); };
     }
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
+        broadcast use IommuRootTable::wf_context_entry_at;
         reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(IommuTLB::inv); reveal(pci_function_ownership_wf); reveal(process_pagetable_wf);
     };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };

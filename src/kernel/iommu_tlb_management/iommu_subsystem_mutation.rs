@@ -38,11 +38,10 @@ pub fn iommu_root_table_detach_owned(
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
         final(irt).view().owners() == old(irt).view().owners(),
-        forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] #![trigger final(irt).view().spec_index_iommu_root(b, d, f)]
-            #![trigger final(irt).view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+        forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_iommu_root(b, d, f)] #![trigger final(irt).view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> {
             let moved = ret is Some && (b, d, f) != (bus, device, function) && pci.view().dom().contains((b, d, f))
                 && old(irt).view().spec_index_iommu_did(b, d, f) == old(irt).view().spec_index_iommu_did(bus, device, function);
-            &&& final(irt).view().spec_index_owner(b, d, f) == old(irt).view().spec_index_owner(b, d, f)
             &&& final(irt).view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { None }
                 else if moved { Some(old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3) } else { old(irt).view().spec_index_iommu_root(b, d, f) }
             &&& final(irt).view().spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { None }
@@ -62,8 +61,6 @@ pub fn iommu_root_table_detach_owned(
             #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) && (b, d, f) != (bus, device, function) && pci.view().dom().contains((b, d, f))
                 ==> old(irt).view().spec_index_iommu_did(b, d, f) != Some(pci_bdf_did(bus, device, function)),
-        ret is Some ==> forall|b: usize, d: usize, f: usize| #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) ==> (old(irt).view().spec_index_iommu_did(b, d, f) is Some) == (old(irt).view().spec_index_iommu_root(b, d, f) is Some),
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
         final(iommu_table_map).typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id()),
@@ -230,13 +227,8 @@ pub fn iommu_root_table_detach(
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
         final(irt).view().owners() == old(irt).view().owners(),
-        forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] final(irt).view().spec_index_owner(b, d, f) == old(irt).view().spec_index_owner(b, d, f),
         final(irt).view().iommu_roots() == seq3_update(old(irt).view().iommu_roots(), bus as int, device as int, function as int, None),
         final(irt).view().iommu_dids() == seq3_update(old(irt).view().iommu_dids(), bus as int, device as int, function as int, None),
-        forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_iommu_root(b, d, f)] #![trigger final(irt).view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-            &&& final(irt).view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { old(irt).view().spec_index_iommu_root(b, d, f) }
-            &&& final(irt).view().spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { old(irt).view().spec_index_iommu_did(b, d, f) }
-        },
         final(iommu_tlb).inv(),
         old(irt).view().spec_index_iommu_did(bus, device, function) matches Some(did) ==> {
             &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
@@ -292,13 +284,6 @@ pub fn iommu_root_table_attach(
         final(irt).view().owners() == old(irt).view().owners(),
         final(irt).view().iommu_roots() == seq3_update(old(irt).view().iommu_roots(), bus as int, device as int, function as int, Some(old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3)),
         final(irt).view().iommu_dids() == seq3_update(old(irt).view().iommu_dids(), bus as int, device as int, function as int, Some(did)),
-        forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] #![trigger final(irt).view().spec_index_iommu_root(b, d, f)]
-            #![trigger final(irt).view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-            &&& final(irt).view().spec_index_owner(b, d, f) == old(irt).view().spec_index_owner(b, d, f)
-            &&& final(irt).view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { Some(old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3) }
-                else { old(irt).view().spec_index_iommu_root(b, d, f) }
-            &&& final(irt).view().spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { Some(did) } else { old(irt).view().spec_index_iommu_did(b, d, f) }
-        },
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
         final(iommu_table_map).typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id()),
@@ -356,9 +341,6 @@ pub fn iommu_root_table_detach_array(
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
         final(irt).view().owners() == old(irt).view().owners(),
-        forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] final(irt).view().spec_index_owner(b, d, f) == old(irt).view().spec_index_owner(b, d, f),
-        forall|b: usize, d: usize, f: usize| #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) ==> (old(irt).view().spec_index_iommu_did(b, d, f) is Some) == (old(irt).view().spec_index_iommu_root(b, d, f) is Some),
         forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_iommu_root(b, d, f)] #![trigger final(irt).view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) ==> {
             let owned = pci.view().dom().contains((b, d, f));

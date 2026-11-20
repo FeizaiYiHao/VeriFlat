@@ -52,10 +52,9 @@ proof fn kill_unown_detach_eof_iotlb(pre: KernelK, post: KernelK, pagetable: RwL
         pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().iommu_table == Some(iommu_table),
-        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
+    broadcast use IommuRootTable::wf_context_entry_at;
     reveal(kill_unown_detach_eof_transition_framing);
     reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf); reveal(IommuTLB::inv);
     if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
@@ -85,8 +84,6 @@ pub(crate) proof fn kill_unown_detach_eof(pre: KernelK, post: KernelK, pagetable
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),
-        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures
         post.inv(),
         forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]

@@ -48,7 +48,7 @@ pub open spec fn pci_bar_2m_chunk(bars: Seq<PciBarEntry>, addr: PAddr) -> bool {
 /// The 2M chunk at `addr` lies in one BAR of function `f`.
 pub open spec fn pci_bar_2m_chunk_of(bars: Seq<PciBarEntry>, addr: PAddr, f: PciBdf) -> bool {
     &&& pci_bar_2m_chunk(bars, addr)
-    &&& pci_bar_function_of_page(bars, addr) == Some(f)
+    &&& bars[pci_bar_entry_of_page(bars, addr)->0].bdf == f
 }
 
 /// Each page table's PCI function array records its present IO leaves. A recorded BAR mapping `(va, size)` of function `f` is a
@@ -95,13 +95,17 @@ pub open spec fn pagetable_pci_mappings_wf(bars: Seq<PciBarEntry>, pt_mp: PageTa
             ==> pci_bar_2m_chunk(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.addr)
 }
 
-/// Entries `i` and `j` of the BAR table and the page `p`: the table fits its storage, entry `i` is well formed, `i` and
-/// `j` belong to the same PCI function when both envelopes contain `p`, and are byte-disjoint when distinct.
-pub proof fn pci_bar_table_wf_at(bars: Seq<PciBarEntry>, i: int, j: int, p: PAddr)
+/// Entry `i` of the BAR table is well formed.
+pub proof fn pci_bar_table_wf_at(bars: Seq<PciBarEntry>, i: int)
+    requires pci_bar_table_wf(bars),
+    ensures 0 <= i < bars.len() ==> bars[i].wf(),
+{ reveal(pci_bar_table_wf); }
+
+/// Entries `i` and `j` of the BAR table and the page `p`: `i` and `j` belong to the same PCI function when both envelopes
+/// contain `p`, and are byte-disjoint when distinct.
+pub proof fn pci_bar_table_wf_pair_at(bars: Seq<PciBarEntry>, i: int, j: int, p: PAddr)
     requires pci_bar_table_wf(bars),
     ensures
-        bars.len() <= PCI_BAR_TABLE_CAPACITY,
-        0 <= i < bars.len() ==> bars[i].wf(),
         0 <= i < bars.len() && 0 <= j < bars.len() && bars[i].envelope_contains(p) && bars[j].envelope_contains(p) ==> bars[i].bdf == bars[j].bdf,
         0 <= i < bars.len() && 0 <= j < bars.len() && i != j
             ==> bars[i].base as int + bars[i].size as int <= bars[j].base as int || bars[j].base as int + bars[j].size as int <= bars[i].base as int,
