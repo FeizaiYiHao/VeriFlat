@@ -537,11 +537,15 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         free_count, BOOT_FREE_2M_BLOCKS, free_1g_blocks, tables, leaves, boot_info.bar_slots.len(), bar_pages
     );
 
-    // 4. PCID needflush locks, written in place; cell `(cpu, pcid)` is cell `cpu * PCID_MAX + pcid`.
+    // 4. PCID needflush locks, written in place; cell `(cpu, pcid)` is cell `cpu * (PCID_MAX + 1) + pcid`, and the last
+    // cell of each row stays unused.
     let needflush_base = pcid_needflush_cells_base();
-    for k in 0..NUM_CPUS * PCID_MAX {
-        let lock_ptr = (needflush_base + k * size_of::<NeedFlushLock>()) as *mut NeedFlushLock;
-        ptr::write(lock_ptr, LockCell::new_unlocked(PcidNeedFlush::new(Ghost::assume_new(), Ghost::assume_new()), (), Ghost::assume_new()));
+    for cpu in 0..NUM_CPUS {
+        for pcid in 0..PCID_MAX {
+            let k = cpu * (PCID_MAX + 1) + pcid;
+            let lock_ptr = (needflush_base + k * size_of::<NeedFlushLock>()) as *mut NeedFlushLock;
+            ptr::write(lock_ptr, LockCell::new_unlocked(PcidNeedFlush::new(Ghost::assume_new(), Ghost::assume_new()), (), Ghost::assume_new()));
+        }
     }
     let pcid_needflush = PcidNeedFlushArray::from_token_cells(Tracked::assume_new());
 

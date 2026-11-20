@@ -3,11 +3,13 @@ use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use crate::*;
 
-/// Memory of the PCID needflush locks, one row of `PCID_MAX` cells per cpu. Every cell is exactly one 64-byte line
-/// (`PcidNeedFlush::line_pad`) and the alignment starts each on a line boundary, so no two cells share a line. Only raw
-/// addresses reach it; the needflush array's points-to tokens own its cells.
+/// Memory of the PCID needflush locks, one row of `PCID_MAX + 1` cells per cpu: the `PCID_MAX` cells of the cpu's pcids
+/// and one never-used cell that skews the next row by one line, so the cells of one pcid on different cpus do not all
+/// share one cache set. Every cell is exactly one 64-byte line (`PcidNeedFlush::line_pad`) and the alignment starts each
+/// on a line boundary, so no two cells share a line. Only raw addresses reach it; the needflush array's points-to tokens
+/// own its cells.
 #[repr(align(64))]
-struct PcidNeedFlushCells(UnsafeCell<MaybeUninit<[[LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>; PCID_MAX]; NUM_CPUS]>>);
+struct PcidNeedFlushCells(UnsafeCell<MaybeUninit<[[LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>; PCID_MAX + 1]; NUM_CPUS]>>);
 
 // Every access goes through a cell's lock guard or its owning token.
 unsafe impl Sync for PcidNeedFlushCells {}
