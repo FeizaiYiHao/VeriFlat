@@ -75,8 +75,6 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_pci_handoff(
             &&& pre.irt.view().spec_index_iommu_did(a.0, a.1, a.2) == old_did
             &&& forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
                 pci_bdf_valid(b, d, f) && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) && pre.irt.view().spec_index_iommu_did(b, d, f) == old_did ==> !pci_bdf_lt((b, d, f), a)
-            &&& forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some)
         }
         &&& anchor is None && anchored ==> forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) ==> pre.irt.view().spec_index_iommu_did(b, d, f) != old_did

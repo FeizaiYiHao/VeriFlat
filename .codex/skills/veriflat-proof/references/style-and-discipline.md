@@ -159,9 +159,9 @@
   `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`. The PCI
   BAR model trusts the boot-only constructor `PciBarTable::new` (`requires
   false`; the glue's `check_bar_slots` checks what `finish_init_from_boot`
-  assumes of the table), the cardinality axiom
-  `pci_function_mapping_count_lt_usize_max` in `kernel_cardinality_axioms.rs`,
-  and uses one approved `choose`, `pci_bar_entry_of_page`. The
+  assumes of the table) and uses one approved `choose`,
+  `pci_bar_entry_of_page`; `pci_function_mapping_count_lt_usize_max` in
+  `kernel_cardinality_axioms.rs` is a proved lemma, not an axiom. The
   user-register model trusts `CpuRegsArray::new_boot` (init only), the
   trap-handler env events (`kernel_k_trap_enter`, `kernel_k_trap_return`,
   `kernel_k_trap_divert`, `kernel_k_regs_changed`,

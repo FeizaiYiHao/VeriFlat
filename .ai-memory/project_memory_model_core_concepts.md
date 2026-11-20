@@ -78,7 +78,7 @@ metadata:
   `unmap_4k` / `unmap_2m` refuse a range holding an IO leaf; IO leaves are
   never shared by IPC, process/container creation, or `iommu_map_4k`. A
   function cannot be sent by IPC while its count is not 0.
-- The count increment's `len < usize::MAX` comes from the trusted axiom
+- The count increment's `len < usize::MAX` comes from the proved lemma
   `pci_function_mapping_count_lt_usize_max`
   (`src/kernel/lemma/kernel_cardinality_axioms.rs`).
 - Boot maps no IO leaf: the loader reports the BAR slots and maps none, and
