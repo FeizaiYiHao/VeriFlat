@@ -479,7 +479,7 @@ impl VaRange1G {
             va < usize::MAX - len * 0x40000000,
         ensures
             ret.wf(),
-            ret == (Self { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_1g(va, i as usize))) }),
+            ret == spec_va_range_1g(va, len),
     {
         let seq = Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_1g(va, i as usize)));
         Self { start: va, len: len, view: seq }

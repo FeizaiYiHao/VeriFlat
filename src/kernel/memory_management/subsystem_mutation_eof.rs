@@ -1840,7 +1840,6 @@ pub(super) proof fn pagetable_map_clear_held_4k_leaf_eof(
 pub(super) open spec fn pagetable_map_clear_held_2m_leaf_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
 ) -> bool {
-    &&& post_pt.perms_wf()
     &&& post_pt.unchanged_except(&pre_pt, pagetable_ptr)
     &&& post_pt.spec_index(pagetable_ptr).is_init()
     &&& post_pt.spec_index(pagetable_ptr).locking_thread() == pre_pt.spec_index(pagetable_ptr).locking_thread()
@@ -1862,7 +1861,6 @@ pub(super) open spec fn pagetable_map_clear_held_2m_leaf_eof_transition_framing(
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i)]
         whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_owner(p, i)
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
-    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
     &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
@@ -1888,6 +1886,8 @@ pub(super) proof fn pagetable_map_clear_held_2m_leaf_eof(
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
         pagetable_map_clear_held_2m_leaf_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
+        post_pt.perms_wf(),
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).wf(),
     ensures
         pagetable_perms_wf(post_pt),
         post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
@@ -1981,8 +1981,6 @@ pub(super) proof fn pagetable_map_insert_1g_eof(
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(post_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id));
-        assert(post_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id));
         assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
     };
     assert(pagetable_lower_wf(post_pt, pt_lower)) by { reveal(pagetable_lower_wf); };
@@ -2057,8 +2055,6 @@ pub(super) proof fn pagetable_map_hide_1g_leaf_eof(
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(post_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id));
-        assert(post_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id));
         assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
     };
     assert(pagetable_lower_wf(post_pt, pt_lower)) by { reveal(pagetable_lower_wf); };
@@ -2133,8 +2129,6 @@ pub(super) proof fn pagetable_map_clear_held_1g_leaf_eof(
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(post_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id));
-        assert(post_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id));
         assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
     };
     assert(pagetable_lower_wf(post_pt, pt_lower)) by { reveal(pagetable_lower_wf); };
@@ -2211,8 +2205,6 @@ pub(super) proof fn pagetable_map_hide_l3_entry_eof(
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(post_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id));
-        assert(post_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id));
         assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
     };
     assert(pagetable_lower_wf(post_pt, post_lower)) by { reveal(pagetable_lower_wf); };

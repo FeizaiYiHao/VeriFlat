@@ -59,6 +59,5 @@ impl<const MAJOR: LockMajorId> LinkedList<usize, MAJOR> {
         reveal(LinkedList::wf_head); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev);
         reveal(LinkedList::wf_next); reveal(LinkedList::wf_map); reveal(LinkedList::value_list_unique);
     }
-
 }
 }

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::unmap_4k_reclaim_last_cache::reclaim_last_lock_4k_cache_with_room;
 #[cfg(verus_keep_ghost)]
@@ -118,7 +119,7 @@ fn reclaim_hidden_l1_page_to_cache(
         };
         reclaim_hidden_l1_page_to_cache_eof(pre, *krnl, pagetable, va, l2_ptr, l1_ptr, owner, allc_ptr, cpu_id, node_addr);
         reclaim_hidden_l1_page_to_cache_eof_held_windows(pre, *krnl, pagetable, va, l2_ptr, l1_ptr, allc_ptr, cpu_id, node_addr, *old(lctx));
-        assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(krnl.pt_lower.view(), old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
     }
 }
 
@@ -160,7 +161,7 @@ pub fn reclaim_hidden_l1_page_in_window(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(l2_ptr, spec_va2index(va).2) == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
     ensures
         final(steps).view().len() == old(steps).view().len() + 1,
-        final(steps).view().drop_last() == old(steps).view(),
+        final(steps).view() == old(steps).view().push(final(steps).view().last()),
         final(steps).view().last().old_u == kernel_k_to_kernel_u(ret.1@),
         kernel_u_container_quota_4k_increased(final(steps).view().last().old_u, final(steps).view().last().new_u, ret.0),
         ret.1@.inv(),
@@ -437,7 +438,7 @@ pub fn reclaim_hidden_l1_page_in_window_wlocked(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(l2_ptr, spec_va2index(va).2) == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
     ensures
         final(steps).view().len() == old(steps).view().len() + 1,
-        final(steps).view().drop_last() == old(steps).view(),
+        final(steps).view() == old(steps).view().push(final(steps).view().last()),
         final(steps).view().last().old_u == kernel_k_to_kernel_u(ret.1@),
         kernel_u_container_quota_4k_increased(final(steps).view().last().old_u, final(steps).view().last().new_u, ret.0),
         ret.1@.inv(),
@@ -546,7 +547,7 @@ pub fn reclaim_hidden_l1_page_in_window_wlocked(
                 && lctx.allocator_quota_4k_lock_map() =~= old(lctx).allocator_quota_4k_lock_map());
         };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(krnl.pt_lower.view() =~= steps.snapshot_k().pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(krnl.pt_lower.view(), steps.snapshot_k().pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(whole_pagetable(cache_pre.pt_mp, cache_pre.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable));
         assert(page_lctx.pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map() && locked_lctx.pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map());
         kernel_page_freed_to_owner_quota_implies_u_step(&steps.snapshot_k(), &*krnl, false, pagetable, owner, allc_ptr, owner);

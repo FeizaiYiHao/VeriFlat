@@ -48,7 +48,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         Self::map_2m_page_eof_resolve_unchanged(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_va_addr_valid(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
-        Self::map_2m_page_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
+        Self::map_2m_page_eof_l3_links_l2_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_wf_l1(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
@@ -75,7 +75,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     { reveal(WholePageTable::map_2m_page_eof_transition_framing); }
 
     /// EOF closure of `map_2m_page`: `l3_links_l2_wf`.
-    proof fn map_2m_page_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: MapEntry)
+    proof fn map_2m_page_eof_l3_links_l2_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: MapEntry)
         requires
             pre.l3_links_l2_wf(),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),

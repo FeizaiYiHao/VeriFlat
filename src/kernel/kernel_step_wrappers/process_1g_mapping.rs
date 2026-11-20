@@ -51,7 +51,6 @@ impl KernelK {
         reveal(LockedMap::typed_lock_map_aligned);
         old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
         if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
@@ -307,7 +306,8 @@ broadcast proof fn kernel_owned_2m_page_implies_u_outside_1g_mapping_frame_at(k:
 
 /// Publishing a present 1G leaf at `va` in the write-held pagetable of the cpu's current process from an `Owned1g` page, with the thread's 1G quota, temporary 1G cache, and progress replaced, adds that leaf to the process's 1G user mapping and changes only that thread's 1G quota and
 /// progress. The L3 entry of `va` links no L2 page, so no 2M or 4K leaf lies under it, and the frame overlaps no mapping.
-pub proof fn kernel_thread_quota_1g_progress_and_1g_mapping_added_pagetable_wlocked_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
+pub proof fn kernel_thread_quota_1g_progress_and_1g_mapping_added_pagetable_wlocked_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr,
+    pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -332,7 +332,8 @@ pub proof fn kernel_thread_quota_1g_progress_and_1g_mapping_added_pagetable_wloc
         post.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread(),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().dom().contains(va),
-        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().insert(va, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(va)),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g()
+            == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().insert(va, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(va)),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(va).present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
@@ -447,7 +448,8 @@ pub proof fn kernel_pagetable_1g_present_cleared_and_progress_changed_implies_u_
         post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()[va].present,
-        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()[va] }),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g()
+            == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()[va] }),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks,

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::hide_empty_l1_in_window_eof::*;
@@ -96,7 +97,8 @@ pub fn hide_empty_l1_in_window(krnl: &mut KernelK, pagetable: RwLockPageTableRoo
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_entry(p, i)]
-            (p, i) != (ret.0, spec_va2index(va).2) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_entry(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry(p, i),
+            (p, i) != (ret.0, spec_va2index(va).2) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_entry(p, i)
+                == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry(p, i),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) && w != window_of(va)
             ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_view(w) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w),
 {
@@ -119,7 +121,7 @@ pub fn hide_empty_l1_in_window(krnl: &mut KernelK, pagetable: RwLockPageTableRoo
         hide_empty_l1_in_window_eof(locked, *krnl, pagetable, va, l2_ptr);
         hide_empty_l1_in_window_eof_hidden_l1_empty(locked, *krnl, pagetable, va, l2_ptr);
         hide_empty_l1_in_window_eof_held_windows(*old(krnl), *krnl, pagetable, va, l2_ptr, *old(lctx));
-        assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(krnl.pt_lower.view(), old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
@@ -217,7 +219,7 @@ pub fn hide_empty_l1_in_window_wlocked(krnl: &mut KernelK, pagetable: RwLockPage
         hide_empty_l1_in_window_wlocked_eof(locked, *krnl, pagetable, va, l2_ptr);
         hide_empty_l1_in_window_wlocked_eof_hidden_l1_tables(locked, *krnl, pagetable, va, l2_ptr);
         hide_empty_l1_in_window_wlocked_eof_no_held_4k(locked, *krnl, pagetable, va, l2_ptr);
-        assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(krnl.pt_lower.view(), old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);

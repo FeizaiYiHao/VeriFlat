@@ -39,7 +39,8 @@ pub fn pagetable_map_unlink_hidden_l3_l1_page(
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_entry(l2_p, l2i).addr == l1_p,
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(l2_p, l2i) is None,
         !whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.window_stale_cpus.dom().contains((l2_p, l2i)),
-        forall|i1: L1Index| #![trigger whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, i1)] pei_valid(i1) ==> whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, i1) is None,
+        forall|i1: L1Index| #![trigger whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, i1)] pei_valid(i1)
+            ==> whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, i1) is None,
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -88,7 +89,8 @@ pub fn pagetable_map_unlink_hidden_l3_l1_page(
                 ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_2m_l2(i4, i3, i2) == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_2m_l2(i4, i3, i2),
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_l2(l4i, l3i, l2i) is None,
         forall|i4: L4Index, i3: L3Index, i2: L2Index, thread_id: LockThreadId| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id)]
-            whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id) == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id),
+            whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id)
+                == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id),
         ret.view().addr() == l1_p,
         ret.view().is_init(),
 {
@@ -99,11 +101,9 @@ pub fn pagetable_map_unlink_hidden_l3_l1_page(
     let ret = pagetable.higher.unlink_unresolvable_l1_page(Tracked(lower), l4i, l3i, l2i, l2_p, l1_p, Tracked(&mut *lctx));
     proof {
         pagetable.lower_backup = Ghost(*lower);
-        let post_c = WholePageTable { higher: pagetable.higher, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
             old(pagetable_map).typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
         };
-        assert(whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr) == post_c);
         assert(pagetable_map_unlink_hidden_l3_l1_page_eof_transition_framing(*old(pagetable_map), *old(pt_lower), *pagetable_map, *pt_lower, pagetable_ptr)) by {
             reveal(pagetable_map_unlink_hidden_l3_l1_page_eof_transition_framing);
         };
@@ -220,7 +220,8 @@ pub fn pagetable_map_remove_l3_entry(
                 ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_1g_l3(i4, i3) == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_1g_l3(i4, i3),
         forall|i4: L4Index, i3: L3Index, i2: L2Index, thread_id: LockThreadId| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id)]
             whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2)
-                ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id) == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id),
+                ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id)
+                    == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(i4, i3, i2, thread_id),
         ret.view().is_init(),
         ret.view().addr() == l2_p,
 {

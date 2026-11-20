@@ -156,12 +156,16 @@
   the exact inverse for thread exit, process reclaim, or endpoint release;
   new variants or callers require explicit authorization. The other approved
   trusted primitives are the hardware TLB invalidations
-  `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`. The PCI
+  `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`. The 2M
+  block exchange trusts `retype_managed_4k_region_to_2m` (merge_2m: the 512
+  free 4K permissions of an aligned managed region become one 2M permission)
+  and its inverse `retype_managed_2m_region_to_4k` (split_2m). The PCI
   BAR model trusts the boot-only constructor `PciBarTable::new` (`requires
   false`; the glue's `check_bar_slots` checks what `finish_init_from_boot`
   assumes of the table) and uses one approved `choose`,
-  `pci_bar_entry_of_page`; `pci_function_mapping_count_lt_usize_max` in
-  `kernel_cardinality_axioms.rs` is a proved lemma, not an axiom. The
+  `pci_bar_entry_of_page`; `pci_function_mapping_count_lt_usize_max` and
+  `mapped_4k_page_ref_count_lt_usize_max` in `kernel_cardinality_axioms.rs`
+  are proved lemmas, not axioms. The
   user-register model trusts `CpuRegsArray::new_boot` (init only), the
   trap-handler env events (`kernel_k_trap_enter`, `kernel_k_trap_return`,
   `kernel_k_trap_divert`, `kernel_k_regs_changed`,

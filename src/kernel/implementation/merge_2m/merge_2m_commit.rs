@@ -2,6 +2,8 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::simple_pptr::*;
+#[cfg(verus_keep_ghost)]
+use vstd::{assert_sets_equal, assert_sets_equal_internal};
 use crate::*;
 use super::merge_2m_scan::*;
 use super::merge_2m_scanner::*;
@@ -126,7 +128,7 @@ pub fn merge_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
     let mut head_node_addr = 0usize;
     let mut offset = 0usize;
     assert(merge_2m_commit_eol_loop_framing(*old(krnl), *krnl, allocator_4k, *candidate, offset, head_node_addr, head_node_perm, tail_perms)) by {
-        reveal(merge_2m_commit_eol_loop_framing); assert(tail_perms.dom() =~= Set::<usize>::range(1, 1usize));
+        reveal(merge_2m_commit_eol_loop_framing); assert_sets_equal!(tail_perms.dom(), Set::<usize>::range(1, 1usize));
     };
     while offset < 512
         invariant
@@ -163,24 +165,24 @@ pub fn merge_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
             pool4_perm.state() is WriteLock,
             pool4_perm.thread_id() == lctx.thread_id(),
             old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.locking_thread() is Write,
-        pool4_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.locking_thread()->Write_lock_id,
+            pool4_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.locking_thread()->Write_lock_id,
             typed_lock_map_contains_mode(lctx.allocator_global_pool_4k_lock_map(), allocator_4k, TypedLockMode::Write),
             pool2_perm.state() is WriteLock,
             pool2_perm.thread_id() == lctx.thread_id(),
             old(krnl).allc_2m_mp.spec_index(allocator_2m).global_pool.locking_thread() is Write,
-        pool2_perm.lock_id() == old(krnl).allc_2m_mp.spec_index(allocator_2m).global_pool.locking_thread()->Write_lock_id,
+            pool2_perm.lock_id() == old(krnl).allc_2m_mp.spec_index(allocator_2m).global_pool.locking_thread()->Write_lock_id,
             typed_lock_map_contains_mode(lctx.allocator_global_pool_2m_lock_map(), allocator_2m, TypedLockMode::Write),
             thread_perm.state() is WriteLock,
             thread_perm.thread_id() == lctx.thread_id(),
             old(krnl).thrd_mp.spec_index(thread).locking_thread() is Write,
-        thread_perm.lock_id() == old(krnl).thrd_mp.spec_index(thread).locking_thread()->Write_lock_id,
+            thread_perm.lock_id() == old(krnl).thrd_mp.spec_index(thread).locking_thread()->Write_lock_id,
             typed_lock_map_contains_mode(lctx.thread_lock_map(), thread, TypedLockMode::Write),
             forall|index: PageIndex| #![trigger page_perms.spec_index(index)] #![trigger page_perms.dom().contains(index)] candidate.head <= index < candidate.head + 512 ==> {
                 &&& page_perms.dom().contains(index)
                 &&& page_perms.spec_index(index).state() is WriteLock
                 &&& page_perms.spec_index(index).thread_id() == lctx.thread_id()
                 &&& old(krnl).pg_arr.spec_index(index).view().locking_thread() is Write
-            &&& page_perms.spec_index(index).lock_id() == old(krnl).pg_arr.spec_index(index).view().locking_thread()->Write_lock_id
+                &&& page_perms.spec_index(index).lock_id() == old(krnl).pg_arr.spec_index(index).view().locking_thread()->Write_lock_id
                 &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
             },
             offset <= 512,

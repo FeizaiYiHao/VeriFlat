@@ -122,7 +122,6 @@ pub(super) fn mmap_2m_unlock_range_and_finish(
     let ghost exit_start = *krnl;
     let ghost exit_lctx = *lctx;
     let cover_exec = VaRange4K { start: va_range.start, len: range * 512, view: Ghost(va_range.covering_4k_range().view@) };
-    assert(cover_exec == cover);
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_lock_perm));
     krnl.unlock_pagetable_range_windows::<false>(pagetable_ptr, &cover_exec, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
     proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }

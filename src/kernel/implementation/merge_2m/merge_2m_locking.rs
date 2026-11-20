@@ -255,11 +255,9 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|cpu: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(cpu)] old(lctx).cpu_lock_map().dom().contains(cpu) ==> index_valid(NUM_CPUS, cpu) && !(old(krnl).cpu_arr.spec_index(cpu).view().view().view().state is Off),
-        forall|thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(thread)] old(lctx).thread_lock_map().dom().contains(thread) ==> old(krnl).thrd_mp.dom().contains(thread) && !(old(krnl).thrd_mp.spec_index(thread).view().state is SCHEDULED),
+        forall|thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(thread)] old(lctx).thread_lock_map().dom().contains(thread)
+            ==> old(krnl).thrd_mp.dom().contains(thread) && !(old(krnl).thrd_mp.spec_index(thread).view().state is SCHEDULED),
     ensures
-        merge_2m_source_pages(final(krnl).allc_4k_mp.spec_index(allocator_4k)) == merge_2m_source_pages(old(krnl).allc_4k_mp.spec_index(allocator_4k)),
-        forall|source: usize| #![trigger final(krnl).allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source)] source <= NUM_CPUS ==>
-            final(krnl).allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source) == old(krnl).allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source),
         final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
         forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)] old(krnl).allc_4k_mp.dom().contains(a) ==> final(krnl).allc_4k_mp.spec_index(a).quota == old(krnl).allc_4k_mp.spec_index(a).quota,
         final(krnl).allc_4k_mp.spec_index(allocator_4k).total_free_pages == old(krnl).allc_4k_mp.spec_index(allocator_4k).total_free_pages,
@@ -274,7 +272,8 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         *final(krnl) == (KernelK { allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
-        forall|held: (RwLockPageAllocatorPtr, CpuId)| #![trigger final(lctx).allocator_cache_4k_lock_map().dom().contains(held)] final(lctx).allocator_cache_4k_lock_map().dom().contains(held) <==> held.0 == allocator_4k && held.1 < NUM_CPUS,
+        forall|held: (RwLockPageAllocatorPtr, CpuId)| #![trigger final(lctx).allocator_cache_4k_lock_map().dom().contains(held)] final(lctx).allocator_cache_4k_lock_map().dom().contains(held)
+            <==> held.0 == allocator_4k && held.1 < NUM_CPUS,
         final(lctx).allocator_global_pool_4k_lock_map().dom() =~= set![allocator_4k],
         final(lctx).allocator_global_pool_2m_lock_map().dom() =~= set![allocator_2m],
         forall|cpu: CpuId| #![trigger ret.view().cache.dom().contains(cpu)] ret.view().cache.dom().contains(cpu) <==> cpu < NUM_CPUS,
@@ -324,13 +323,13 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
             old(krnl).allc_4k_mp.dom().contains(allocator_4k),
             old(krnl).allc_2m_mp.dom().contains(allocator_2m),
             krnl.allc_2m_mp.dom().contains(allocator_2m),
-            forall|source: usize| #![trigger krnl.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source)] source <= NUM_CPUS ==>
-                krnl.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source) == old(krnl).allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source),
             lctx.page_lock_map().dom().is_empty(),
             lctx.pcid_needflush_lock_map().dom().is_empty(),
             lctx.allocator_quota_4k_lock_map().dom().is_empty(),
-            forall|held_cpu: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu)] lctx.cpu_lock_map().dom().contains(held_cpu) ==> index_valid(NUM_CPUS, held_cpu) && !(krnl.cpu_arr.spec_index(held_cpu).view().view().view().state is Off),
-            forall|thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(thread)] lctx.thread_lock_map().dom().contains(thread) ==> krnl.thrd_mp.dom().contains(thread) && !(krnl.thrd_mp.spec_index(thread).view().state is SCHEDULED),
+            forall|held_cpu: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu)] lctx.cpu_lock_map().dom().contains(held_cpu)
+                ==> index_valid(NUM_CPUS, held_cpu) && !(krnl.cpu_arr.spec_index(held_cpu).view().view().view().state is Off),
+            forall|thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(thread)] lctx.thread_lock_map().dom().contains(thread)
+                ==> krnl.thrd_mp.dom().contains(thread) && !(krnl.thrd_mp.spec_index(thread).view().state is SCHEDULED),
             cpu <= NUM_CPUS,
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
             forall|a: RwLockPageAllocatorPtr| #![trigger krnl.allc_4k_mp.spec_index(a)] old(krnl).allc_4k_mp.dom().contains(a) ==> krnl.allc_4k_mp.spec_index(a).quota == old(krnl).allc_4k_mp.spec_index(a).quota,
@@ -384,25 +383,19 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
             lctx.allocator_global_pool_1g_lock_map() == old(lctx).allocator_global_pool_1g_lock_map(),
         decreases NUM_CPUS - cpu,
     {
-        let ghost previous_allocator = krnl.allc_4k_mp.spec_index(allocator_4k);
         let Tracked(perm) = krnl.wlock_allocator_cache_4k(allocator_4k, cpu, Tracked(&mut *lctx));
         proof {
             cache.tracked_insert(cpu, perm);
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
-
         cpu += 1;
     }
-    let ghost previous_allocator = krnl.allc_4k_mp.spec_index(allocator_4k);
     let Tracked(pool4k) = krnl.wlock_allocator_global_pool_4k(allocator_4k, Tracked(&mut *lctx));
     let Tracked(pool2m) = krnl.wlock_allocator_global_pool_2m_ordered(allocator_2m, Tracked(&mut *lctx));
-
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert_seqs_equal!(Seq::new((NUM_CPUS + 1) as nat, |source: int| krnl.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source as usize).view().to_set()),
-            Seq::new((NUM_CPUS + 1) as nat, |source: int| old(krnl).allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source as usize).view().to_set()));
     }
     Tracked(Merge2mSourceLocks { cache, pool4k, pool2m })
 }
@@ -543,19 +536,16 @@ pub fn thaw_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAllocat
         decreases NUM_CPUS - cpu,
     {
         let tracked perm = cache.tracked_remove(cpu);
-        let ghost previous_allocator = krnl.allc_4k_mp.spec_index(allocator_4k);
         krnl.wunlock_allocator_cache_4k(allocator_4k, cpu, Tracked(&mut *lctx), Tracked(perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
-
         cpu += 1;
     }
     proof {
         assert_seqs_equal!(Seq::new((NUM_CPUS + 1) as nat, |source: int| krnl.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source as usize).view().to_set()),
             Seq::new((NUM_CPUS + 1) as nat, |source: int| old(krnl).allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source as usize).view().to_set()));
     }
-
 }
 }

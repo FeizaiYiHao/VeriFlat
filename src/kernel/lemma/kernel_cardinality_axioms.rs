@@ -5,8 +5,8 @@ use vstd::set_lib::{lemma_int_range, lemma_len_subset, lemma_map_size, set_int_r
 use crate::*;
 
 verus! {
-/// CPU and IOMMU reverse mappings each occupy a finite product of physical root pages and aligned 48-bit addresses; their combined cardinality bounds the reference count.
-#[verifier::external_body]
+/// CPU and IOMMU reverse mappings each pair a valid root page with an aligned 48-bit address, so each has at most
+/// 2^56 elements and their sum, the reference count, is below `usize::MAX`.
 pub proof fn mapped_4k_page_ref_count_lt_usize_max(
     pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray, pg_idx: PageIndex,
     container_map: ContainerLockedMap, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap,
@@ -24,7 +24,69 @@ pub proof fn mapped_4k_page_ref_count_lt_usize_max(
         page_array.spec_index(pg_idx).view().view().state is Mapped4k,
     ensures
         page_array.spec_index(pg_idx).view().view().ref_count < usize::MAX,
-{}
+{
+    page_array_wf_at(page_array, pg_idx);
+    mapped_4k_page_pagetable_wf_implies_mappings_len_le_2_56(pagetable_map, pt_lower, page_array, pg_idx);
+    page_iommu_table_wf_implies_iommu_mappings_len_le_2_56(page_array, pg_idx, container_map, process_map, iommu_table_map);
+}
+
+/// A valid 4K IOVA (or user VA) is 4K aligned and below 2^48.
+pub broadcast proof fn iova_4k_valid_implies_4k_aligned_below_2_48(iova: VAddr)
+    ensures #[trigger] iova_4k_valid(iova) ==> iova % 0x1000 == 0 && iova < 0x1_0000_0000_0000,
+{ assert(iova_4k_valid(iova) ==> iova % 0x1000 == 0 && iova < 0x1_0000_0000_0000) by (bit_vector); }
+
+/// A set of (valid root page, valid 4K address) pairs injects into [0, 2^56) by root page number times 2^36 plus address
+/// page number, so it has at most 2^56 elements.
+pub proof fn valid_root_and_4k_iova_pairs_implies_len_le_2_56(s: Set<(RwLockPageTableRoot, VAddr)>)
+    requires
+        forall|pt: RwLockPageTableRoot, va: VAddr| #[trigger] s.contains((pt, va)) ==> page_ptr_valid(pt) && iova_4k_valid(va),
+    ensures
+        s.len() <= 0x100_0000_0000_0000,
+{
+    broadcast use {iova_4k_valid_implies_4k_aligned_below_2_48, Set::lemma_map_contains};
+    let g = |m: (RwLockPageTableRoot, VAddr)| (m.0 as int / 0x1000) * 0x10_0000_0000 + m.1 as int / 0x1000;
+    lemma_map_size(s, s.map(g), g);
+    lemma_int_range(0, 0x100_0000_0000_0000);
+    lemma_len_subset(s.map(g), set_int_range(0, 0x100_0000_0000_0000));
+}
+
+/// A `Mapped4k` page's CPU reverse mappings name page-table roots, which are valid pages, at valid 4K VAs.
+pub proof fn mapped_4k_page_pagetable_wf_implies_mappings_len_le_2_56(
+    pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray, pg_idx: PageIndex,
+)
+    requires
+        page_mappings_pagetable_wf(pagetable_map, pt_lower, page_array),
+        pagetable_pages_wf(pagetable_map, pt_lower, page_array),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array.spec_index(pg_idx).view().view().state is Mapped4k,
+    ensures
+        page_array.spec_index(pg_idx).view().view().mappings().len() <= 0x100_0000_0000_0000,
+{
+    reveal(mapped_4k_page_pagetable_wf);
+    reveal(pagetable_pages_wf);
+    valid_root_and_4k_iova_pairs_implies_len_le_2_56(page_array.spec_index(pg_idx).view().view().mappings());
+}
+
+/// A `Mapped4k` page's IOMMU reverse mappings name IOMMU table roots, which are valid pages, at valid 4K IOVAs.
+pub proof fn page_iommu_table_wf_implies_iommu_mappings_len_le_2_56(
+    page_array: PageLockedArray, pg_idx: PageIndex, container_map: ContainerLockedMap, process_map: ProcessLockedMap,
+    iommu_table_map: IommuTableLockedMap,
+)
+    requires
+        page_array_wf(page_array),
+        iommu_table_pages_wf(iommu_table_map, page_array),
+        page_iommu_table_wf(container_map, process_map, iommu_table_map, page_array),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array.spec_index(pg_idx).view().view().state is Mapped4k,
+    ensures
+        page_array.spec_index(pg_idx).view().view().iommu_mappings().len() <= 0x100_0000_0000_0000,
+{
+    page_array_wf_at(page_array, pg_idx);
+    reveal(Page::mappings_va_valid);
+    reveal(page_iommu_table_wf);
+    reveal(iommu_table_pages_wf);
+    valid_root_and_4k_iova_pairs_implies_len_le_2_56(page_array.spec_index(pg_idx).view().view().iommu_mappings());
+}
 
 /// A valid user 4K address is 4K aligned.
 pub broadcast proof fn va_4k_valid_implies_4k_aligned(va: VAddr)

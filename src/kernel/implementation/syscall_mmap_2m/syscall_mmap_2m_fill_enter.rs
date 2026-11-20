@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_mmap_2m_fill_structure::mmap_2m_fill_range_structure;
 use super::syscall_mmap_2m_map_range::mmap_2m_map_leaves_and_finish;
@@ -167,7 +168,7 @@ pub(super) fn mmap_2m_fill_enter(
     let ghost downgraded_k = *krnl;
     proof {
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-        assert(downgraded_k.pt_lower.view() =~= filled_k.pt_lower.view().insert(pagetable_ptr, downgraded_k.pt_lower.view().spec_index(pagetable_ptr)));
+        assert_maps_equal!(downgraded_k.pt_lower.view(), filled_k.pt_lower.view().insert(pagetable_ptr, downgraded_k.pt_lower.view().spec_index(pagetable_ptr)));
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kernel_pagetable_downgraded_and_progress_changed_implies_u_step(&filled_k, &downgraded_k, &filled_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr);

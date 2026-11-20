@@ -34,7 +34,7 @@ pub open spec fn merge_2m_scan_page_eof_transition_framing(pre: Merge2mScanner, 
 }
 
 pub proof fn merge_2m_scan_page_eof_implies_cursor_queue_facts(pre: Merge2mScanner, post: Merge2mScanner, krnl: &KernelK,
-    allocator: RwLockPageAllocatorPtr, index: PageIndex, next: Merge2mCursor, complete: bool)
+    allocator: RwLockPageAllocatorPtr, next: Merge2mCursor)
     requires
         krnl.inv(),
         krnl.allc_4k_mp.dom().contains(allocator),
@@ -49,13 +49,11 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_queue_facts(pre: Merge2mScann
             == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).length,
         next.node is Some ==> krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).addr_list.view().index_of(next.node.unwrap())
             == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).addr_list.view().index_of(pre.queue.cursors.view().spec_index(0).node.unwrap()) + 1,
-        index == spec_page_ptr2page_index(pre.queue.cursors.view().spec_index(0).page),
         Merge2mScanner::cursor_wf(krnl.allc_4k_mp.spec_index(allocator), next),
         next.source == pre.queue.cursors.view().spec_index(0).source,
         next.node == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).perms.view()
             .spec_index(pre.queue.cursors.view().spec_index(0).node.unwrap()).value().next,
         post.queue.wf(),
-        next.source == pre.queue.cursors.view().spec_index(0).source,
         post.queue.cursors.view().to_multiset() == pre.queue.cursors.view().update(0, next).to_multiset(),
     ensures
         forall|i: int| #![trigger post.queue.cursors.view().spec_index(i)] 0 <= i < NUM_CPUS + 1 ==>
@@ -80,17 +78,14 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_queue_facts(pre: Merge2mScann
         Merge2mScanner::cursor_wf(krnl.allc_4k_mp.spec_index(allocator), value)
             && Merge2mScanner::cursor_remaining(krnl.allc_4k_mp.spec_index(allocator), value) >= 0);
     sequence_multiset_equality_implies_mapped_multiset_equality(updated, post.queue.cursors.view(), Merge2mCursor::source_value());
-
     assert_seqs_equal!(updated.map_values(Merge2mCursor::source_value()), before.map_values(Merge2mCursor::source_value()));
     sequence_multiset_equality_implies_set_and_distinctness(before.map_values(Merge2mCursor::source_value()),
         post.queue.cursors.view().map_values(Merge2mCursor::source_value()));
     let remaining = Merge2mScanner::remaining_value(krnl.allc_4k_mp.spec_index(allocator));
-
     assert(remaining(next) + 1 == remaining(cursor)) by { reveal(Merge2mScanner::cursor_remaining); };
     sequence_update_implies_sum_fold_delta(before, 0, next, remaining);
     vstd::seq_lib::lemma_fold_left_permutation(updated, post.queue.cursors.view(), sequence_sum_step(remaining), 0int);
     sequence_nonnegative_entries_implies_sum_fold_nonnegative(post.queue.cursors.view(), remaining);
-
 }
 
 pub broadcast proof fn merge_2m_scan_page_eof_implies_other_suffix_excludes_page(pre: Merge2mScanner, krnl: &KernelK, allocator: RwLockPageAllocatorPtr, i: int)
@@ -165,14 +160,13 @@ pub broadcast proof fn merge_2m_scan_page_eof_implies_suffix_after_scanned_page(
 }
 
 pub proof fn merge_2m_scan_page_eof_implies_cursor_sources(pre: Merge2mScanner, post: Merge2mScanner, krnl: &KernelK,
-    allocator: RwLockPageAllocatorPtr, index: PageIndex, next: Merge2mCursor, complete: bool)
+    allocator: RwLockPageAllocatorPtr, next: Merge2mCursor)
     requires
         krnl.inv(),
         krnl.allc_4k_mp.dom().contains(allocator),
         pre.queue.wf(),
         forall|source: usize| #![trigger krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source)] source <= NUM_CPUS ==>
             LinkedList::<PagePtr, 233>::values_sorted(krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view()),
-
         pre.queue.cursors.view().map_values(Merge2mCursor::source_value()).no_duplicates(),
         forall|i: int| #![trigger pre.queue.cursors.view().spec_index(i)] 0 <= i < NUM_CPUS + 1 ==>
             Merge2mScanner::cursor_wf(krnl.allc_4k_mp.spec_index(allocator), pre.queue.cursors.view().spec_index(i)),
@@ -183,13 +177,11 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_sources(pre: Merge2mScanner, 
             == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).length,
         next.node is Some ==> krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).addr_list.view().index_of(next.node.unwrap())
             == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).addr_list.view().index_of(pre.queue.cursors.view().spec_index(0).node.unwrap()) + 1,
-        index == spec_page_ptr2page_index(pre.queue.cursors.view().spec_index(0).page),
         Merge2mScanner::cursor_wf(krnl.allc_4k_mp.spec_index(allocator), next),
         next.source == pre.queue.cursors.view().spec_index(0).source,
         next.node == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).perms.view()
             .spec_index(pre.queue.cursors.view().spec_index(0).node.unwrap()).value().next,
         post.queue.wf(),
-        next.source == pre.queue.cursors.view().spec_index(0).source,
         post.queue.cursors.view().to_multiset() == pre.queue.cursors.view().update(0, next).to_multiset(),
     ensures
         post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)) == pre.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)).remove(pre.queue.cursors.view().spec_index(0).page),
@@ -210,7 +202,6 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_sources(pre: Merge2mScanner, 
     let suffix = |value: Merge2mCursor| merge_2m_cursor_suffix(krnl.allc_4k_mp.spec_index(allocator), value);
     let old_suffix = suffix(cursor);
     let next_suffix = suffix(next);
-
     assert(next_suffix == list.view().skip(position + 1).to_set()) by {
         if next.node is None { assert_seqs_equal!(list.view().skip(position + 1), Seq::<PagePtr>::empty()); }
     };
@@ -232,28 +223,24 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_sources(pre: Merge2mScanner, 
     };
     let before_sets = before.map_values(suffix);
     let updated_sets = updated.map_values(suffix);
-
     broadcast use merge_2m_scan_page_eof_implies_other_suffix_excludes_page, merge_2m_scan_page_eof_implies_suffix_after_scanned_page;
     assert_seqs_equal!(updated_sets, before_sets.update(0, next_suffix));
     sequence_update_implies_union_fold_remove(before_sets, 0, next_suffix, cursor.page);
     sequence_multiset_equality_implies_mapped_multiset_equality(updated, post.queue.cursors.view(), suffix);
     sequence_multiset_equality_implies_union_fold_equality(updated_sets, post.queue.cursors.view().map_values(suffix));
-
     sequence_union_fold_implies_entry_subset(before_sets, 0);
     let target = pre.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)).filter(|pointer: PagePtr| pre.queue.cursors.view().spec_index(0).page <= pointer);
     sequence_entries_subset_implies_union_fold_subset(before_sets, target);
-
 }
 
 pub proof fn merge_2m_scan_page_eof_implies_cursor_coverage(pre: Merge2mScanner, post: Merge2mScanner, krnl: &KernelK,
-    allocator: RwLockPageAllocatorPtr, index: PageIndex, next: Merge2mCursor, complete: bool)
+    allocator: RwLockPageAllocatorPtr, next: Merge2mCursor)
     requires
         krnl.inv(),
         krnl.allc_4k_mp.dom().contains(allocator),
         pre.queue.wf(),
         forall|source: usize| #![trigger krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source)] source <= NUM_CPUS ==>
             LinkedList::<PagePtr, 233>::values_sorted(krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view()),
-
         pre.queue.cursors.view().map_values(Merge2mCursor::source_value()).no_duplicates(),
         forall|i: int| #![trigger pre.queue.cursors.view().spec_index(i)] 0 <= i < NUM_CPUS + 1 ==>
             Merge2mScanner::cursor_wf(krnl.allc_4k_mp.spec_index(allocator), pre.queue.cursors.view().spec_index(i)),
@@ -264,13 +251,11 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_coverage(pre: Merge2mScanner,
             == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).length,
         next.node is Some ==> krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).addr_list.view().index_of(next.node.unwrap())
             == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).addr_list.view().index_of(pre.queue.cursors.view().spec_index(0).node.unwrap()) + 1,
-        index == spec_page_ptr2page_index(pre.queue.cursors.view().spec_index(0).page),
         Merge2mScanner::cursor_wf(krnl.allc_4k_mp.spec_index(allocator), next),
         next.source == pre.queue.cursors.view().spec_index(0).source,
         next.node == krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(next.source).perms.view()
             .spec_index(pre.queue.cursors.view().spec_index(0).node.unwrap()).value().next,
         post.queue.wf(),
-        next.source == pre.queue.cursors.view().spec_index(0).source,
         post.queue.cursors.view().to_multiset() == pre.queue.cursors.view().update(0, next).to_multiset(),
     ensures
         forall|i: int| #![trigger post.queue.cursors.view().spec_index(i)] 0 <= i < NUM_CPUS + 1 ==>
@@ -296,8 +281,8 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_coverage(pre: Merge2mScanner,
         sequence_union_fold_implies_entry_subset(Seq::new((NUM_CPUS + 1) as nat,
             |i: int| krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(i as usize).view().to_set()), cursor.source as int);
     };
-    merge_2m_scan_page_eof_implies_cursor_queue_facts(pre, post, krnl, allocator, index, next, complete);
-    merge_2m_scan_page_eof_implies_cursor_sources(pre, post, krnl, allocator, index, next, complete);
+    merge_2m_scan_page_eof_implies_cursor_queue_facts(pre, post, krnl, allocator, next);
+    merge_2m_scan_page_eof_implies_cursor_sources(pre, post, krnl, allocator, next);
 }
 
 pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner, post: Merge2mScanner, krnl: &KernelK,
@@ -330,7 +315,7 @@ pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner
         complete ==> !pre.returned_heads.view().contains(post.candidate.head),
         complete ==> forall|head: PageIndex| #![trigger pre.returned_heads.view().contains(head)] pre.returned_heads.view().contains(head) ==> head < post.candidate.head,
 {
-    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, index, next, complete);
+    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, next);
     let cursor = pre.queue.cursors.view().spec_index(0);
     let list = krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(cursor.source);
     list.wf_implies_view_len_eq_len();
@@ -341,9 +326,6 @@ pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
         reveal(Merge2mScanner::candidate_prefix_valid); reveal(allocator_free_4k_pages_wf);
         reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf);
-    };
-    assert(post.initial_pages.view() == post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)))) by {
-        assert_sets_equal!(post.initial_pages.view(), post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator))));
     };
 }
 
@@ -392,7 +374,7 @@ pub broadcast proof fn merge_2m_scan_page_eof_implies_unreturned_page_remains(pr
         &&& forall|source: usize| #![trigger krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source)] source <= NUM_CPUS ==>
             LinkedList::<PagePtr, 233>::values_sorted(krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view())
     }) by { reveal(Merge2mScanner::wf); };
-    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, index, next, complete);
+    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, next);
     let cursor = pre.queue.cursors.view().spec_index(0);
     page_ptr_roundtrip();
     let pointer = spec_page_index2page_ptr(page);
@@ -500,7 +482,7 @@ pub proof fn merge_2m_scan_page_eof_implies_scanner_wf(pre: Merge2mScanner, post
         complete ==> forall|head: PageIndex| #![trigger pre.returned_heads.view().contains(head)] pre.returned_heads.view().contains(head) ==> head < post.candidate.head,
 {
     hide(Merge2mScanner::unscanned_pages); hide(merge_2m_source_pages); hide(Merge2mCursorQueue::wf);
-    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, index, next, complete);
+    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, next);
     merge_2m_scan_page_eof_implies_candidate_prefix(pre, post, krnl, allocator, index, next, complete);
     assert(post.initial_pages.view() == post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)))) by {
         assert_sets_equal!(post.initial_pages.view(), post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator))));

@@ -5,8 +5,6 @@ use crate::*;
 use super::merge_2m_scan::*;
 #[cfg(verus_keep_ghost)]
 use super::merge_2m_commit_spec::*;
-#[cfg(verus_keep_ghost)]
-use super::merge_2m_quota_folds::*;
 
 verus! {
 pub proof fn merge_2m_commit_eof_implies_allocator_page_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
@@ -28,6 +26,7 @@ pub proof fn merge_2m_commit_eof_implies_allocator_page_wf(pre: KernelK, post: K
                 if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }
         },
         merge_2m_commit_eof_transition_framing(pre, post, thread, allocator_4k, allocator_2m, candidate),
+        !pre.allc_2m_mp.spec_index(allocator_2m).global_pool.view().map().dom().contains(pre.pg_arr.spec_index(candidate.head).view().view().free_list_node_storage.addr()),
         post.pg_arr.inv(),
         post.allc_4k_mp.perms_wf(),
         post.allc_2m_mp.perms_wf(),
@@ -87,6 +86,7 @@ pub proof fn merge_2m_commit_eof_implies_allocator_quota_wf(pre: KernelK, post: 
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
+        pre.thrd_mp.spec_index(thread).view().quota_2m < usize::MAX,
         pre.allc_4k_mp.dom().contains(allocator_4k),
         pre.allc_2m_mp.dom().contains(allocator_2m),
         pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
@@ -95,21 +95,6 @@ pub proof fn merge_2m_commit_eof_implies_allocator_quota_wf(pre: KernelK, post: 
     ensures
         container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    assert(pre.thrd_mp.spec_index(thread).view().quota_2m < usize::MAX) by {
-        let owner = pre.thrd_mp.spec_index(thread).view().owning_container;
-        let processes = pre.ctn_mp.spec_index(owner).view_ghost().owned_processes.view();
-        let threads = pre.ctn_mp.spec_index(owner).view_ghost().owned_threads.view();
-        let indirect = pre.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view();
-        let depth = pre.ctn_mp.spec_index(owner).view_rodata().view().depth as int;
-        container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, thread);
-        allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(pre.allc_2m_mp, allocator_2m);
-        reveal(container_thread_wf); reveal(container_process_wf); reveal(thread_perms_wf); reveal(process_perms_wf);
-        reveal(container_allocator_wf); reveal(container_process_allocator_quota_2m_wf);
-        nonneg_members_implies_process_effective_quota_2m_fold_sum_nonneg(processes, pre.prc_mp);
-        nonneg_members_implies_thread_effective_quota_2m_fold_sum_ge_member(threads, pre.thrd_mp, thread);
-        thread_direct_pending_2m_fold_sum_implies_nonneg(threads, pre.thrd_mp);
-        thread_indirect_pending_2m_fold_sum_at_depth_implies_nonneg(indirect, pre.thrd_mp, depth);
-    };
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
         reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); reveal(container_allocator_wf);
         one_member_changed_implies_thread_effective_quota_4k_fold_sum_changed_by_forall(thread, -512); unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall();
@@ -133,6 +118,7 @@ pub proof fn merge_2m_commit_eof_implies_allocator_and_quota_wf(pre: KernelK, po
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
+        pre.thrd_mp.spec_index(thread).view().quota_2m < usize::MAX,
         pre.allc_4k_mp.dom().contains(allocator_4k),
         pre.allc_2m_mp.dom().contains(allocator_2m),
         pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
@@ -147,6 +133,7 @@ pub proof fn merge_2m_commit_eof_implies_allocator_and_quota_wf(pre: KernelK, po
                 if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }
         },
         merge_2m_commit_eof_transition_framing(pre, post, thread, allocator_4k, allocator_2m, candidate),
+        !pre.allc_2m_mp.spec_index(allocator_2m).global_pool.view().map().dom().contains(pre.pg_arr.spec_index(candidate.head).view().view().free_list_node_storage.addr()),
         post.pg_arr.inv(),
         post.allc_4k_mp.perms_wf(),
         post.allc_2m_mp.perms_wf(),

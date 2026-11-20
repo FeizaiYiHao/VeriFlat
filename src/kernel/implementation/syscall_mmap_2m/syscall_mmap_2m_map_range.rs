@@ -226,18 +226,13 @@ fn mmap_2m_map_leaf_range(
         let va = va_range.index(i);
         let ghost before = steps.view();
         proof {
-            assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher == t0.higher);
             spec_va_2m_valid_index_roundtrip(va);
         }
         mmap_2m_page(krnl, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, va, Ghost(*va_range), Ghost(i), Ghost(phase), Ghost(flushed), Tracked(&mut *lctx), Tracked(&mut *steps),
             Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(window_perms.tracked_borrow(window_of(va))));
         proof {
-            assert forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() implies steps.view()[j] == before[j] by { assert(steps.view().drop_last()[j] == steps.view()[j]); };
-            assert(steps.view() =~= before.push(steps.view().last()));
             mmap_2m_range_steps_from_leaf(&*steps, before, old(steps).view().len() as int, cpu_id);
-            assert forall|j: int| #![trigger va_range.view()[j]] 0 <= j < va_range.len && j != i implies va_range.view()[j] != va by {
-                assert(va_range.view().no_duplicates());
-            };
+            assert(va_range.view().no_duplicates()) by { va_range.wf_implies_view_index_is_start_plus_offset(); };
         }
         i = i + 1;
     }

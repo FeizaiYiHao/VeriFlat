@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::reclaim_held_4k_page::reclaim_held_4k_page;
 use super::reclaim_held_2m_page::reclaim_held_2m_page;
@@ -41,11 +42,14 @@ pub fn reclaim_held_leaves(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || old(lctx).process_lock_map().dom().contains(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr)
             && old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view_rodata().view().owning_container == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container,
         *old(direct_4k) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
-        forall|depth: int| #![trigger old(indirect_4k)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect_4k)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+        forall|depth: int| #![trigger old(indirect_4k)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> old(indirect_4k)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         *old(direct_2m) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view(),
-        forall|depth: int| #![trigger old(indirect_2m)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect_2m)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
+        forall|depth: int| #![trigger old(indirect_2m)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> old(indirect_2m)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
         *old(direct_1g) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
-        forall|depth: int| #![trigger old(indirect_1g)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect_1g)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
+        forall|depth: int| #![trigger old(indirect_1g)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> old(indirect_1g)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
         old(krnl).pt_mp.dom().contains(pagetable),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.view().state() is WriteLock,
@@ -86,11 +90,14 @@ pub fn reclaim_held_leaves(
             ..old(krnl).thrd_mp.spec_index(thrd_ptr).view()
         }),
         *final(direct_4k) == final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
-        forall|depth: int| #![trigger final(indirect_4k)[depth]] 0 <= depth < final(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> final(indirect_4k)[depth] == final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+        forall|depth: int| #![trigger final(indirect_4k)[depth]] 0 <= depth < final(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> final(indirect_4k)[depth] == final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         *final(direct_2m) == final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view(),
-        forall|depth: int| #![trigger final(indirect_2m)[depth]] 0 <= depth < final(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> final(indirect_2m)[depth] == final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
+        forall|depth: int| #![trigger final(indirect_2m)[depth]] 0 <= depth < final(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> final(indirect_2m)[depth] == final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
         *final(direct_1g) == final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
-        forall|depth: int| #![trigger final(indirect_1g)[depth]] 0 <= depth < final(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> final(indirect_1g)[depth] == final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
+        forall|depth: int| #![trigger final(indirect_1g)[depth]] 0 <= depth < final(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> final(indirect_1g)[depth] == final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
@@ -256,7 +263,7 @@ fn reclaim_held_leaf(
     proof {
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); c.higher.wf_l4_at(next.0);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); page_index_valid_imply_page_ptr_valid();
-        assert(krnl.pt_lower.view() =~= krnl.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        assert_maps_equal!(krnl.pt_lower.view(), krnl.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
     }
     match kind {
         HeldLeaf::L1g => {

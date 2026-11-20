@@ -8,7 +8,7 @@ use super::syscall_merge_2m_spec::*;
 
 verus! {
 /// The K transition that exchanges `m` blocks of the running thread's quota and changes only lock and op state is the U merge_2m step.
-pub proof fn merge_2m_step_from_k(pre: &KernelK, post: &KernelK, cpu_id: CpuId, thread: RwLockThreadPtr, m: usize)
+pub proof fn merge_2m_step_from_k(pre: &KernelK, post: &KernelK, cpu_id: CpuId, thread: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
         pre.inv(),
@@ -33,21 +33,21 @@ pub proof fn merge_2m_step_from_k(pre: &KernelK, post: &KernelK, cpu_id: CpuId, 
         (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
         post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
-        m <= usize::MAX / 512,
-        pre.thrd_mp.spec_index(thread).view().quota_4k >= 512 * m,
-        pre.thrd_mp.spec_index(thread).view().quota_2m + m <= usize::MAX,
+        pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
+        pre.thrd_mp.spec_index(thread).view().quota_2m < usize::MAX,
         post.thrd_mp.spec_index(thread).view() == (Thread {
-            quota_4k: (pre.thrd_mp.spec_index(thread).view().quota_4k - 512 * m) as usize,
-            quota_2m: (pre.thrd_mp.spec_index(thread).view().quota_2m + m) as usize, ..pre.thrd_mp.spec_index(thread).view()
+            quota_4k: (pre.thrd_mp.spec_index(thread).view().quota_4k - 512) as usize,
+            quota_2m: (pre.thrd_mp.spec_index(thread).view().quota_2m + 1) as usize, ..pre.thrd_mp.spec_index(thread).view()
         }),
         if post.cpu_arr.spec_index(cpu_id).view().locking_thread() is None { post.cpu_op.view().view()[cpu_id as int] is Trap && post.thrd_mp.spec_index(thread).locking_thread() is None }
         else { post.cpu_op.view().view()[cpu_id as int] is InStep && post.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(cpu_id) && post.thrd_mp.spec_index(thread).wlocked_by_thread(cpu_id) },
-    ensures merge_2m_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, m),
+    ensures merge_2m_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
 {
     kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thread);
     kernel_cpu_projection_at(post, cpu_id); kernel_thread_projection_at(post, thread);
-    kernel_thread_quotas_exchanged_implies_u_step(pre, post, cpu_id, thread, (pre.thrd_mp.spec_index(thread).view().quota_4k - 512 * m) as usize, (pre.thrd_mp.spec_index(thread).view().quota_2m + m) as usize);
+    kernel_thread_quotas_exchanged_implies_u_step(pre, post, cpu_id, thread, (pre.thrd_mp.spec_index(thread).view().quota_4k - 512) as usize, (pre.thrd_mp.spec_index(thread).view().quota_2m + 1) as usize);
 }
+
 pub proof fn merge_2m_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, thread: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -63,7 +63,7 @@ pub proof fn merge_2m_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, thread: RwL
         if krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() is None { krnl.cpu_op.view().view()[cpu_id as int] is Trap && krnl.thrd_mp.spec_index(thread).locking_thread() is None }
         else { krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(cpu_id) && krnl.thrd_mp.spec_index(thread).wlocked_by_thread(cpu_id) },
     ensures
-        merge_2m_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, 1),
+        merge_2m_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
 { kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thread); }
 
 pub proof fn merge_2m_empty_trace_implies_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, n: usize, ret: RetValueType)
@@ -81,8 +81,8 @@ pub proof fn merge_2m_recorded_step_implies_extended_trace(before: Seq<KernelSte
         count < n,
         merge_2m_syscall_trace(before.subrange(start, before.len() as int), cpu_id, n, RetValueType::SuccessUsize { value: count }),
         after == before.push(KernelStep { old_u: kernel_k_to_kernel_u(pre), new_u: kernel_k_to_kernel_u(post) }),
-        merge_2m_step_pre(kernel_k_to_kernel_u(pre), cpu_id, 1),
-        merge_2m_step(kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(post), cpu_id, 1),
+        merge_2m_step_pre(kernel_k_to_kernel_u(pre), cpu_id),
+        merge_2m_step(kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(post), cpu_id),
     ensures
         merge_2m_syscall_trace(after.subrange(start, after.len() as int), cpu_id, n, RetValueType::SuccessUsize { value: (count + 1) as usize }),
 {
@@ -96,10 +96,6 @@ pub proof fn merge_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, n: usize, ret
         index_valid(NUM_CPUS, cpu_id),
         krnl.inv(),
         krnl.cpu_op.view().view()[cpu_id as int] is Trap,
-        n <= usize::MAX / 512 && krnl.cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !krnl.cpu_arr.spec_index(cpu_id).view().being_killed() ==> {
-            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some
-            &&& krnl.thrd_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0)
-        },
         ({
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             if n > usize::MAX / 512 { ret == RetValueType::Error }

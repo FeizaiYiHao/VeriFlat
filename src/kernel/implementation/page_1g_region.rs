@@ -2,11 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The page indices of the merged tails of the 1G region at `head`.
-pub open spec fn page_1g_tail_indices(head: PageIndex) -> Set<PageIndex> {
-    Set::range((head + 1) as usize, (head + 262144) as usize)
-}
-
 /// The page pointers of the first `count` pages of the 1G region at `head`.
 pub open spec fn page_1g_ptr_prefix(head: PageIndex, count: nat) -> Set<PagePtr>
     decreases count,
@@ -79,7 +74,6 @@ pub broadcast proof fn page_1g_ptr_prefix_member_bounds(head: PageIndex, count: 
         page_ptr_valid(pg_ptr),
         head <= page_ptr2page_index(pg_ptr) < head + count,
         page_ptr2page_index(pg_ptr) == head || spec_page_index_merge_1g_valid(head, page_ptr2page_index(pg_ptr)),
-        page_ptr2page_index(pg_ptr) == head || page_1g_tail_indices(head).contains(page_ptr2page_index(pg_ptr)),
     decreases count,
 {
     assert(count > 0) by { if count == 0 { } };
@@ -102,7 +96,6 @@ pub proof fn container_owned_1g_head_implies_owned_pages_contain_all_ptrs(krnl: 
     ensures
         page_1g_all_ptrs(head).subset_of(krnl.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view()),
 {
-    assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { reveal(container_owned_pages_wf); };
     assert(page_1g_all_ptrs(head).subset_of(krnl.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view())) by {
         reveal(container_owned_pages_wf); broadcast use page_1g_ptr_prefix_member_bounds;
         page_ptr_roundtrip();

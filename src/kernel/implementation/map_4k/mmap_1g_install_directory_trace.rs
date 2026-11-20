@@ -1,6 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
-use super::mmap_1g_install_directory::*;
+#[cfg(verus_keep_ghost)]
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
+use super::mmap_1g_install_directory_spec::*;
 
 verus! {
 /// The running thread's 1G mmap progress installs one L3 directory page under the big write lock of its table, which creates no window. The transition is one 1G mmap directory step.
@@ -48,10 +50,10 @@ pub(super) proof fn mmap_1g_directory_step_from_k(pre: &KernelK, post: &KernelK,
     let pre_u = kernel_k_to_kernel_u(*pre);
     let owner = pre.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr;
     if pre_u.process_map.dom().contains(owner) && pre_u.process_map[owner].pagetable is Some {
-        assert(pre_u.process_map.insert(owner, ProcessU {
+        assert_maps_equal!(pre_u.process_map.insert(owner, ProcessU {
             pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, ..pre_u.process_map[owner].pagetable->Some_0 }),
             ..pre_u.process_map[owner]
-        }) =~= pre_u.process_map);
+        }), pre_u.process_map);
     }
 }
 } // verus!
