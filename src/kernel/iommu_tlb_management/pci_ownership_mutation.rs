@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use vstd::{assert_sets_equal, assert_sets_equal_internal};
 #[cfg(verus_keep_ghost)]
 use super::pci_ownership_mutation_eof::*;
 
@@ -224,7 +225,7 @@ impl KernelK {
         proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
         let ghost pci = old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci;
         let mut i: usize = 0;
-        assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < 0) =~= Set::<PciBdf>::empty());
+        proof { assert_sets_equal!(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < 0), Set::<PciBdf>::empty()); }
         while i < PCI_FUNCTIONS_PER_PROCESS
             invariant
                 self.inv(),
@@ -282,7 +283,7 @@ impl KernelK {
             proof {
                 if used {
                     assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) =~= done.insert(g));
-                    assert(done.insert(g).contains(g));
+                    assert(done.insert(g).contains(g)) by { vstd::set::lemma_set_insert_same(done, g); };
                 }
                 else { assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) =~= done); }
             }
