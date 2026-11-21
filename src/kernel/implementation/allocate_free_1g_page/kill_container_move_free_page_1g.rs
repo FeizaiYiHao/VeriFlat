@@ -8,7 +8,8 @@ use super::allocate_free_1g_page_lemmas::{allocator_free_1g_pages_wf_at, kernel_
 use super::kill_container_move_free_page_1g_eof::{kill_container_move_free_page_1g_eof, kill_container_move_free_page_1g_eof_transition_framing};
 
 verus! {
-/// Moves the head 1G page `pg_ptr` of `src`'s 1G global pool (`src` owns no process or thread) to the head of `dst`'s, with one page of 1G quota and the region's 262144 owned page pointers; tails keep their records and every lock the caller holds stays held.
+/// Moves the head 1G page `pg_ptr` of `src`'s 1G global pool (`src` owns no process or thread) to the head of `dst`'s, with one page of 1G quota and the region's 262144 owned page pointers;
+/// tails keep their records and every lock the caller holds stays held.
 pub fn kill_container_move_free_page_1g(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr,
     dst_allocator: RwLockPageAllocatorPtr, pg_ptr: PagePtr, Tracked(src_perm): Tracked<&LockPerm>, Tracked(dst_perm): Tracked<&LockPerm>,
@@ -101,7 +102,6 @@ pub fn kill_container_move_free_page_1g(
         final(krnl).allc_1g_mp.spec_index(src_allocator).total_free_pages.view() == old(krnl).allc_1g_mp.spec_index(src_allocator).total_free_pages.view() - 1,
         final(krnl).allc_1g_mp.spec_index(dst_allocator).global_pool.view().view() == old(krnl).allc_1g_mp.spec_index(dst_allocator).global_pool.view().view().insert(0, pg_ptr),
 {
-    let ghost pre = *krnl;
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
@@ -124,7 +124,7 @@ pub fn kill_container_move_free_page_1g(
     let (node_addr, Tracked(node_perm)) = krnl.allc_1g_mp.pop_global_pool_page_typed(src_allocator, Ghost(lctx.allocator_quota_1g_lock_map()),
         Ghost(lctx.allocator_cache_1g_lock_map()), Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(src_pool_perm));
     assert(node_addr == krnl.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage.addr()) by {
-        pre.allc_1g_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, krnl.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage.addr());
+        old(krnl).allc_1g_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, krnl.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage.addr());
     };
     krnl.allc_1g_mp.push_global_pool_page_typed(dst_allocator, node_addr, Tracked(node_perm), Ghost(lctx.allocator_quota_1g_lock_map()), Ghost(lctx.allocator_cache_1g_lock_map()),
         Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(dst_pool_perm));
@@ -153,11 +153,11 @@ pub fn kill_container_move_free_page_1g(
     }
     proof {
         lctx.enter_kernel_view_release();
-        assert(kill_container_move_free_page_1g_eof_transition_framing(pre, *krnl, src, dst, src_allocator, dst_allocator, pg_ptr, node_addr)) by {
+        assert(kill_container_move_free_page_1g_eof_transition_framing(*old(krnl), *krnl, src, dst, src_allocator, dst_allocator, pg_ptr, node_addr)) by {
             reveal(kill_container_move_free_page_1g_eof_transition_framing);
-            seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_1g_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, pg_ptr);
+            seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); old(krnl).allc_1g_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, pg_ptr);
         };
-        kill_container_move_free_page_1g_eof(pre, *krnl, src, dst, src_allocator, dst_allocator, pg_ptr, node_addr);
+        kill_container_move_free_page_1g_eof(*old(krnl), *krnl, src, dst, src_allocator, dst_allocator, pg_ptr, node_addr);
     }
 }
 } // verus!

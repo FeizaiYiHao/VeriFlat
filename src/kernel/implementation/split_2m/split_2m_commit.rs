@@ -213,7 +213,8 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
             forall|index: PageIndex| #![trigger krnl.pg_arr.spec_index(index)] #![trigger old(krnl).pg_arr.spec_index(index)]
                 index_valid(NUM_PAGES, index) && !Set::<PageIndex>::range(head, (head + offset) as usize).contains(index) ==> krnl.pg_arr.spec_index(index) == old(krnl).pg_arr.spec_index(index),
             forall|index: PageIndex| #![trigger krnl.pg_arr.spec_index(index)]
-                #![trigger old(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(head).view().view().owning_container).view().owned_pages.view().contains(spec_page_index2page_ptr(index))] Set::<PageIndex>::range(head, (head + offset) as usize).contains(index) ==> {
+                #![trigger old(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(head).view().view().owning_container).view().owned_pages.view().contains(spec_page_index2page_ptr(index))]
+                    Set::<PageIndex>::range(head, (head + offset) as usize).contains(index) ==> {
                 let old_cell = old(krnl).pg_arr.spec_index(index).view();
                 let new_cell = krnl.pg_arr.spec_index(index).view();
                 let old_page = old_cell.view();
@@ -270,7 +271,8 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
             krnl.allc_4k_mp.spec_index(allocator_4k).cpu_caches == old(krnl).allc_4k_mp.spec_index(allocator_4k).cpu_caches,
             krnl.allc_4k_mp.spec_index(allocator_4k).total_free_pages.view() == old(krnl).allc_4k_mp.spec_index(allocator_4k).total_free_pages.view() + offset,
             krnl.allc_2m_mp.spec_index(allocator_2m).total_free_pages.view() + 1 == old(krnl).allc_2m_mp.spec_index(allocator_2m).total_free_pages.view(),
-            krnl.allc_4k_mp.spec_index(allocator_4k).global_pool.view().view() == Seq::new(offset as nat, |i: int| spec_page_index2page_ptr((head + offset - 1 - i) as usize)) + old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.view().view(),
+            krnl.allc_4k_mp.spec_index(allocator_4k).global_pool.view().view()
+                == Seq::new(offset as nat, |i: int| spec_page_index2page_ptr((head + offset - 1 - i) as usize)) + old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.view().view(),
             forall|pointer: PagePtr| #![trigger krnl.allc_4k_mp.spec_index(allocator_4k).global_pool.view().view().contains(pointer)] #![trigger old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.view().view().contains(pointer)]
                 krnl.allc_4k_mp.spec_index(allocator_4k).global_pool.view().view().contains(pointer)
                     == (old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.view().view().contains(pointer)

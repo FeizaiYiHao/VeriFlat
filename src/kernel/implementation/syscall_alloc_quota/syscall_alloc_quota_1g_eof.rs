@@ -33,7 +33,8 @@ pub(super) open spec fn commit_alloc_quota_1g_eof_transition_framing(pre: &Kerne
     &&& new_alloc.quota.view().value + alloc_amount == old_alloc.quota.view().value
 }
 
-/// Closes every kernel invariant after the 1G quota commit from the entry invariants, the summary, and the permission maps the two borrows guarantee; also states each container's allocator quota change, which needs allocator-pointer injectivity.
+/// Closes every kernel invariant after the 1G quota commit from the entry invariants, the summary, and the permission maps the two borrows guarantee;
+/// also states each container's allocator quota change, which needs allocator-pointer injectivity.
 pub(super) proof fn commit_alloc_quota_1g_eof(pre: &KernelK, post: &KernelK, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, alloc_ptr_1g: RwLockPageAllocatorPtr, alloc_amount: usize)
     requires
         pre.inv(),
@@ -59,14 +60,17 @@ pub(super) proof fn commit_alloc_quota_1g_eof(pre: &KernelK, post: &KernelK, ctn
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_iommu_table_wf_preserved_for_process_fields_except_quota(); };
         assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_domain_unchanged_implies_process_pages_wf_preserved_forall(); };
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(*pre, *post); };
-        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(post.ctn_mp, post.thrd_mp, post.allc_4k_mp, pre.prc_mp, post.prc_mp); };
+        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp))
+            by { container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(post.ctn_mp, post.thrd_mp, post.allc_4k_mp, pre.prc_mp, post.prc_mp); };
         assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
             reveal(container_process_allocator_quota_1g_wf); reveal(container_process_wf); reveal(container_allocator_wf);
             one_member_changed_implies_process_effective_quota_1g_fold_sum_changed_by_forall(prc_ptr, alloc_amount as int);
             unchanged_members_implies_process_effective_quota_1g_fold_sum_eq_forall();
         };
-        assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thrd_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp); };
-        assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
+        assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp))
+            by { container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thrd_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp); };
+        assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp))
+            by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
         assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_kill_retire_wf); reveal(container_allocator_wf); };
         assert(allocator_free_page_ptrs_wf(post.allc_1g_mp)) by { global_pool_and_cpu_caches_unchanged_implies_allocator_free_page_ptrs_wf_preserved_forall::<ALLOCATOR_SIZE_1G>(); };
         assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
@@ -140,7 +144,8 @@ pub(super) proof fn commit_alloc_thread_quota_1g_eof(pre: &KernelK, post: &Kerne
     reveal(commit_alloc_thread_quota_1g_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf);
-        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
+        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(post.memory_management_inv()) by {
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { container_process_page_pagetable_wf_preserved_for_process_fields_except_quota(); };

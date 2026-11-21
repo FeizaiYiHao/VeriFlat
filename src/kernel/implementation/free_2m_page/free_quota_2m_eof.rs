@@ -86,7 +86,8 @@ proof fn return_free_quota_2m_eof_memory(pre: KernelK, post: KernelK, thrd_ptr: 
             let thread = pre.thrd_mp.spec_index(thrd_ptr).view();
             container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr); container_thread_wf_uppertree_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr);
             if depth < thread.container_depth {
-                container_perms_wf_at(pre.ctn_mp, thread.owning_container); assert(thread.upper_container_seq.view().contains(owner));
+                container_perms_wf_at(pre.ctn_mp, thread.owning_container);
+                assert(thread.upper_container_seq.view().contains(owner)) by { thread.upper_container_seq.view().lemma_index_contains(depth as int); };
                 container_uppertree_seq_wf_at(pre.rt_ctn, pre.ctn_mp, thread.owning_container, owner);
             }
             reveal(container_kill_retire_wf); reveal(container_allocator_wf);

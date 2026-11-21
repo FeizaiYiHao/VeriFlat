@@ -35,7 +35,6 @@ pub(super) open spec fn pop_stage_1g_page_eof_transition_framing(
     &&& new_thread.view_rodata() == old_thread.view_rodata()
     &&& new_thread.view_ghost() == old_thread.view_ghost()
     &&& new_thread.locking_thread() == old_thread.locking_thread()
-    &&& new_thread.locking_thread() is Write
     &&& new_thread.being_killed() == old_thread.being_killed()
     &&& new_thread.killer_info() == old_thread.killer_info()
     &&& post.allc_1g_mp.unchanged_except(&pre.allc_1g_mp, allocator)
@@ -56,6 +55,7 @@ proof fn pop_stage_1g_page_eof_subsystems_inv(pre: KernelK, post: KernelK, alloc
     requires
         pre.inv(),
         pop_stage_1g_page_eof_transition_framing(pre, post, allocator, thread, container, page, node),
+        pre.thrd_mp.spec_index(thread).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thread);
@@ -587,6 +587,7 @@ pub(super) proof fn pop_stage_1g_page_eof(pre: KernelK, post: KernelK, allocator
     requires
         pre.inv(),
         pop_stage_1g_page_eof_transition_framing(pre, post, allocator, thread, container, page, node),
+        pre.thrd_mp.spec_index(thread).locking_thread() is Write,
         pre.allc_1g_mp.spec_index(allocator).global_pool.view().view().len() > 0,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();

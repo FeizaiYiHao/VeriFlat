@@ -22,7 +22,8 @@ pub fn freeze_split_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|cpu: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(cpu)] old(lctx).cpu_lock_map().dom().contains(cpu) ==> index_valid(NUM_CPUS, cpu) && !(old(krnl).cpu_arr.spec_index(cpu).view().view().view().state is Off),
-        forall|thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(thread)] old(lctx).thread_lock_map().dom().contains(thread) ==> old(krnl).thrd_mp.dom().contains(thread) && !(old(krnl).thrd_mp.spec_index(thread).view().state is SCHEDULED),
+        forall|thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(thread)] old(lctx).thread_lock_map().dom().contains(thread)
+            ==> old(krnl).thrd_mp.dom().contains(thread) && !(old(krnl).thrd_mp.spec_index(thread).view().state is SCHEDULED),
     ensures
         forall|source: usize| #![trigger final(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(source)] source <= NUM_CPUS ==>
             final(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(source) == old(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(source),
@@ -38,7 +39,8 @@ pub fn freeze_split_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         *final(krnl) == (KernelK { allc_2m_mp: final(krnl).allc_2m_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
-        forall|held: (RwLockPageAllocatorPtr, CpuId)| #![trigger final(lctx).allocator_cache_2m_lock_map().dom().contains(held)] final(lctx).allocator_cache_2m_lock_map().dom().contains(held) <==> held.0 == allocator_2m && held.1 < NUM_CPUS,
+        forall|held: (RwLockPageAllocatorPtr, CpuId)| #![trigger final(lctx).allocator_cache_2m_lock_map().dom().contains(held)] final(lctx).allocator_cache_2m_lock_map().dom().contains(held)
+            <==> held.0 == allocator_2m && held.1 < NUM_CPUS,
         final(lctx).allocator_global_pool_2m_lock_map().dom() =~= set![allocator_2m],
         final(lctx).allocator_global_pool_4k_lock_map().dom() =~= set![allocator_4k],
         forall|cpu: CpuId| #![trigger ret.view().cache.dom().contains(cpu)] ret.view().cache.dom().contains(cpu) <==> cpu < NUM_CPUS,
@@ -93,8 +95,10 @@ pub fn freeze_split_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
             lctx.page_lock_map().dom().is_empty(),
             lctx.pcid_needflush_lock_map().dom().is_empty(),
             lctx.allocator_quota_2m_lock_map().dom().is_empty(),
-            forall|held_cpu: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu)] lctx.cpu_lock_map().dom().contains(held_cpu) ==> index_valid(NUM_CPUS, held_cpu) && !(krnl.cpu_arr.spec_index(held_cpu).view().view().view().state is Off),
-            forall|thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(thread)] lctx.thread_lock_map().dom().contains(thread) ==> krnl.thrd_mp.dom().contains(thread) && !(krnl.thrd_mp.spec_index(thread).view().state is SCHEDULED),
+            forall|held_cpu: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu)] lctx.cpu_lock_map().dom().contains(held_cpu)
+                ==> index_valid(NUM_CPUS, held_cpu) && !(krnl.cpu_arr.spec_index(held_cpu).view().view().view().state is Off),
+            forall|thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(thread)] lctx.thread_lock_map().dom().contains(thread)
+                ==> krnl.thrd_mp.dom().contains(thread) && !(krnl.thrd_mp.spec_index(thread).view().state is SCHEDULED),
             cpu <= NUM_CPUS,
             krnl.allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
             forall|a: RwLockPageAllocatorPtr| #![trigger krnl.allc_2m_mp.spec_index(a)] old(krnl).allc_2m_mp.dom().contains(a) ==> krnl.allc_2m_mp.spec_index(a).quota == old(krnl).allc_2m_mp.spec_index(a).quota,

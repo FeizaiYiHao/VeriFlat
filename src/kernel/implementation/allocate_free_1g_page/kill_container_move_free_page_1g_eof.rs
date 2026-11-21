@@ -68,7 +68,6 @@ pub(super) open spec fn kill_container_move_free_page_1g_eof_transition_framing(
     &&& new_src.quota.being_killed() == old_src.quota.being_killed()
     &&& new_src.total_free_pages.view() == old_src.total_free_pages.view() - 1
     &&& new_dst == (PageAllocator { global_pool: new_dst.global_pool, quota: new_dst.quota, total_free_pages: new_dst.total_free_pages, ..old_dst })
-    &&& !old_dst.global_pool.view().map().dom().contains(node)
     &&& new_dst.global_pool.view().view() == old_dst.global_pool.view().view().insert(0, pg_ptr)
     &&& forall|q: PagePtr| #![trigger new_dst.global_pool.view().view().contains(q)]
         new_dst.global_pool.view().view().contains(q) <==> old_dst.global_pool.view().view().contains(q) || q == pg_ptr
@@ -177,6 +176,7 @@ proof fn kill_container_move_free_page_1g_eof_free_pages(
         pre.allc_1g_mp.spec_index(src_allocator).global_pool.view().view().no_duplicates(),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free1g { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
         !pre.allc_1g_mp.spec_index(dst_allocator).global_pool.view().view().contains(pg_ptr),
+        !pre.allc_1g_mp.spec_index(dst_allocator).global_pool.view().map().dom().contains(node),
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
         kill_container_move_free_page_1g_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
@@ -286,6 +286,7 @@ pub(super) proof fn kill_container_move_free_page_1g_eof(
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free1g { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
         !pre.allc_1g_mp.spec_index(dst_allocator).global_pool.view().view().contains(pg_ptr),
+        !pre.allc_1g_mp.spec_index(dst_allocator).global_pool.view().map().dom().contains(node),
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
         kill_container_move_free_page_1g_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
         0 < pre.allc_1g_mp.spec_index(src_allocator).quota.view().value,

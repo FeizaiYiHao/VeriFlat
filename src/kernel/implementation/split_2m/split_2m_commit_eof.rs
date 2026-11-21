@@ -18,10 +18,9 @@ pub proof fn split_2m_exchange_thread_quotas_eof_implies_thread_inv(pre: Thread,
 {}
 
 pub proof fn split_2m_commit_eof_implies_container_owned_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -51,10 +50,9 @@ pub proof fn split_2m_commit_eof_implies_container_owned_pages_wf(pre: KernelK, 
 }
 
 pub proof fn split_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -84,10 +82,9 @@ pub proof fn split_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre: Kernel
 }
 
 pub proof fn split_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -150,10 +147,9 @@ pub proof fn split_2m_commit_eof_implies_typed_lock_maps_aligned(pre: KernelK, p
 }
 
 pub proof fn split_2m_commit_eof_implies_process_management_inv(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -190,10 +186,9 @@ pub proof fn split_2m_commit_eof_implies_process_management_inv(pre: KernelK, po
 }
 
 pub proof fn split_2m_commit_eof_implies_page_object_owner_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -219,10 +214,9 @@ pub proof fn split_2m_commit_eof_implies_page_object_owner_wf(pre: KernelK, post
 }
 
 pub proof fn split_2m_commit_eof_implies_object_page_invariants(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -272,7 +266,7 @@ pub proof fn split_2m_commit_eof_implies_object_page_invariants(pre: KernelK, po
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(endpoint_pages_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(process_emptied_tables_wf); };
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(process_object_pages_owner_wf); };
-    split_2m_commit_eof_implies_page_object_owner_wf(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
+    split_2m_commit_eof_implies_page_object_owner_wf(pre, post, thread, allocator_4k, allocator_2m, head, source);
 }
 
 pub proof fn split_2m_eof_page_state_transition_implies_hugepage_2m_wf(pre: PageLockedArray, post: PageLockedArray, head: PageIndex)
@@ -331,10 +325,9 @@ pub proof fn split_2m_eof_page_state_transition_implies_hugepage_2m_tail_backwar
 { reveal(hugepage_2m_wf); }
 
 pub proof fn split_2m_commit_eof_implies_hugepage_2m_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -363,10 +356,9 @@ pub proof fn split_2m_commit_eof_implies_hugepage_2m_wf(pre: KernelK, post: Kern
 }
 
 pub proof fn split_2m_commit_eof_implies_hugepage_1g_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
-    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, lctx),
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
@@ -399,6 +391,7 @@ pub proof fn split_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
+        pre.thrd_mp.spec_index(thread).view().quota_4k <= usize::MAX - 512,
         pre.allc_4k_mp.dom().contains(allocator_4k),
         pre.allc_2m_mp.dom().contains(allocator_2m),
         pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
@@ -425,17 +418,17 @@ pub proof fn split_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
         reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(post.subsystems_inv()) by { reveal(split_2m_commit_eof_transition_framing); reveal(KernelK::default_pagetable_wf); };
-    split_2m_commit_eof_implies_container_owned_pages_wf(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
-    split_2m_commit_eof_implies_hugepage_2m_wf(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
-    split_2m_commit_eof_implies_hugepage_1g_wf(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
-    split_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
-    split_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
+    split_2m_commit_eof_implies_container_owned_pages_wf(pre, post, thread, allocator_4k, allocator_2m, head, source);
+    split_2m_commit_eof_implies_hugepage_2m_wf(pre, post, thread, allocator_4k, allocator_2m, head, source);
+    split_2m_commit_eof_implies_hugepage_1g_wf(pre, post, thread, allocator_4k, allocator_2m, head, source);
+    split_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, head, source);
+    split_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, head, source);
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
-    split_2m_commit_eof_implies_object_page_invariants(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
+    split_2m_commit_eof_implies_object_page_invariants(pre, post, thread, allocator_4k, allocator_2m, head, source);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
-    split_2m_commit_eof_implies_process_management_inv(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
+    split_2m_commit_eof_implies_process_management_inv(pre, post, thread, allocator_4k, allocator_2m, head, source);
     split_2m_commit_eof_implies_typed_lock_maps_aligned(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
     assert(post.inv()) by { reveal(split_2m_commit_eof_transition_framing); };
 }

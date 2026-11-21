@@ -216,7 +216,6 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             proof { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); }
             proof { thread_quota_2m_implies_allocator_free_count_positive(&*krnl, thrd_ptr, alloc_ptr_2m); }
             let head = split_2m_select_source(krnl, alloc_ptr_2m, &mut source, Tracked(&*lctx), Tracked(&source_locks.cache), Tracked(&source_locks.pool2m));
-            assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).merge_2m_source_list(source).view().spec_index(0) == spec_page_index2page_ptr(head)) by { assert(PAGE_SZ_4K == 4096) by (compute); };
             let Tracked(page_locks) = merge_2m_lock_block(krnl, head, Tracked(&mut *lctx));
             split_2m_commit(krnl, thrd_ptr, alloc_ptr_4k, alloc_ptr_2m, head, source, Tracked(&*lctx),
                 Tracked(&source_locks.cache), Tracked(&source_locks.pool4k), Tracked(&source_locks.pool2m),
@@ -229,7 +228,7 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                     let before_business = steps.snapshot_k();
                     let after_business = *krnl;
                     split_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
-                    split_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
+                    split_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr);
                     krnl.kernel_step_boundary_free_2m_block_split(&mut *lctx, &mut *steps, thrd_ptr, alloc_ptr_4k, alloc_ptr_2m);
                     split_2m_recorded_step_implies_extended_trace(before_trace, steps.view(), old(steps).view().len() as int,
                         before_business, after_business, cpu_id, n, (m - 1) as usize);
@@ -248,7 +247,7 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         let count = if ret is SuccessUsize { ret->SuccessUsize_value } else { 0usize };
         if count > 0 {
             split_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
-            split_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
+            split_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr);
             steps.end_kernel_step_thread_quota_4k_changed(&*krnl, &*lctx, thrd_ptr);
             split_2m_recorded_step_implies_extended_trace(before_trace, steps.view(), old(steps).view().len() as int,
                 before_business, after_business, cpu_id, n, (count - 1) as usize);
