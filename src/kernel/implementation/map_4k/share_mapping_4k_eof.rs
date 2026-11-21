@@ -216,11 +216,9 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     &&& forall|j: int| #![trigger post_steps.view()[j]] pre_steps.view().len() <= j < post_steps.view().len() ==> share_4k_range_step(post_steps.view()[j], cpu_id)
     &&& i > 0 ==> {
         &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
-        &&& kernel_k_to_kernel_u(post).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable is Some
         &&& if typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
-            &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: pre_lctx.cpu_id() })
-            &&& kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: pre_lctx.cpu_id() })
-        } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(pre_lctx.cpu_id()) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(pre_lctx.cpu_id()) }
+            post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: pre_lctx.cpu_id() })
+        } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(pre_lctx.cpu_id()) }
     }
     &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> post.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view()
     &&& post.ctn_mp.spec_index(target_container).view_rodata() == pre.ctn_mp.spec_index(target_container).view_rodata()
@@ -358,11 +356,9 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         {
             let source_process = mid.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr;
             &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
-            &&& kernel_k_to_kernel_u(post).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable is Some
             &&& if typed_lock_map_contains_mode(mid_lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
-                &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: mid_lctx.cpu_id() })
-                &&& kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: mid_lctx.cpu_id() })
-            } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(mid_lctx.cpu_id()) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(mid_lctx.cpu_id()) }
+                post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: mid_lctx.cpu_id() })
+            } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(mid_lctx.cpu_id()) }
         },
         held_pages_unchanged(mid.pg_arr, post.pg_arr, mid_lctx),
         held_containers_unchanged(mid.ctn_mp, post.ctn_mp, mid_lctx),
@@ -411,7 +407,8 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
             mid_lctx.pagetable_window_lock_map().dom().contains((target_pagetable, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
                 let shared = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_4k().insert(target_va, whole_pagetable(mid.pt_mp, mid.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va));
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(v) == shared.dom().contains(v)
-                &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(v) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k().spec_index(v) == shared.spec_index(v)
+                &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(v)
+                    ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k().spec_index(v) == shared.spec_index(v)
             },
         forall|w: WindowVa|
             #![trigger mid_lctx.pagetable_window_lock_map().dom().contains((target_pagetable, w))]
@@ -449,7 +446,8 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
             && (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).leaves_present()
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).leaves_present())) by {
             assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k
-                =~= whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k.insert(target_va, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)));
+                =~= whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k.insert(target_va,
+                    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)));
             reveal(share_mapping_4k_target_map_with_shared_prefix);
         };
     }
