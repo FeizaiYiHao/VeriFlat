@@ -14,6 +14,9 @@ pub(super) proof fn flush_iommu_tlb_for_table_eof(pre: KernelK, post: KernelK, i
         pre.it_mp.spec_index(iommu_table).view().did matches Some(did) ==> iommu_tlb_within_may_cache(pre, did, post.iommu_tlb.spec_index(did)),
         pre.it_mp.spec_index(iommu_table).view().did matches Some(did)
             ==> forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x),
+        pre.it_mp.spec_index(iommu_table).view().did matches Some(did)
+            ==> post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches().insert(did, post.iommu_tlb.structure_cache(did)),
+        pre.it_mp.spec_index(iommu_table).view().did matches Some(did) ==> iommu_structure_cache_within_may_cache(pre, did, post.iommu_tlb.structure_cache(did)),
         pre.it_mp.spec_index(iommu_table).view().did is None ==> post.iommu_tlb == pre.iommu_tlb,
     ensures
         post.inv(),
@@ -26,6 +29,7 @@ pub(super) proof fn flush_iommu_tlb_for_table_eof(pre: KernelK, post: KernelK, i
         iommu_root_table_process_wf_table_at(pre.irt.view(), pre.prc_mp, pre.it_mp, iommu_table);
         assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     }
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by { reveal(iommu_table_tlb_entries_present); };
 }

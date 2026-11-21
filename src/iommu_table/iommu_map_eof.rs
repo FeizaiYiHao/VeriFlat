@@ -38,7 +38,13 @@ impl IommuTable {
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures
             post.wf(),
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
     {
+        Self::map_4k_page_eof_resolved_paths_kept(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_wf_l4(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
@@ -52,6 +58,32 @@ impl IommuTable {
         Self::map_4k_page_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
+    }
+
+    /// EOF closure of `map_4k_page`: every directory path that resolved before resolves to the same entry after.
+    proof fn map_4k_page_eof_resolved_paths_kept(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, target_entry: MapEntry)
+        requires
+            pre.wf(),
+            pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pei_valid(target_l1i),
+            iova_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
+            pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None || pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
+            page_ptr_valid(target_entry.addr),
+            !target_entry.is_io,
+            target_entry.present,
+            Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
+        ensures
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
+    {
+        reveal(IommuTable::map_4k_page_eof_transition_framing);
     }
 
     /// EOF closure of `map_4k_page`: `wf_l4`.

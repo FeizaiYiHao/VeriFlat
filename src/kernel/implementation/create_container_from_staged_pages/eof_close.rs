@@ -190,5 +190,6 @@ pub(super) proof fn publish_staged_container_root_eof_inv(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(publish_staged_container_root_eof_transition_framing); reveal(iommu_structure_cache_wf); };
 }
 }

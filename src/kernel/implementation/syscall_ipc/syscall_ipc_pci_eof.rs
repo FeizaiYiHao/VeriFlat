@@ -45,12 +45,15 @@ pub(super) open spec fn ipc_pci_detach_eof_transition_framing(pre: KernelK, post
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, post.iommu_tlb.spec_index(did))
         &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
         &&& iommu_tlb_within_may_cache(KernelK { irt: post.irt, ..pre }, did, post.iommu_tlb.spec_index(did))
+        &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches().insert(did, post.iommu_tlb.structure_cache(did))
+        &&& iommu_structure_cache_within_may_cache(KernelK { irt: post.irt, ..pre }, did, post.iommu_tlb.structure_cache(did))
         &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
             == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
         &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
             ==> iommu_context_cache_entry_present(KernelK { irt: post.irt, ..pre }, bdf, post.iommu_tlb.context_cache()[bdf])
     }
     &&& old_did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view() && post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
+        && post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches()
 }
 
 /// The root table still names, for every attached function, the IOMMU table of the function's owner.
@@ -126,7 +129,9 @@ proof fn ipc_pci_detach_eof_iotlb(
         pre.it_mp.spec_index(table).view().did is Some,
         vtd_domain_id_valid(pre.it_mp.spec_index(table).view().did->Some_0),
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
-    ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+    ensures
+        iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
 {
     let t = pre.it_mp.spec_index(table).view();
     let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
@@ -146,7 +151,7 @@ proof fn ipc_pci_detach_eof_iotlb(
         assert(post.iommu_tlb.context_cache() =~= Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
             .union_prefer_right(Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 == did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])));
     }
-    reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); reveal(process_iommu_table_wf);
+    reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); reveal(process_iommu_table_wf); reveal(iommu_structure_cache_wf);
 }
 
 /// Detaching the attached function `bdf` of the live process `sender_proc` from its write-held IOMMU table `table` under the
@@ -200,7 +205,9 @@ pub(super) proof fn ipc_pci_detach_eof(
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { ipc_pci_detach_eof_iotlb(pre, post, sender_proc, sender_pt, table, bdf, anchor); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp) && iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by {
+        ipc_pci_detach_eof_iotlb(pre, post, sender_proc, sender_pt, table, bdf, anchor);
+    };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 

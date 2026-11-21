@@ -204,6 +204,7 @@ impl KernelK{
         &&& iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)
         &&& pci_function_ownership_wf(self.irt.view(), self.prc_mp, self.pt_mp)
         &&& iommu_tlb_wf(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)
+        &&& iommu_structure_cache_wf(self.iommu_tlb, self.irt.view(), self.it_mp)
         // Each cpu's dirty PCIDs, CPU TLBs, and paging-structure caches
         &&& cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)
         &&& cpu_tlb_wf(self.cpu_tlb, self.pt_mp, self.pt_lower.view(), self.cpu_arr, self.pcid_needflush)

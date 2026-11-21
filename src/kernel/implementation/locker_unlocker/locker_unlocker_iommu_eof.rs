@@ -36,6 +36,7 @@ pub(super) proof fn wlock_iommu_table_eof(pre: KernelK, post: KernelK, pre_lctx:
     };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
 }
 
 /// Closes `inv()` after `wunlock_iommu_table`: the released table's leaves are present, so its attached domains, which
@@ -62,6 +63,7 @@ pub(super) proof fn wunlock_iommu_table_eof(pre: KernelK, post: KernelK, iommu_t
     };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
 }
 
 /// Closes `inv()` after an IOMMU root-table write lock or unlock: only the root table's lock state moved.

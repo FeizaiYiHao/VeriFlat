@@ -27,6 +27,11 @@ pub(super) open spec fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transitio
     &&& post.it_mp.spec_index(iommu_table).view().cr3 == pre.it_mp.spec_index(iommu_table).view().cr3
     &&& post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr
     &&& post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did
+    &&& forall|i: L4Index| #![trigger post.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l4(i)] pei_valid(i) && pre.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l4(i) is Some ==> post.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l4(i) == pre.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l4(i)
+    &&& forall|i: L4Index, j: L3Index| #![trigger post.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l3(i, j) is Some
+        ==> post.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l3(i, j) == pre.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l3(i, j)
+    &&& forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+        && pre.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(i, j, k) is Some ==> post.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(i, j, k) == pre.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(i, j, k)
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex|
         #![trigger pre.pg_arr.spec_index(i).view().view().state]

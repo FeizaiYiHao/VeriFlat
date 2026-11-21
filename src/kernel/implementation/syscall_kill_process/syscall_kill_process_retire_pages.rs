@@ -790,6 +790,7 @@ pub(crate) fn kill_retire_table_page_to_cache(
             &&& table_perm.lock_id() == old(krnl).it_mp.spec_index(table).locking_thread()->Write_lock_id
             &&& old(krnl).it_mp.spec_index(table).view().structure_scan_wf(scan)
         },
+        iommu ==> old(krnl).prc_mp.spec_index(target).view().iommu_table == Some(table),
         old(krnl).prc_mp.dom().contains(target),
         old(krnl).prc_mp.spec_index(target).view().zombie,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pg_ptr), TypedLockMode::Write),
@@ -872,6 +873,14 @@ pub(crate) fn kill_retire_table_page_to_cache(
         process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
         if iommu {
             iommu_table_page_implies_unreferenced_by_structure_caches(*krnl, table, pg_ptr);
+            assert(krnl.it_mp.spec_index(table).view().did is None) by {
+                process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
+                iommu_root_table_process_wf_table_at(krnl.irt.view(), krnl.prc_mp, krnl.it_mp, table);
+                if let Some(d) = krnl.it_mp.spec_index(table).view().did {
+                    let anchor = pci_bdf_of_did(d);
+                    pci_function_ownership_wf_function_at(krnl.irt.view(), krnl.prc_mp, krnl.pt_mp, anchor.0, anchor.1, anchor.2);
+                }
+            };
         } else {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), table);
             held_table_page_under_unresolvable_path_with_empty_table_record_implies_unreferenced_by_structure_caches(*krnl, table, pg_ptr);

@@ -150,6 +150,11 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
+            forall|i: L4Index| #![trigger final(self).spec_resolve_mapping_l4(i)] pei_valid(i) && old(self).spec_resolve_mapping_l4(i) is Some ==> final(self).spec_resolve_mapping_l4(i) == old(self).spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger final(self).spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(self).spec_resolve_mapping_l3(i, j) is Some
+                ==> final(self).spec_resolve_mapping_l3(i, j) == old(self).spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(self).spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && old(self).spec_resolve_mapping_l2(i, j, k) is Some ==> final(self).spec_resolve_mapping_l2(i, j, k) == old(self).spec_resolve_mapping_l2(i, j, k),
             final(self).did == old(self).did,
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
@@ -200,6 +205,11 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
+            forall|i: L4Index| #![trigger final(self).spec_resolve_mapping_l4(i)] pei_valid(i) && old(self).spec_resolve_mapping_l4(i) is Some ==> final(self).spec_resolve_mapping_l4(i) == old(self).spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger final(self).spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(self).spec_resolve_mapping_l3(i, j) is Some
+                ==> final(self).spec_resolve_mapping_l3(i, j) == old(self).spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(self).spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && old(self).spec_resolve_mapping_l2(i, j, k) is Some ==> final(self).spec_resolve_mapping_l2(i, j, k) == old(self).spec_resolve_mapping_l2(i, j, k),
             final(self).did == old(self).did,
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
@@ -253,6 +263,11 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
+            forall|i: L4Index| #![trigger final(self).spec_resolve_mapping_l4(i)] pei_valid(i) && old(self).spec_resolve_mapping_l4(i) is Some ==> final(self).spec_resolve_mapping_l4(i) == old(self).spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger final(self).spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(self).spec_resolve_mapping_l3(i, j) is Some
+                ==> final(self).spec_resolve_mapping_l3(i, j) == old(self).spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(self).spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && old(self).spec_resolve_mapping_l2(i, j, k) is Some ==> final(self).spec_resolve_mapping_l2(i, j, k) == old(self).spec_resolve_mapping_l2(i, j, k),
             final(self).did == old(self).did,
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
@@ -302,6 +317,11 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
+            forall|i: L4Index| #![trigger final(self).spec_resolve_mapping_l4(i)] pei_valid(i) && old(self).spec_resolve_mapping_l4(i) is Some ==> final(self).spec_resolve_mapping_l4(i) == old(self).spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger final(self).spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(self).spec_resolve_mapping_l3(i, j) is Some
+                ==> final(self).spec_resolve_mapping_l3(i, j) == old(self).spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(self).spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && old(self).spec_resolve_mapping_l2(i, j, k) is Some ==> final(self).spec_resolve_mapping_l2(i, j, k) == old(self).spec_resolve_mapping_l2(i, j, k),
             final(self).page_closure() == old(self).page_closure(),
             final(self).mapping_4k.view() == old(self).mapping_4k.view().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry),
             final(self).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,

@@ -2,6 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 use vstd::{assert_seqs_equal, assert_seqs_equal_internal};
+use super::pci_ownership_mutation_eof_structure_cache::update_pci_entry_eof_structure_cache;
 
 /// S of `KernelK::update_pci_entry`: only the PCI function array of page table `root` and the root table moved; the table's lock
 /// state, ghost slot, the rest of its big-lock payload, every window half, and every other table stay.
@@ -434,6 +435,7 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
 {
     update_pci_entry_eof_page_tables(pre, post, root, index, update);
     update_pci_entry_eof_root_table(pre, post, root, index, update);
+    update_pci_entry_eof_structure_cache(pre, post, root, index, update);
     reveal(update_pci_entry_eof_transition_framing);
     reveal(update_pci_entry_eof_owner_update);
     process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);

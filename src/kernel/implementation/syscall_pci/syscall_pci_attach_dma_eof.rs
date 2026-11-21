@@ -100,11 +100,13 @@ proof fn pci_attach_dma_eof_iotlb(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
     ensures
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
 {
     reveal(pci_attach_dma_eof_transition_framing);
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
         reveal(iommu_tlb_wf); reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); pre.irt.view().wf_context_entry_at(bus, device, function);
     };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); pre.irt.view().wf_context_entry_at(bus, device, function); };
 }
 
 /// Attaching a function owned by the live process `prc_ptr` to its write-held IOMMU table `table` keeps every

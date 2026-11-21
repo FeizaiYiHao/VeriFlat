@@ -98,6 +98,8 @@ pub(crate) open spec fn kill_unown_detach_eof_transition_framing(pre: KernelK, p
     &&& table.view().did matches Some(did) ==> {
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, empty_tlb)
         &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
+        &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches().insert(did, post.iommu_tlb.structure_cache(did))
+        &&& post.iommu_tlb.structure_cache(did).is_empty()
         &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
             == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
         &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did

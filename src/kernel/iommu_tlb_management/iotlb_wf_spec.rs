@@ -42,6 +42,31 @@ pub open spec fn iommu_tlb_wf(iommu_tlb: IommuTLB, root_table: IommuRootTable, p
         }
 }
 
+/// Each domain's paging-structure caches keep only present non-leaf entries of the IOMMU table that carries its DID, and a
+/// DID its anchor does not carry caches none. An attached table never clears a present non-leaf entry, so no lock exemption.
+// Proof dependency (confirmed): iommu_root_table_process_wf, process_iommu_table_wf.
+#[verifier::opaque]
+pub open spec fn iommu_structure_cache_wf(iommu_tlb: IommuTLB, root_table: IommuRootTable, iommu_table_map: IommuTableLockedMap) -> bool {
+    &&& forall|it: RwLockPageTableRoot| #![trigger iommu_table_map.spec_index(it).view().did]
+        iommu_table_map.dom().contains(it) && iommu_table_map.spec_index(it).view().did is Some
+            ==> single_structure_cache_subset_of_present_iommu_table(iommu_tlb.structure_cache(iommu_table_map.spec_index(it).view().did->Some_0), iommu_table_map.spec_index(it).view())
+    &&& forall|did: VtdDomainId| #![trigger iommu_tlb.structure_cache(did)]
+        vtd_domain_id_valid(did) ==> {
+            let anchor = pci_bdf_of_did(did);
+            root_table.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) != Some(did) ==> iommu_tlb.structure_cache(did).is_empty()
+        }
+}
+
+/// `iommu_structure_cache_wf` at the IOMMU table `it` and at the DID `did`.
+pub proof fn iommu_structure_cache_wf_at(iommu_tlb: IommuTLB, root_table: IommuRootTable, iommu_table_map: IommuTableLockedMap, it: RwLockPageTableRoot, did: VtdDomainId)
+    requires iommu_structure_cache_wf(iommu_tlb, root_table, iommu_table_map),
+    ensures
+        iommu_table_map.dom().contains(it) && iommu_table_map.spec_index(it).view().did is Some
+            ==> single_structure_cache_subset_of_present_iommu_table(iommu_tlb.structure_cache(iommu_table_map.spec_index(it).view().did->Some_0), iommu_table_map.spec_index(it).view()),
+        vtd_domain_id_valid(did) && root_table.spec_index_iommu_did(pci_bdf_of_did(did).0, pci_bdf_of_did(did).1, pci_bdf_of_did(did).2) != Some(did)
+            ==> iommu_tlb.structure_cache(did).is_empty(),
+{ reveal(iommu_structure_cache_wf); }
+
 /// The DID domain of IOMMU table `it` caches only present leaves of `it`: the write holder's flush establishes it and the
 /// step boundary keeps it.  A table without a DID constrains nothing; its domain-emptiness lives in `iommu_tlb_wf`.
 /// Opaque: callers forward it unchanged; only the flush producer and the EOF closures that relate it to `iommu_tlb_wf` reveal it.

@@ -354,11 +354,15 @@ pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK
 {
     let anchor = pci_bdf_of_did(did);
     let filled = single_tlb_union(pre.iommu_tlb.spec_index(did), added);
+    let cache = post.iommu_tlb.structure_cache(did);
     if pre.irt.view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) != Some(did) {
         assert(filled.tlb_4k =~= pre.iommu_tlb.spec_index(did).tlb_4k);
         assert(filled.tlb_2m =~= pre.iommu_tlb.spec_index(did).tlb_2m);
         assert(filled.tlb_1g =~= pre.iommu_tlb.spec_index(did).tlb_1g);
+        assert(cache.pml4e.dom() =~= pre.iommu_tlb.structure_cache(did).pml4e.dom() && cache.pdpte.dom() =~= pre.iommu_tlb.structure_cache(did).pdpte.dom()
+            && cache.pde.dom() =~= pre.iommu_tlb.structure_cache(did).pde.dom());
     }
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); };
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
@@ -374,6 +378,7 @@ pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, pos
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); pre.irt.view().wf_context_entry_at(bdf.0, bdf.1, bdf.2); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
 }
 
 pub proof fn kernel_k_trap_enter_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers)
