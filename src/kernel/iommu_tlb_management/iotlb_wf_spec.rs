@@ -67,6 +67,70 @@ pub proof fn iommu_structure_cache_wf_at(iommu_tlb: IommuTLB, root_table: IommuR
             ==> iommu_tlb.structure_cache(did).is_empty(),
 { reveal(iommu_structure_cache_wf); }
 
+/// No IOMMU cache names table page `page`: no domain's paging-structure caches keep an L4, L3, or L2 entry pointing at it,
+/// and no cached context entry has it as its root.
+pub open spec fn iommu_page_unreferenced_by_iommu_caches(iommu_tlb: IommuTLB, page: PageMapPtr) -> bool {
+    &&& forall|did: VtdDomainId| #![trigger iommu_tlb.structure_cache(did)]
+        vtd_domain_id_valid(did) ==> {
+            let cache = iommu_tlb.structure_cache(did);
+            &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
+            &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
+            &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
+        }
+    &&& forall|bdf: PciBdf| #![trigger iommu_tlb.context_cache().dom().contains(bdf)]
+        iommu_tlb.context_cache().dom().contains(bdf) ==> iommu_tlb.context_cache()[bdf].0 != page
+}
+
+/// A page of an IOMMU table without a DID is named by no IOMMU cache: a non-empty paging-structure cache belongs to an
+/// active DID, whose table holds the cached entries and is another table with a disjoint page closure, and a cached
+/// context entry is a present context entry whose root is the root of a table with a DID.
+pub proof fn iommu_table_without_did_implies_page_unreferenced_by_iommu_caches(k: KernelK, it: RwLockPageTableRoot, page: PageMapPtr)
+    requires
+        k.inv(),
+        k.it_mp.dom().contains(it),
+        k.it_mp.spec_index(it).view().page_closure().contains(page),
+        k.it_mp.spec_index(it).view().did is None,
+    ensures iommu_page_unreferenced_by_iommu_caches(k.iommu_tlb, page),
+{
+    broadcast use iommu_table_without_did_implies_page_unreferenced_by_iommu_caches_at;
+    reveal(IommuTLB::inv); reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf);
+}
+
+/// Point form of `iommu_table_without_did_implies_page_unreferenced_by_iommu_caches` at one DID: its paging-structure caches
+/// name no page of the table, and when its anchor B/D/F carries it, the anchor's root is no such page. A cached context
+/// entry is present with a valid DID whose anchor carries it and has the same root, so both halves trigger on the DID.
+pub broadcast proof fn iommu_table_without_did_implies_page_unreferenced_by_iommu_caches_at(k: KernelK, it: RwLockPageTableRoot, page: PageMapPtr, did: VtdDomainId)
+    requires
+        k.inv(),
+        k.it_mp.dom().contains(it),
+        k.it_mp.spec_index(it).view().page_closure().contains(page),
+        k.it_mp.spec_index(it).view().did is None,
+    ensures
+        #![trigger vtd_domain_id_valid(did), k.it_mp.spec_index(it).view().page_closure().contains(page)]
+        vtd_domain_id_valid(did) ==> {
+            let cache = k.iommu_tlb.structure_cache(did);
+            let anchor = pci_bdf_of_did(did);
+            &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
+            &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
+            &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
+            &&& k.irt.view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did) ==> k.irt.view().spec_index_iommu_root(anchor.0, anchor.1, anchor.2) != Some(page)
+        },
+{
+    let irt = k.irt.view();
+    let anchor = pci_bdf_of_did(did);
+    iommu_table_pages_wf_closure_page_at(k.it_mp, k.pg_arr, it, page);
+    iommu_structure_cache_wf_at(k.iommu_tlb, irt, k.it_mp, it, did);
+    if vtd_domain_id_valid(did) && irt.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did) {
+        let other = k.prc_mp.spec_index(irt.spec_index_owner(anchor.0, anchor.1, anchor.2)->Some_0).view().iommu_table->Some_0;
+        let table = k.it_mp.spec_index(other).view();
+        irt.wf_context_entry_at(anchor.0, anchor.1, anchor.2); iommu_root_table_process_wf_function_at(irt, k.prc_mp, k.it_mp, anchor.0, anchor.1, anchor.2);
+        iommu_structure_cache_wf_at(k.iommu_tlb, irt, k.it_mp, other, did);
+        iommu_table_perms_wf_at(k.it_mp, other);
+        reveal(IommuTable::wf_l4); reveal(IommuTable::wf_l3); reveal(IommuTable::wf_l2);
+        if table.page_closure().contains(page) { iommu_table_pages_wf_closure_page_at(k.it_mp, k.pg_arr, other, page); }
+    }
+}
+
 /// The DID domain of IOMMU table `it` caches only present leaves of `it`: the write holder's flush establishes it and the
 /// step boundary keeps it.  A table without a DID constrains nothing; its domain-emptiness lives in `iommu_tlb_wf`.
 /// Opaque: callers forward it unchanged; only the flush producer and the EOF closures that relate it to `iommu_tlb_wf` reveal it.

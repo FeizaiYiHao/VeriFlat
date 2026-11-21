@@ -59,4 +59,26 @@ pub proof fn iommu_root_table_process_wf_table_at(irt: IommuRootTable, prc_mp: P
             &&& irt.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did)
         },
 { reveal(iommu_root_table_process_wf); }
+
+/// `iommu_root_table_process_wf` at the B/D/F `(bus, device, function)`: a present context entry names its owner's IOMMU
+/// table, its root, and its DID.
+pub proof fn iommu_root_table_process_wf_function_at(irt: IommuRootTable, prc_mp: ProcessLockedMap, it_mp: IommuTableLockedMap, bus: usize, device: usize,
+    function: usize)
+    requires
+        iommu_root_table_process_wf(irt, prc_mp, it_mp),
+        pci_bdf_valid(bus, device, function),
+    ensures
+        irt.spec_index_iommu_root(bus, device, function) is Some ==> {
+            let prc_ptr = irt.spec_index_owner(bus, device, function)->Some_0;
+            let it_ptr = prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0;
+            &&& irt.spec_index_owner(bus, device, function) is Some
+            &&& prc_mp.dom().contains(prc_ptr)
+            &&& prc_mp.spec_index(prc_ptr).view().iommu_table is Some
+            &&& it_mp.dom().contains(it_ptr)
+            &&& it_mp.spec_index(it_ptr).view().proc_ptr == prc_ptr
+            &&& irt.spec_index_iommu_root(bus, device, function).unwrap() == it_mp.spec_index(it_ptr).view().cr3
+            &&& it_mp.spec_index(it_ptr).view().did is Some
+            &&& irt.spec_index_iommu_did(bus, device, function) == it_mp.spec_index(it_ptr).view().did
+        },
+{ reveal(iommu_root_table_process_wf); }
 }
