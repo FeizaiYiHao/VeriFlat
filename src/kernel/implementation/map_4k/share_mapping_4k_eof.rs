@@ -208,18 +208,11 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     let new_source = whole_pagetable(post.pt_mp, post.pt_lower.view(), source_pagetable);
     let old_target = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable);
     let new_target = whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable);
-    let source_process = pre.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr;
     let expected = share_mapping_4k_target_map_with_shared_prefix(old_source.mapping_4k(), old_target.mapping_4k(), source_range, target_range, i);
     &&& forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, pre_steps.view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, post_steps.view())
     &&& post_steps.view().len() == pre_steps.view().len() + i
     &&& forall|j: int| #![trigger post_steps.view()[j]] 0 <= j < pre_steps.view().len() ==> post_steps.view()[j] == pre_steps.view()[j]
     &&& forall|j: int| #![trigger post_steps.view()[j]] pre_steps.view().len() <= j < post_steps.view().len() ==> share_4k_range_step(post_steps.view()[j], cpu_id)
-    &&& i > 0 ==> {
-        &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
-        &&& if typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
-            post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: pre_lctx.cpu_id() })
-        } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(pre_lctx.cpu_id()) }
-    }
     &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> post.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view()
     &&& post.ctn_mp.spec_index(target_container).view_rodata() == pre.ctn_mp.spec_index(target_container).view_rodata()
     &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, pre_lctx)
@@ -353,13 +346,6 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         share_4k_leaf_step_pre(post_steps.view().last().old_u, cpu_id),
         share_4k_leaf_step(post_steps.view().last().old_u, post_steps.view().last().new_u, cpu_id),
         index_valid(NUM_CPUS, mid_lctx.cpu_id()) ==> post.cpu_hw_cr3_pcid[mid_lctx.cpu_id() as int].view() == mid.cpu_hw_cr3_pcid[mid_lctx.cpu_id() as int].view(),
-        {
-            let source_process = mid.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr;
-            &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
-            &&& if typed_lock_map_contains_mode(mid_lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
-                post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: mid_lctx.cpu_id() })
-            } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(mid_lctx.cpu_id()) }
-        },
         held_pages_unchanged(mid.pg_arr, post.pg_arr, mid_lctx),
         held_containers_unchanged(mid.ctn_mp, post.ctn_mp, mid_lctx),
         held_processes_unchanged(mid.prc_mp, post.prc_mp, mid_lctx),
