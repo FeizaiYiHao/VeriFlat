@@ -120,9 +120,10 @@ pub(crate) fn kill_retire_hold_roots(
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
         let pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
-        assert(page_ptr_valid(target) && krnl.pg_arr.spec_index(page_ptr2page_index(target)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })) by { process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target); };
+        assert(page_ptr_valid(target)
+            && krnl.pg_arr.spec_index(page_ptr2page_index(target)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })) by { process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target); };
         pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
-        assert(pt.page_closure().contains(pt.cr3())) by { reveal(PageTableHigher::wf_l4); };
+        assert(pt.page_closure().contains(pt.cr3())) by { pt.higher.wf_l4_cr3_at(); };
         pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, pt.cr3());
         if let Some(it) = iommu_table {
             let it_view = krnl.it_mp.spec_index(it).view();

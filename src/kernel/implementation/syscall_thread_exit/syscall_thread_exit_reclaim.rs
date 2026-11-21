@@ -93,7 +93,8 @@ pub(super) fn thread_exit_reclaim(
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + thread_exit_reclaim_step_bound(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
-        thread_exit_reclaim_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + thread_exit_reclaim_step_bound(),
+        thread_exit_reclaim_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id)
+            <= thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + thread_exit_reclaim_step_bound(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
@@ -114,7 +115,8 @@ pub(super) fn thread_exit_reclaim(
         final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread(),
         final(krnl).prc_mp.spec_index(prc_ptr).being_killed() == old(krnl).prc_mp.spec_index(prc_ptr).being_killed(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { quota_4k: 0, quota_2m: 0, quota_1g: 0, syscall_progress: Ghost(Some(SyscallProgress::ThreadExitZombie)), exited: Ghost(true), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view()
+            == (Thread { quota_4k: 0, quota_2m: 0, quota_1g: 0, syscall_progress: Ghost(Some(SyscallProgress::ThreadExitZombie)), exited: Ghost(true), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
 {
@@ -342,9 +344,9 @@ fn thread_exit_reclaim_lock_table(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_lock_table_step_pre_from_k(&lock_k, &lock_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable);
-            thread_exit_lock_table_step_from_k(&lock_k, &locked_k, &lock_lctx, &table_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable);
-            kernel_cpu_nonlock_fields_unchanged_for_equal(locked_k.cpu_arr, stale_k.cpu_arr); kernel_cpu_tlb_updated_implies_u_step(&locked_k, &stale_k); kernel_u_domains_projection(&locked_k); kernel_u_domains_projection(&stale_k);
-            thread_exit_trace_push(&*steps, lock_before, start, pre, kernel_k_to_kernel_u(lock_k), kernel_k_to_kernel_u(locked_k), cpu_id);
+            kernel_cpu_nonlock_fields_unchanged_for_equal(locked_k.cpu_arr, stale_k.cpu_arr); kernel_cpu_tlb_updated_implies_u_step(&locked_k, &stale_k);
+            thread_exit_lock_table_step_from_k(&lock_k, &locked_k, &stale_k, &lock_lctx, &table_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable);
+            thread_exit_trace_push(&*steps, lock_before, start, pre, kernel_k_to_kernel_u(lock_k), kernel_k_to_kernel_u(stale_k), cpu_id);
         };
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
     }

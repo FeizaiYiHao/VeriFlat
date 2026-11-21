@@ -76,7 +76,9 @@ pub(crate) proof fn kill_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].syscall_progress == kill_scope_progress(scope, target, stage),
         scope is Subtree ==> kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container,
-        scope matches KillScope::Container { container } ==> kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == container && kernel_k_to_kernel_u(*krnl).container_map[container].uppertree_seq.contains(kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container),
+        scope matches KillScope::Container { container }
+            ==> kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == container
+                && kernel_k_to_kernel_u(*krnl).container_map[container].uppertree_seq.contains(kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container),
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thrd_ptr, None);
     kernel_cpu_projection_at(krnl, cpu_id); kernel_process_projection_at(krnl, target);
@@ -111,7 +113,8 @@ pub(crate) proof fn kill_result_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_
             &&& process.being_killed() ==> result is ErrorProcessKilled
             &&& !process.being_killed() && krnl.thrd_mp.spec_index(thrd_ptr).being_killed() ==> result is ErrorThreadKilled
             &&& !process.being_killed() && !krnl.thrd_mp.spec_index(thrd_ptr).being_killed() && child_index >= children.len() ==> result is ErrorInvalidChild
-            &&& !process.being_killed() && !krnl.thrd_mp.spec_index(thrd_ptr).being_killed() && child_index < children.len() && krnl.prc_mp.dom().contains(children[child_index as int]) && krnl.prc_mp.spec_index(children[child_index as int]).being_killed() ==> result is ErrorProcessKilled
+            &&& !process.being_killed() && !krnl.thrd_mp.spec_index(thrd_ptr).being_killed() && child_index < children.len()
+                && krnl.prc_mp.dom().contains(children[child_index as int]) && krnl.prc_mp.spec_index(children[child_index as int]).being_killed() ==> result is ErrorProcessKilled
         }),
 {
     let children = krnl.prc_mp.spec_index(prc_ptr).view().children.view();
@@ -697,10 +700,11 @@ pub(crate) proof fn kill_finish_step_from_u(pre: KernelU, cleared: KernelU, post
     assert(post.thread_map =~= pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre.thread_map[thrd_ptr] }));
 }
 
-/// Write-locking the page table `pagetable` of the empty live target from `pre` to `post`, and recording that nothing is
-/// flushed yet, is a middle step.
+/// Write-locking the page table `pagetable` of the empty live target from `pre` to `post`, recording that nothing is flushed
+/// yet, and then listing cpus stale for the table (`stale`), is a middle step.
 pub(crate) proof fn kill_lock_table_step_from_k(
-    pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, pagetable: RwLockPageTableRoot, scope: KillScope,
+    pre: &KernelK, post: &KernelK, stale: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, pagetable: RwLockPageTableRoot,
+    scope: KillScope,
 )
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
@@ -735,8 +739,13 @@ pub(crate) proof fn kill_lock_table_step_from_k(
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, KillStage::Reclaim { flushed: false }),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
-    ensures kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
-{ kernel_pagetable_write_locked_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, thrd_ptr); reveal(kill_process_lock_table_step); }
+        stale.cpu_tlb == post.cpu_tlb,
+        kernel_k_to_kernel_u(*stale) == (KernelU { cpu_tlb: stale.cpu_tlb.view(), ..kernel_k_to_kernel_u(*post) }),
+    ensures kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*stale) }, cpu_id),
+{
+    kernel_pagetable_write_locked_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, thrd_ptr); kernel_u_domains_projection(post);
+    reveal(kill_process_lock_table_step);
+}
 
 /// Dropping every 4K, 2M and 1G mapping and every window lock under the root entry `l4i` from the target's write-locked page
 /// table before the flush, and nothing else, is a middle step.
@@ -1215,6 +1224,7 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
             &&& steps[before.len() + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
             &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
+            &&& hidden[k].1.pt_mp.dom().contains(pagetable)
             &&& typed_lock_maps_aligned(&hidden[k].1, &lctx)
             &&& held_cpus_unchanged(entry.cpu_arr, hidden[k].1.cpu_arr, &lctx) && held_containers_unchanged(entry.ctn_mp, hidden[k].1.ctn_mp, &lctx)
             &&& held_processes_unchanged(entry.prc_mp, hidden[k].1.prc_mp, &lctx) && held_threads_unchanged(entry.thrd_mp, hidden[k].1.thrd_mp, &lctx)
@@ -1274,7 +1284,8 @@ pub(crate) proof fn kill_trace_from_refund(
     ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
     reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace); reveal(kill_process_step_pre);
-    assert forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() implies kill_process_refund_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id) by { kill_refund_step_from_u(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id); };
+    assert forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len()
+        implies kill_process_refund_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id) by { kill_refund_step_from_u(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id); };
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int) + steps.view().subrange(before.len() as int, steps.view().len() as int));
 }
 

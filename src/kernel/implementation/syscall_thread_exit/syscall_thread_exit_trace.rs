@@ -407,11 +407,11 @@ pub(super) proof fn thread_exit_lock_table_step_pre_from_k(
 }
 
 /// Write-locking the page table `pagetable` of the running last thread's process `prc_ptr` and recording unflushed reclaim
-/// progress from `pre` to `post`, where `lctx` holds the cpu and the thread in `pre` and `post_lctx` also the page table
-/// in `post`, is the lock-table step on their projections.
+/// progress from `pre` to `post`, then listing cpus stale for the table (`stale`), where `lctx` holds the cpu and the thread
+/// in `pre` and `post_lctx` also the page table in `post`, is the lock-table step on the projections of `pre` and `stale`.
 pub(super) proof fn thread_exit_lock_table_step_from_k(
-    pre: &KernelK, post: &KernelK, lctx: &LocalContext, post_lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
-    pagetable: RwLockPageTableRoot,
+    pre: &KernelK, post: &KernelK, stale: &KernelK, lctx: &LocalContext, post_lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
+    thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
 )
     requires
         pre.inv(),
@@ -435,8 +435,11 @@ pub(super) proof fn thread_exit_lock_table_step_from_k(
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_mp.spec_index(pagetable).view().higher == pre.pt_mp.spec_index(pagetable).view().higher,
-    ensures thread_exit_lock_table_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+        stale.cpu_tlb == post.cpu_tlb,
+        kernel_k_to_kernel_u(*stale) == (KernelU { cpu_tlb: stale.cpu_tlb.view(), ..kernel_k_to_kernel_u(*post) }),
+    ensures thread_exit_lock_table_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*stale), cpu_id),
 {
+    kernel_u_domains_projection(post);
     post.thrd_mp.typed_lock_map_aligned_write_at(post_lctx.thread_lock_map(), post_lctx.thread_id(), thrd_ptr);
     post.pt_mp.typed_lock_map_aligned_write_at(post_lctx.pagetable_lock_map(), post_lctx.thread_id(), pagetable);
     assert(post.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(post_lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
@@ -611,6 +614,7 @@ pub(super) proof fn thread_exit_table_hidden_steps_implies_partial_trace(
             &&& steps[before_len + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
             &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
+            &&& hidden[k].1.pt_mp.dom().contains(pagetable)
             &&& typed_lock_maps_aligned(&hidden[k].1, lctx)
             &&& held_cpus_unchanged(entry.cpu_arr, hidden[k].1.cpu_arr, lctx) && held_processes_unchanged(entry.prc_mp, hidden[k].1.prc_mp, lctx)
             &&& held_threads_unchanged(entry.thrd_mp, hidden[k].1.thrd_mp, lctx)
@@ -1115,7 +1119,8 @@ pub(super) proof fn thread_exit_trace_from_tlb_flush(
     reveal(thread_exit_partial_trace); reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_tlb_flush_step);
     let trace = steps.view().subrange(start, steps.view().len() as int);
     let old_trace = before.subrange(start, before.len() as int);
-    assert forall|j: int| #![trigger trace[j]] 0 < j < trace.len() implies thread_exit_middle_step(trace[j], cpu_id) by { if start + j < before.len() { assert(trace[j] == old_trace[j]); } else { assert(trace[j] == steps.view()[start + j]); } };
+    assert forall|j: int| #![trigger trace[j]] 0 < j < trace.len()
+        implies thread_exit_middle_step(trace[j], cpu_id) by { if start + j < before.len() { assert(trace[j] == old_trace[j]); } else { assert(trace[j] == steps.view()[start + j]); } };
 }
 
 /// Quota refunds to the container chain of the running last thread after the flush is recorded, pushed after the
@@ -1151,10 +1156,12 @@ pub(super) proof fn thread_exit_trace_from_refund(
         thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
 {
     reveal(thread_exit_partial_trace); reveal(thread_exit_reclaim_step_pre);
-    assert forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() implies thread_exit_refund_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id) by { thread_exit_refund_step_from_u(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id); };
+    assert forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len()
+        implies thread_exit_refund_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id) by { thread_exit_refund_step_from_u(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id); };
     let trace = steps.view().subrange(start, steps.view().len() as int);
     let old_trace = before.subrange(start, before.len() as int);
-    assert forall|j: int| #![trigger trace[j]] 0 < j < trace.len() implies thread_exit_middle_step(trace[j], cpu_id) by { if start + j < before.len() { assert(trace[j] == old_trace[j]); } else { assert(trace[j] == steps.view()[start + j]); } };
+    assert forall|j: int| #![trigger trace[j]] 0 < j < trace.len()
+        implies thread_exit_middle_step(trace[j], cpu_id) by { if start + j < before.len() { assert(trace[j] == old_trace[j]); } else { assert(trace[j] == steps.view()[start + j]); } };
 }
 
 /// Growing the 4K, 2M, or 1G quota of the running thread's container or of one of its ancestors, and nothing else, is a refund step.
