@@ -255,7 +255,6 @@ pub(super) open spec fn downgrade_pagetable_eof_transition_framing(pre: KernelK,
     &&& post == (KernelK { pt_mp: post.pt_mp, ..pre })
     &&& post.pt_mp.perms_wf()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
-    &&& pre.pt_mp.spec_index(pagetable_ptr).wlocked_by_thread(thread_id)
     &&& post.pt_mp.spec_index(pagetable_ptr).locking_thread() == RwLockState::Read {
         reader_map: Map::empty().insert(thread_id, pre.pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id) }
     &&& post.pt_mp.spec_index(pagetable_ptr).inv()
@@ -272,6 +271,7 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(pagetable_ptr),
+        pre.pt_mp.spec_index(pagetable_ptr).wlocked_by_thread(thread_id),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).leaves_present(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
