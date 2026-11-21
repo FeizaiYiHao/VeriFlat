@@ -134,7 +134,8 @@ pub(super) proof fn unmap_4k_range_eol_step(pre: KernelK, mid: KernelK, post: Ke
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct == post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
-        forall|depth: int| #![trigger indirect[depth]] 0 <= depth < post.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect[depth] == post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect[depth]] 0 <= depth < post.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect[depth] == post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         held_pagetables_unchanged(mid.pt_mp, post.pt_mp, mid_lctx),
         !whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(i as int)),
         forall|w: WindowVa| #![trigger mid_lctx.pagetable_window_lock_map().dom().contains((pagetable, w))] mid_lctx.pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
