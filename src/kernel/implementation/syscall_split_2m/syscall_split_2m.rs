@@ -34,7 +34,7 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         split_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, n, ret),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
 {
-    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); }
+    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     if n > usize::MAX / 512 {
         proof {
             enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);

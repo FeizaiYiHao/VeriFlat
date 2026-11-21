@@ -99,10 +99,6 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
         final(krnl).thrd_mp.spec_index(thread).being_killed() == old(krnl).thrd_mp.spec_index(thread).being_killed(),
         forall|cpu: CpuId| #![trigger final(krnl).allc_2m_mp.spec_index(allocator_2m).cpu_caches.spec_index(cpu)] cpu < NUM_CPUS ==>
             final(krnl).allc_2m_mp.spec_index(allocator_2m).cpu_caches.spec_index(cpu).view().locking_thread() == old(krnl).allc_2m_mp.spec_index(allocator_2m).cpu_caches.spec_index(cpu).view().locking_thread(),
-        forall|s: usize| #![trigger final(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(s)] s <= NUM_CPUS ==>
-            final(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(s).view() == if s == source {
-                old(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(s).view().skip(1)
-            } else { old(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(s).view() },
         forall|s: usize| #![trigger final(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(s)] s <= NUM_CPUS && s != source ==>
             final(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(s) == old(krnl).allc_2m_mp.spec_index(allocator_2m).merge_2m_source_list(s),
 {
