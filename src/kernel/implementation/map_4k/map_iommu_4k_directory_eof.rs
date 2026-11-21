@@ -109,7 +109,6 @@ proof fn install_staged_4k_iommu_table_page_eof_iommu_table_pages(
         post.subsystems_inv(),
     ensures
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
@@ -118,7 +117,6 @@ proof fn install_staged_4k_iommu_table_page_eof_iommu_table_pages(
     reveal(install_staged_4k_iommu_table_page_eof_transition_framing);
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
         assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
         reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf);
@@ -143,7 +141,6 @@ proof fn install_staged_4k_iommu_table_page_eof_memory_management_inv(
         pre.thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k >= 1,
         post.subsystems_inv(),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),

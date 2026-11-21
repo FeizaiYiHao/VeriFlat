@@ -210,7 +210,7 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages_wf(
     pagetable_ptr: RwLockPageTableRoot,
 )
     requires
-        pre.inv(),
+        pagetable_pages_wf(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr),
         install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
         page_ptr_valid(pg_ptr),
         pre.thrd_mp.dom().contains(quota_thrd_ptr),
@@ -253,7 +253,6 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
     ensures
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
@@ -265,7 +264,6 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
     install_staged_4k_page_table_page_eof_page_mappings_1g(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_pagetable_fields_eq(post.prc_mp, pre.pt_mp, post.pt_mp); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
         assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
         reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
@@ -309,7 +307,6 @@ proof fn install_staged_4k_page_table_page_eof_memory_management_inv(
         post.subsystems_inv(),
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),

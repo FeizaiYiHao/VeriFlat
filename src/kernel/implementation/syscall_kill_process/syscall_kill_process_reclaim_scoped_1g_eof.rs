@@ -175,7 +175,6 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_page_relations(
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
     reveal(kill_reclaim_held_1g_page_scoped_eof_transition_framing);
@@ -188,7 +187,6 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_page_relations(
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
 

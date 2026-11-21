@@ -154,11 +154,6 @@ pub fn install_staged_4k_iommu_table_page(
         iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
         krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
     }
-    assert(krnl.it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_1g_l3(indices.0, indices.1) is None
-        && krnl.it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None) by {
-        iommu_table_no_huge_leaf_wf_at(krnl.it_mp, iommu_table_ptr);
-        krnl.it_mp.spec_index(iommu_table_ptr).view().wf_mapping_1g_at(indices.0, indices.1); krnl.it_mp.spec_index(iommu_table_ptr).view().wf_mapping_2m_at(indices.0, indices.1, indices.2);
-    };
 
     let parent_page_map_ptr;
     {
