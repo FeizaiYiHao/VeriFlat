@@ -76,4 +76,4 @@ global layout PageTableRwLock is size == 2176, align == 64;
 global layout PcidAllocatorRwLock is size == 32776, align == 8;
 }
 
-pub use kernel::implementation::mmap_4k_lock_current_thread::mmap_4k_lock_current_thread;
+pub use kernel::implementation::mmap_4k_lock_current_thread::{mmap_4k_lock_current_thread, mmap_4k_range_l2_bounds, mmap_4k_unlock_and_finish, mmap_4k_unlock_read_rejected};

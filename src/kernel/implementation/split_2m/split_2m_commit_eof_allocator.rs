@@ -3,8 +3,6 @@ use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::split_2m_commit_spec::*;
-#[cfg(verus_keep_ghost)]
-use super::split_2m_entry_points::*;
 
 verus! {
 pub proof fn split_2m_commit_eof_implies_allocator_global_pool_4k_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
@@ -425,6 +423,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_quota_wf(pre: KernelK, post: 
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
+        pre.thrd_mp.spec_index(thread).view().quota_4k <= usize::MAX - 512,
         pre.allc_4k_mp.dom().contains(allocator_4k),
         pre.allc_2m_mp.dom().contains(allocator_2m),
         pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
@@ -434,7 +433,6 @@ pub proof fn split_2m_commit_eof_implies_allocator_quota_wf(pre: KernelK, post: 
         container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(split_2m_commit_eof_transition_framing);
-        thread_quota_4k_implies_split_quota_capacity(&pre, thread, allocator_4k);
         reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); reveal(container_allocator_wf);
         one_member_changed_implies_thread_effective_quota_4k_fold_sum_changed_by_forall(thread, 512); unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall();
         unchanged_thread_pending_4k_implies_per_container_pending_4k_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
@@ -457,6 +455,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_and_quota_wf(pre: KernelK, po
         pre.thrd_mp.dom().contains(thread),
         pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
+        pre.thrd_mp.spec_index(thread).view().quota_4k <= usize::MAX - 512,
         pre.allc_4k_mp.dom().contains(allocator_4k),
         pre.allc_2m_mp.dom().contains(allocator_2m),
         pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,

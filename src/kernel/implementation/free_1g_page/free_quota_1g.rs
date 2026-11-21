@@ -4,7 +4,8 @@ use crate::*;
 use super::free_quota_1g_eof::{return_free_quota_1g_eof, return_free_quota_1g_eof_transition_framing};
 
 verus! {
-pub fn return_free_quota_1g(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr, counter: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, thread_perm: Tracked<&LockPerm>, quota_perm: Tracked<&LockPerm>)
+pub fn return_free_quota_1g(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr, counter: &mut usize,
+    Tracked(lctx): Tracked<&mut LocalContext>, thread_perm: Tracked<&LockPerm>, quota_perm: Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -14,7 +15,8 @@ pub fn return_free_quota_1g(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, owner
         old(krnl).ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
         old(krnl).ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
         depth <= old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth,
-        if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container } else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+        if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container }
+            else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
         old(krnl).allc_1g_mp.spec_index(allc_ptr).quota.is_init(),
         *old(counter) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
@@ -42,7 +44,8 @@ pub fn return_free_quota_1g(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, owner
         final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
             indirect_free_quota_pending_1g: final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { 0usize } else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() },
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view()
+            == if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { 0usize } else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() },
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()
             == if depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, 0usize) }
             else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() },
@@ -57,7 +60,8 @@ pub fn return_free_quota_1g(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, owner
         *final(krnl) == (KernelK { thrd_mp: final(krnl).thrd_mp, allc_1g_mp: final(krnl).allc_1g_mp, ..*old(krnl) }),
         kernel_container_quota_1g_changed(old(krnl), final(krnl), owner, *old(counter) as int),
 {
-    assert(krnl.allc_1g_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view()) by { kernel_inv_implies_thread_pending_1g_quota_bounded(krnl, thrd_ptr, owner, depth); };
+    assert(krnl.allc_1g_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view())
+        by { kernel_inv_implies_thread_pending_1g_quota_bounded(krnl, thrd_ptr, owner, depth); };
     let amount = *counter;
     assert(krnl.allc_1g_mp.perms_wf() && krnl.allc_1g_mp.dom().contains(allc_ptr)) by { allocator_perms_wf_map(krnl.allc_1g_mp); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); };
     thread_map_clear_free_quota_pending_1g(&mut krnl.thrd_mp, thrd_ptr, depth, counter, Tracked(&*lctx), thread_perm);

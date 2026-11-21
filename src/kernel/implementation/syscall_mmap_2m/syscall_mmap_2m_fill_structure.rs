@@ -6,36 +6,6 @@ use super::syscall_mmap_2m_spec::mmap_2m_range_step;
 use super::syscall_mmap_2m_trace::mmap_2m_range_steps_from_directory;
 
 verus! {
-/// The L2 bounds `(lo, hi)` of the 2M windows of `cover` below the L3 entry of its page `cur_va`: such a window covers `cover`
-/// exactly when its L2 index lies in `lo..=hi`.
-fn mmap_2m_range_l2_bounds(cover: &VaRange4K, cur_va: VAddr, cur: (L4Index, L3Index, L2Index, L1Index), start_indices: (L4Index, L3Index, L2Index, L1Index),
-    end_indices: (L4Index, L3Index, L2Index, L1Index)) -> (ret: (L2Index, L2Index))
-    requires
-        cover.wf(),
-        cover.len > 0,
-        spec_va_4k_valid(cur_va),
-        cover.start <= cur_va <= cover.view()[cover.len - 1],
-        cur == spec_va2index(cur_va),
-        start_indices == spec_va2index(cover.start),
-        end_indices == spec_va2index(cover.view()[cover.len - 1]),
-    ensures
-        ret.0 == (if cur.0 == start_indices.0 && cur.1 == start_indices.1 { start_indices.2 } else { 0usize }),
-        ret.1 == (if cur.0 == end_indices.0 && cur.1 == end_indices.1 { end_indices.2 } else { 511usize }),
-        pei_valid(ret.0) && pei_valid(ret.1),
-        ret.0 <= cur.2 <= ret.1,
-        forall|w: WindowVa| #![trigger va_range_2m_windows(*cover).contains(w)] w.wf() && spec_v2l4index(w.va) == cur.0 && spec_v2l3index(w.va) == cur.1
-            ==> va_range_2m_windows(*cover).contains(w) == (ret.0 <= spec_v2l2index(w.va) <= ret.1),
-{
-    let lo = if cur.0 == start_indices.0 && cur.1 == start_indices.1 { start_indices.2 } else { 0 };
-    let hi = if cur.0 == end_indices.0 && cur.1 == end_indices.1 { end_indices.2 } else { 511 };
-    proof {
-        broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
-        spec_va_4k_valid_index_roundtrip(cur_va); spec_va_4k_valid_index_roundtrip(cover.start); spec_va_4k_valid_index_roundtrip(cover.view()[cover.len - 1]);
-        spec_index2va_le_implies_4k_indices_lex_le(start_indices, cur); spec_index2va_le_implies_4k_indices_lex_le(cur, end_indices);
-    }
-    (lo, hi)
-}
-
 /// Under the pagetable's big write lock, for page `i` of `range`: installs its L4 directory if missing and then its L3 directory
 /// if missing, recording one directory step per installed page. A new L2 page starts with the range's windows under it held,
 /// whose perms join `window_perms`, so the held windows stay exactly the range's windows with an L2 page.
@@ -232,7 +202,7 @@ fn mmap_2m_fill_page_directories(
         proof { mmap_2m_range_steps_from_directory(&*steps, before, old(steps).view().len() as int, cpu_id); }
     }
     if !l3_present {
-        let (lo, hi) = mmap_2m_range_l2_bounds(cover, cur_va, cur, start_indices, end_indices);
+        let (lo, hi) = mmap_4k_range_l2_bounds(cover, cur_va, cur, start_indices, end_indices);
         proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher.wf_mapping_1g_at(cur.0, cur.1); }
         let ghost before = steps.view();
         let Tracked(minted) = install_one_mmap_2m_directory_page(

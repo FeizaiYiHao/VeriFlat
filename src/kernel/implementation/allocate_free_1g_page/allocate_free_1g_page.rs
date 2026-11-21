@@ -109,8 +109,6 @@ verus! {
             thread_effective_quota_1g_positive_implies_global_pool_1g_nonempty(&*krnl, ctn_ptr, alloc_ptr_1g, thrd_ptr);
         };
         let Tracked(pool_lock_perm) = krnl.wlock_allocator_global_pool_1g_ordered(alloc_ptr_1g, Tracked(&mut *lctx));
-        let ghost pool_krnl = *krnl;
-        let ghost pool_lctx = *lctx;
         let (pg_ptr, Tracked(page_lock_perm)) = pop_stage_1g_page(krnl, alloc_ptr_1g, thrd_ptr, ctn_ptr, Tracked(&mut *lctx), Tracked(&pool_lock_perm), Tracked(thread_lock_perm));
         krnl.wunlock_allocator_global_pool_1g(alloc_ptr_1g, Tracked(&mut *lctx), Tracked(pool_lock_perm));
         proof {

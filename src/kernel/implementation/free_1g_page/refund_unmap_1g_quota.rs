@@ -17,7 +17,8 @@ fn refund_unmap_1g_quota_level(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, ow
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
+            ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
         old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -71,15 +72,18 @@ fn refund_unmap_1g_quota_level(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, ow
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth) == 0,
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { 0usize } else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() },
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() == if depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, 0usize) }
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view()
+            == if depth == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { 0usize } else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() },
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()
+            == if depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth { old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, 0usize) }
             else { old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() },
         final(krnl).ctn_mp.dom().contains(owner),
         depth > 0 ==> final(krnl).ctn_mp.dom().contains(old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth - 1))
             && final(krnl).ctn_mp.spec_index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth - 1)).view_rodata().view().depth == depth - 1,
 {
     let mut counter = amount;
-    assert(krnl.allc_1g_mp.dom().contains(allc_ptr) && krnl.allc_1g_mp.spec_index(allc_ptr).wf()) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr); };
+    assert(krnl.allc_1g_mp.dom().contains(allc_ptr) && krnl.allc_1g_mp.spec_index(allc_ptr).wf())
+        by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr); };
     proof {
         let origin = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
         assert(steps.snapshot_k().ctn_mp.dom().contains(origin) && (owner == origin || steps.snapshot_k().ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(owner))) by {
@@ -117,7 +121,8 @@ fn refund_unmap_1g_quota_at_depth(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
+            ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
         old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -158,8 +163,10 @@ fn refund_unmap_1g_quota_at_depth(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
-        forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
+        forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id)
+            ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page)
+            ==> final(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
@@ -203,7 +210,8 @@ fn refund_unmap_1g_quota_at_depth(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr,
     if depth > 0 { parent.unwrap() } else { owner }
 }
 
-pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>)
+pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>)
     requires
         old(steps).snapshot_k() == *old(krnl),
         old(krnl).inv(),
@@ -212,7 +220,8 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
+            ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
@@ -222,7 +231,8 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
         thread_perm.view().thread_id() == old(lctx).thread_id(),
         thread_perm.view().lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         *old(direct) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
-        forall|d: int| #![trigger old(indirect)[d]] 0 <= d < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect)[d] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(d),
+        forall|d: int| #![trigger old(indirect)[d]] 0 <= d < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> old(indirect)[d] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(d),
         index_valid(NUM_CPUS, old(lctx).cpu_id()),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), old(lctx).cpu_id(), TypedLockMode::Write),
         old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
@@ -302,7 +312,8 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
     let thread_depth = thread.container_depth;
     let mut owner = thread.owning_container;
     assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx) && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx)
-        && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx) && held_pages_unchanged(krnl.pg_arr, krnl.pg_arr, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
+        && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx) && held_pages_unchanged(krnl.pg_arr, krnl.pg_arr, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx))
+            by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == thread_depth && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by {
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, owner);
     };
@@ -377,7 +388,8 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
             krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().len() == thread_depth,
             krnl.ctn_mp.dom().contains(owner),
             remaining > 0 ==> krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == remaining - 1,
-            remaining > 0 ==> (if remaining == thread_depth + 1 { owner == krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container } else { krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(remaining as int - 1) == owner }),
+            remaining > 0 ==> (if remaining == thread_depth + 1 { owner == krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container }
+                else { krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(remaining as int - 1) == owner }),
             remaining <= thread_depth ==> *direct == 0,
             forall|d: int| #![trigger indirect[d]] remaining <= d < thread_depth ==> indirect[d] == 0,
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),

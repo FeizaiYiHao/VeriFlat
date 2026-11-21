@@ -3,7 +3,6 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_mmap_2m_map_range::mmap_2m_map_leaves_and_finish;
 use super::syscall_mmap_2m_precheck::{mmap_2m_precheck, Mmap2mPrecheck};
-use super::syscall_mmap_2m_read_enter::mmap_2m_unlock_read_rejected;
 use super::syscall_mmap_2m_spec::*;
 use super::syscall_mmap_2m_trace::*;
 
@@ -14,7 +13,7 @@ verus! {
 /// a step when it is not.
 pub(super) fn mmap_2m_read_lock_windows_and_map(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange2M,
-    cover: &VaRange4K, alloc_ptr_4k: RwLockPageAllocatorPtr, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
+    cover: &VaRange4K, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
     Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pre_k): Ghost<KernelK>, Ghost(pre_lctx): Ghost<LocalContext>, Tracked(pagetable_lock_perm): Tracked<LockPerm>,
     Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 ) -> (ret: RetValueType)
@@ -31,7 +30,7 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, pre_k.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), &pre_k),
         !(range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range)),
-        *va_range == mmap_2m_syscall_va_range(va, range),
+        *va_range == spec_va_range_2m(va, range),
         va_range.wf(),
         va_range.len > 0,
         *cover == va_range.covering_4k_range(),
@@ -53,8 +52,6 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
         pre_k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
         pre_k.cpu_hw_cr3_pcid[cpu_id as int].view() == (pre_k.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pre_k.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         pre_k.ctn_mp.dom().contains(ctn_ptr),
-        pre_k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-        pre_k.allc_4k_mp.dom().contains(alloc_ptr_4k),
         pre_k.prc_mp.dom().contains(prc_ptr),
         !pre_k.prc_mp.spec_index(prc_ptr).view().zombie,
         pre_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
@@ -145,7 +142,7 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
     if !ready {
         krnl.unlock_pagetable_range_windows::<false>(pagetable_ptr, cover, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
         proof { assert_maps_equal!(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, unlocked_windows); }
-        mmap_2m_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),
+        mmap_4k_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),
             Tracked(cpu_lock_perm));
         proof { mmap_2m_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::ErrorVaInUse, Some(checked), found, at); }
         return RetValueType::ErrorVaInUse;
@@ -165,11 +162,10 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
             mmap_2m_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *va_range, Mmap2mPhase::Read);
         };
         process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         broadcast use spec_va_2m_valid_index_roundtrip;
     }
     let ghost entered = steps.view();
-    mmap_2m_map_leaves_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr,
+    mmap_2m_map_leaves_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr,
         Ghost(Mmap2mPhase::Read), Ghost(entered), Ghost(checked), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(cpu_lock_perm), Tracked(window_perms));
     RetValueType::Success
 }

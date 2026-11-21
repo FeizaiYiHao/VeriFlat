@@ -43,7 +43,8 @@ proof fn return_free_quota_1g_eof_memory_quota_1g(pre: KernelK, post: KernelK, t
         pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
         depth <= pre.thrd_mp.spec_index(thrd_ptr).view().container_depth,
-        if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container } else { pre.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+        if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container }
+            else { pre.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
         amount == pre.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth),
         pre.allc_1g_mp.spec_index(allc_ptr).quota.view().value + amount <= pre.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view(),
         thread_perms_wf(post.thrd_mp),
@@ -69,7 +70,8 @@ proof fn return_free_quota_1g_eof_memory(pre: KernelK, post: KernelK, thrd_ptr: 
         pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
         depth <= pre.thrd_mp.spec_index(thrd_ptr).view().container_depth,
-        if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container } else { pre.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+        if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container }
+            else { pre.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
         amount == pre.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth),
         pre.allc_1g_mp.spec_index(allc_ptr).quota.view().value + amount <= pre.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view(),
         thread_perms_wf(post.thrd_mp),
@@ -86,7 +88,8 @@ proof fn return_free_quota_1g_eof_memory(pre: KernelK, post: KernelK, thrd_ptr: 
             let thread = pre.thrd_mp.spec_index(thrd_ptr).view();
             container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr); container_thread_wf_uppertree_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr);
             if depth < thread.container_depth {
-                container_perms_wf_at(pre.ctn_mp, thread.owning_container); assert(thread.upper_container_seq.view().contains(owner));
+                container_perms_wf_at(pre.ctn_mp, thread.owning_container);
+                assert(thread.upper_container_seq.view().contains(owner)) by { thread.upper_container_seq.view().lemma_index_contains(depth as int); };
                 container_uppertree_seq_wf_at(pre.rt_ctn, pre.ctn_mp, thread.owning_container, owner);
             }
             reveal(container_kill_retire_wf); reveal(container_allocator_wf);
@@ -102,8 +105,10 @@ proof fn return_free_quota_1g_eof_memory(pre: KernelK, post: KernelK, thrd_ptr: 
             thread_staged_2m_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
         };
         return_free_quota_1g_eof_memory_quota_1g(pre, post, thrd_ptr, owner, depth, allc_ptr, amount);
-        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp); };
-        assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp); };
+        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp))
+            by { container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp); };
+        assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp))
+            by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp); };
     };
 }
 
@@ -116,7 +121,8 @@ pub(super) proof fn return_free_quota_1g_eof(pre: KernelK, post: KernelK, thrd_p
         pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
         depth <= pre.thrd_mp.spec_index(thrd_ptr).view().container_depth,
-        if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container } else { pre.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+        if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { owner == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container }
+            else { pre.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
         amount == pre.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth),
         pre.allc_1g_mp.spec_index(allc_ptr).quota.view().value + amount <= pre.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view(),
         thread_perms_wf(post.thrd_mp),

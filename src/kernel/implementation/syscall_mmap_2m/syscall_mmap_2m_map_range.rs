@@ -256,7 +256,7 @@ fn mmap_2m_clear_range_windows(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).snapshot_k() == *old(krnl),
         range > 0,
-        *va_range == mmap_2m_syscall_va_range(va, range),
+        *va_range == spec_va_range_2m(va, range),
         va_range.wf(),
         !(phase is Fill),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -397,7 +397,7 @@ fn mmap_2m_clear_range_windows(
 /// of the range, then release the windows and every lock and record the exiting step.
 pub(super) fn mmap_2m_map_leaves_and_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange2M,
-    alloc_ptr_4k: RwLockPageAllocatorPtr, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
+    thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
     Ghost(enter_phase): Ghost<Mmap2mPhase>, Ghost(entered): Ghost<Seq<KernelStep>>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(thread_lock_perm): Tracked<LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(window_perms): Tracked<Map<WindowVa, LockPerm>>,
 )
@@ -411,7 +411,7 @@ pub(super) fn mmap_2m_map_leaves_and_finish(
         old(steps).snapshot_k() == *old(krnl),
         range > 0,
         va_4k_valid(va),
-        *va_range == mmap_2m_syscall_va_range(va, range),
+        *va_range == spec_va_range_2m(va, range),
         va_range.wf(),
         enter_phase is Read || enter_phase is Fill,
         mmap_2m_trace_after_enter(entered, cpu_id, *va_range, enter_phase),
@@ -428,8 +428,6 @@ pub(super) fn mmap_2m_map_leaves_and_finish(
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
-        old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-        old(krnl).allc_4k_mp.dom().contains(alloc_ptr_4k),
         old(krnl).prc_mp.dom().contains(prc_ptr),
         old(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
         old(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,

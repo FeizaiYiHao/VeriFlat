@@ -12,7 +12,7 @@ use veriflat_alloc_page::allocate_free_1g_page::allocate_free_1g_page_lemmas::ke
 pub mod map_4k;
 pub use map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 pub use map_4k::mmap_4k_install_one::install_one_mmap_4k_directory_page;
-pub use map_4k::mmap_4k_lock_current_thread::mmap_4k_lock_current_thread;
+pub use map_4k::mmap_4k_lock_current_thread::{mmap_4k_lock_current_thread, mmap_4k_range_l2_bounds, mmap_4k_unlock_and_finish, mmap_4k_unlock_read_rejected};
 pub use map_4k::share_mapping_4k_child_structure::build_new_child_structure;
 pub use map_4k::mmap_4k_build_structure_spec::*;
 pub use map_4k::share_mapping_4k_spec::*;
