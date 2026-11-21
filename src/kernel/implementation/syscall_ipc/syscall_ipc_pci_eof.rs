@@ -199,7 +199,7 @@ pub(super) proof fn ipc_pci_detach_eof(
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { ipc_pci_detach_eof_root_table(pre, post, sender_proc, sender_pt, table, bdf, anchor); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(iommu_table_pages_wf); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { ipc_pci_detach_eof_iotlb(pre, post, sender_proc, sender_pt, table, bdf, anchor); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
