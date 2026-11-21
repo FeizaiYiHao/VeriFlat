@@ -15,7 +15,7 @@ pub(super) open spec fn unmap_4k_range_eol_loop_framing(pre: KernelK, cur: Kerne
     let e = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let c = whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable);
     let thrd = cur.thrd_mp.spec_index(thrd_ptr).view();
-    &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> cur.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view()
+    &&& cur.cpu_hw_cr3_pcid[cpu_id as int].view() == pre.cpu_hw_cr3_pcid[cpu_id as int].view()
     &&& cur.cpu_op.view().view()[cpu_id as int] == pre.cpu_op.view().view()[cpu_id as int]
     &&& held_containers_unchanged(pre.ctn_mp, cur.ctn_mp, pre_lctx)
     &&& held_processes_unchanged(pre.prc_mp, cur.prc_mp, pre_lctx)
@@ -114,6 +114,7 @@ pub(super) proof fn unmap_4k_range_eol_step(pre: KernelK, mid: KernelK, post: Ke
         mid_lctx.cpu_id() == pre_lctx.cpu_id(),
         mid_lctx.thread_id() == pre_lctx.thread_id(),
         cpu_id == pre_lctx.cpu_id(),
+        index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(pre_lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(pre_lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
@@ -170,6 +171,7 @@ pub(super) proof fn unmap_4k_range_eol_exit(pre: KernelK, cur: KernelK, pre_lctx
     range: VaRange4K, indirect: [usize; MAX_CONTAINER_TREE_DEPTH], direct: usize, pt_lock_id: usize)
     requires
         unmap_4k_range_eol_loop_framing(pre, cur, pre_lctx, pagetable, thrd_ptr, cpu_id, range, indirect, direct, range.len, pt_lock_id),
+        cpu_id == pre_lctx.cpu_id(),
     ensures
         index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> cur.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view(),
         cur.cpu_op.view().view()[cpu_id as int] == pre.cpu_op.view().view()[cpu_id as int],
