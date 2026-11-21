@@ -29,11 +29,15 @@ pub fn iommu_table_map_clear_4k_present(iommu_table_map: &mut IommuTableLockedMa
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).perms_wf(),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
-        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)] pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
-        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
+        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)]
+            pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
+        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)]
+            pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
             ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j),
-        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
-            && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
+        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)]
+            pei_valid(i) && pei_valid(j) && pei_valid(k) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -119,11 +123,15 @@ pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).perms_wf(),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
-        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)] pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
-        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
+        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)]
+            pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
+        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)]
+            pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
             ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j),
-        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
-            && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
+        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)]
+            pei_valid(i) && pei_valid(j) && pei_valid(k) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -180,11 +188,15 @@ pub fn iommu_table_map_insert_4k(
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).perms_wf(),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
-        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)] pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
-        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
+        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)]
+            pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
+        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)]
+            pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
             ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j),
-        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
-            && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
+        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)]
+            pei_valid(i) && pei_valid(j) && pei_valid(k) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -242,11 +254,15 @@ pub fn iommu_table_map_create_entry_l4(
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).perms_wf(),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
-        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)] pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
-        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
+        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)]
+            pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
+        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)]
+            pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
             ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j),
-        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
-            && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
+        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)]
+            pei_valid(i) && pei_valid(j) && pei_valid(k) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -305,11 +321,15 @@ pub fn iommu_table_map_create_entry_l3(
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).perms_wf(),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
-        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)] pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
-        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
+        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)]
+            pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
+        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)]
+            pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
             ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j),
-        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
-            && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
+        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)]
+            pei_valid(i) && pei_valid(j) && pei_valid(k) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -369,11 +389,15 @@ pub fn iommu_table_map_create_entry_l2(
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).perms_wf(),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
-        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)] pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
-        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
+        forall|i: L4Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i)]
+            pei_valid(i) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(i),
+        forall|i: L4Index, j: L3Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j)]
+            pei_valid(i) && pei_valid(j) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) is Some
             ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(i, j),
-        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
-            && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
+        forall|i: L4Index, j: L3Index, k: L2Index| #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k)]
+            pei_valid(i) && pei_valid(j) && pei_valid(k) && old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) is Some
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(i, j, k),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
