@@ -12,7 +12,6 @@ pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: K
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })
-    &&& pre.pt_mp.dom().contains(pagetable)
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable))
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
@@ -20,8 +19,6 @@ pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: K
     &&& post.pt_mp.lock_id_by_key(pagetable) == pre.pt_mp.lock_id_by_key(pagetable)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& old_c.kernel_l4_end() <= l4i && pei_valid(l4i)
-    &&& old_c.spec_resolve_mapping_l4(l4i) is Some
     &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.pci == old_h.pci && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
     &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
     &&& new_h.l3_tables == old_h.l3_tables && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
@@ -53,6 +50,9 @@ proof fn hide_user_l4_entry_eof_pci_mappings(pre: KernelK, post: KernelK, pageta
     requires
         pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
         hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is Some,
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(hide_user_l4_entry_eof_transition_framing); reveal(pagetable_pci_mappings_wf);
@@ -72,6 +72,9 @@ proof fn hide_user_l4_entry_eof_page_mappings(pre: KernelK, post: KernelK, paget
     requires
         pre.inv(),
         hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
@@ -88,6 +91,9 @@ proof fn hide_user_l4_entry_eof_cpu_tlb(pre: KernelK, post: KernelK, pagetable: 
     requires
         pre.inv(),
         hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
@@ -105,6 +111,9 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
     requires
         pre.inv(),
         hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is Some,
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
@@ -127,7 +136,6 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
         assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { hide_user_l4_entry_eof_page_mappings(pre, post, pagetable, l4i); };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
-        assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
         assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };

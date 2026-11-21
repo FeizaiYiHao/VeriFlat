@@ -9,6 +9,9 @@ pub proof fn hide_user_l4_entries_hide_step_pre_from_k(pre: &KernelK, post: &Ker
     requires
         pre.inv(),
         hide_user_l4_entry_eof_transition_framing(*pre, *post, pagetable, l4i),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is Some,
         !kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
     ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
@@ -34,6 +37,7 @@ pub proof fn hide_user_l4_entries_hide_step_from_k(pre: &KernelK, post: &KernelK
     requires
         process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         hide_user_l4_entry_eof_transition_framing(*pre, *post, pagetable, l4i),
+        pre.pt_mp.dom().contains(pagetable),
     ensures
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
@@ -75,6 +79,7 @@ pub proof fn hide_user_l4_entries_steps_from_k(steps: Seq<KernelStep>, start: in
             &&& steps[start + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
             &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
+            &&& hidden[k].1.pt_mp.dom().contains(pagetable)
         },
     ensures
         forall|k: int| #![trigger hidden[k]] 0 <= k < count ==> {

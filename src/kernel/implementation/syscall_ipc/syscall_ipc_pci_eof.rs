@@ -94,8 +94,6 @@ proof fn ipc_pci_detach_eof_root_table(
     assert({
         &&& post.it_mp.spec_index(table).view().page_closure() == t.page_closure()
         &&& post.it_mp.spec_index(table).view().mapping_4k() == t.mapping_4k()
-        &&& post.it_mp.spec_index(table).view().mapping_2m() == t.mapping_2m()
-        &&& post.it_mp.spec_index(table).view().mapping_1g() == t.mapping_1g()
     });
     reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf);
 }
@@ -142,8 +140,6 @@ proof fn ipc_pci_detach_eof_iotlb(
     assert({
         &&& post.it_mp.spec_index(table).view().page_closure() == t.page_closure()
         &&& post.it_mp.spec_index(table).view().mapping_4k() == t.mapping_4k()
-        &&& post.it_mp.spec_index(table).view().mapping_2m() == t.mapping_2m()
-        &&& post.it_mp.spec_index(table).view().mapping_1g() == t.mapping_1g()
     });
     if old_did is Some {
         let did = old_did->Some_0;
@@ -196,8 +192,6 @@ pub(super) proof fn ipc_pci_detach_eof(
     assert({
         &&& post.it_mp.spec_index(table).view().page_closure() == t.page_closure()
         &&& post.it_mp.spec_index(table).view().mapping_4k() == t.mapping_4k()
-        &&& post.it_mp.spec_index(table).view().mapping_2m() == t.mapping_2m()
-        &&& post.it_mp.spec_index(table).view().mapping_1g() == t.mapping_1g()
     });
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
@@ -205,8 +199,7 @@ pub(super) proof fn ipc_pci_detach_eof(
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { ipc_pci_detach_eof_root_table(pre, post, sender_proc, sender_pt, table, bdf, anchor); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(iommu_table_pages_wf); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { ipc_pci_detach_eof_iotlb(pre, post, sender_proc, sender_pt, table, bdf, anchor); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
@@ -393,7 +386,6 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
         assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-        assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_domain_unchanged_implies_process_pages_wf_preserved_forall(); };
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(mid, post); };
         assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_fields_unchanged_implies_process_pagetable_wf_preserved_forall(); };
@@ -504,8 +496,6 @@ proof fn ipc_pci_rendezvous_eof_handoff(
                 let after = mid.it_mp.spec_index(p).view();
                 &&& sender_table != Some(p) ==> after.did == before.did
                 &&& after.mapping_4k() == before.mapping_4k()
-                &&& after.mapping_2m() == before.mapping_2m()
-                &&& after.mapping_1g() == before.mapping_1g()
             }
             &&& forall|b: usize, d: usize, f: usize| #![trigger mid.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
                 ==> (mid.irt.view().spec_index_iommu_root(b, d, f) is Some) == ((b, d, f) != bdf && pre.irt.view().spec_index_iommu_root(b, d, f) is Some)

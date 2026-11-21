@@ -5,7 +5,7 @@ impl IommuTable {
     pub(super) proof fn get_entry_l4_eof_implies_result_contract(&self, target_l4i: L4Index, ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             ret =~= self.spec_resolve_mapping_l4(target_l4i),
         ensures
             self.spec_resolve_mapping_l4(target_l4i) == ret,
@@ -21,7 +21,7 @@ impl IommuTable {
     pub(super) proof fn get_entry_l3_eof_implies_result_contract(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry, ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             self.spec_resolve_mapping_l4(target_l4i) =~= Some(*l4_entry),
             ret =~= self.spec_resolve_mapping_l3(target_l4i, target_l3i),
@@ -38,7 +38,7 @@ impl IommuTable {
     pub(super) proof fn get_entry_l2_eof_implies_result_contract(&self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry, ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),

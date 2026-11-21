@@ -16,31 +16,21 @@ verus! {
 
     /// Kernel mappings retain the backing records of translations awaiting
     /// invalidation, including entries whose hardware present bit is clear.
-    /// This relation describes the IOTLB against its IOMMU table.
+    /// This relation describes the IOTLB against its IOMMU table, which maps 4K leaves only: the IOTLB caches no 2M or 1G entry.
     pub open spec fn single_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: IommuTable) -> bool {
         &&& forall|va: VAddr|
             #![trigger pagetable.mapping_4k().dom().contains(va)]
             #![trigger cpu_tlb.tlb_4k().spec_index(va)]
             #![trigger cpu_tlb.tlb_4k().dom().contains(va)]
             cpu_tlb.tlb_4k().dom().contains(va) ==> pagetable.mapping_4k().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_4k().spec_index(va), pagetable.mapping_4k().spec_index(va))
-        &&& forall|va: VAddr|
-            #![trigger pagetable.mapping_2m().dom().contains(va)]
-            #![trigger cpu_tlb.tlb_2m().spec_index(va)]
-            #![trigger cpu_tlb.tlb_2m().dom().contains(va)]
-            cpu_tlb.tlb_2m().dom().contains(va) ==> pagetable.mapping_2m().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_2m().spec_index(va), pagetable.mapping_2m().spec_index(va))
-        &&& forall|va: VAddr|
-            #![trigger pagetable.mapping_1g().dom().contains(va)]
-            #![trigger cpu_tlb.tlb_1g().spec_index(va)]
-            #![trigger cpu_tlb.tlb_1g().dom().contains(va)]
-            cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g().spec_index(va), pagetable.mapping_1g().spec_index(va))
+        &&& cpu_tlb.tlb_2m().dom() =~= Set::<VAddr>::empty()
+        &&& cpu_tlb.tlb_1g().dom() =~= Set::<VAddr>::empty()
     }
 
     /// Every cached translation names a present leaf of the sequential table.
     pub open spec fn single_tlb_subset_of_present_pagetable(tlb: SingleTLB, pagetable: IommuTable) -> bool {
         &&& single_tlb_subset_of_pagetable(tlb, pagetable)
         &&& forall|va: VAddr| #![trigger tlb.tlb_4k().spec_index(va)] #![trigger pagetable.mapping_4k().spec_index(va)] tlb.tlb_4k().dom().contains(va) ==> pagetable.mapping_4k().spec_index(va).present
-        &&& forall|va: VAddr| #![trigger tlb.tlb_2m().spec_index(va)] #![trigger pagetable.mapping_2m().spec_index(va)] tlb.tlb_2m().dom().contains(va) ==> pagetable.mapping_2m().spec_index(va).present
-        &&& forall|va: VAddr| #![trigger tlb.tlb_1g().spec_index(va)] #![trigger pagetable.mapping_1g().spec_index(va)] tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().spec_index(va).present
     }
 
     /// Every 4K, 2M or 1G translation a CPU TLB caches is a user leaf the table still holds, present or awaiting invalidation, with the same frame and permissions.

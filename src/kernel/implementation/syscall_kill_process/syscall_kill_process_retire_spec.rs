@@ -179,8 +179,6 @@ pub open spec fn kill_retire_tables_emptied(k: KernelK, target: RwLockProcessPtr
         let it = k.it_mp.spec_index(process.iommu_table->Some_0).view();
         &&& it.page_closure() =~= set![it.cr3]
         &&& it.mapping_4k().dom() =~= Set::<VAddr>::empty()
-        &&& it.mapping_2m().dom() =~= Set::<VAddr>::empty()
-        &&& it.mapping_1g().dom() =~= Set::<VAddr>::empty()
     }
 }
 } // verus!

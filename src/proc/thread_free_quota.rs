@@ -23,7 +23,8 @@ impl Thread {
             *final(counter) == *old(counter) + 1,
             *final(counter) == final(self).free_quota_pending_4k_at_depth(depth),
             final(self).direct_free_quota_pending_4k.view() == old(self).direct_free_quota_pending_4k.view() + if depth == old(self).container_depth { 1int } else { 0int },
-            final(self).indirect_free_quota_pending_4k.view() == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_4k.view().update(depth as int, *final(counter)) } else { old(self).indirect_free_quota_pending_4k.view() },
+            final(self).indirect_free_quota_pending_4k.view()
+                == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_4k.view().update(depth as int, *final(counter)) } else { old(self).indirect_free_quota_pending_4k.view() },
             *final(self) == (Thread { direct_free_quota_pending_4k: final(self).direct_free_quota_pending_4k, indirect_free_quota_pending_4k: final(self).indirect_free_quota_pending_4k, ..*old(self) }),
     {
         *counter = *counter + 1;
@@ -94,7 +95,8 @@ impl Thread {
             *final(counter) == *old(counter) + 1,
             *final(counter) == final(self).free_quota_pending_2m_at_depth(depth),
             final(self).direct_free_quota_pending_2m.view() == old(self).direct_free_quota_pending_2m.view() + if depth == old(self).container_depth { 1int } else { 0int },
-            final(self).indirect_free_quota_pending_2m.view() == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_2m.view().update(depth as int, *final(counter)) } else { old(self).indirect_free_quota_pending_2m.view() },
+            final(self).indirect_free_quota_pending_2m.view()
+                == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_2m.view().update(depth as int, *final(counter)) } else { old(self).indirect_free_quota_pending_2m.view() },
             *final(self) == (Thread { direct_free_quota_pending_2m: final(self).direct_free_quota_pending_2m, indirect_free_quota_pending_2m: final(self).indirect_free_quota_pending_2m, ..*old(self) }),
     {
         *counter = *counter + 1;
@@ -165,7 +167,8 @@ impl Thread {
             *final(counter) == *old(counter) + 1,
             *final(counter) == final(self).free_quota_pending_1g_at_depth(depth),
             final(self).direct_free_quota_pending_1g.view() == old(self).direct_free_quota_pending_1g.view() + if depth == old(self).container_depth { 1int } else { 0int },
-            final(self).indirect_free_quota_pending_1g.view() == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_1g.view().update(depth as int, *final(counter)) } else { old(self).indirect_free_quota_pending_1g.view() },
+            final(self).indirect_free_quota_pending_1g.view()
+                == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_1g.view().update(depth as int, *final(counter)) } else { old(self).indirect_free_quota_pending_1g.view() },
             *final(self) == (Thread { direct_free_quota_pending_1g: final(self).direct_free_quota_pending_1g, indirect_free_quota_pending_1g: final(self).indirect_free_quota_pending_1g, ..*old(self) }),
     {
         *counter = *counter + 1;

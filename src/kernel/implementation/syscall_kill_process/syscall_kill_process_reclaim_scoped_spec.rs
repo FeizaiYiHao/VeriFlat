@@ -91,6 +91,7 @@ pub(crate) open spec fn kill_reclaim_held_2m_page_scoped_eof_transition_framing(
     let new_table = post.pt_mp.spec_index(pagetable);
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
+    let leaf = (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va));
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_2m_mp: post.allc_2m_mp, ..pre })
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
@@ -104,6 +105,8 @@ pub(crate) open spec fn kill_reclaim_held_2m_page_scoped_eof_transition_framing(
         pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != leaf ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
+    &&& new_c.lower.l2_entry(leaf.0, leaf.1).is_empty()
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
@@ -171,14 +174,9 @@ pub(crate) open spec fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transitio
     &&& new_table.locking_thread() == old_table.locking_thread()
     &&& new_table.being_killed() == old_table.being_killed()
     &&& new_table.view().mapping_4k() == old_table.view().mapping_4k().remove(iova)
-    &&& new_table.view().mapping_2m() == old_table.view().mapping_2m()
-    &&& new_table.view().mapping_1g() == old_table.view().mapping_1g()
     &&& new_table.view().page_closure() == old_table.view().page_closure()
-    &&& new_table.view().kernel_entries == old_table.view().kernel_entries
-    &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
     &&& new_table.view().cr3 == old_table.view().cr3
     &&& new_table.view().proc_ptr == old_table.view().proc_ptr
-    &&& new_table.view().pcid == old_table.view().pcid
     &&& new_table.view().did == old_table.view().did
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
@@ -243,12 +241,7 @@ pub(crate) open spec fn kill_retire_table_page_scoped_eof_transition_framing(
         &&& new_table.being_killed() == old_table.being_killed()
         &&& new_table.view().page_closure() == old_table.view().page_closure().remove(pg_ptr)
         &&& new_table.view().mapping_4k() == old_table.view().mapping_4k()
-        &&& new_table.view().mapping_2m() == old_table.view().mapping_2m()
-        &&& new_table.view().mapping_1g() == old_table.view().mapping_1g()
-        &&& new_table.view().kernel_entries == old_table.view().kernel_entries
-        &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
         &&& new_table.view().cr3 == old_table.view().cr3
-        &&& new_table.view().pcid == old_table.view().pcid
         &&& new_table.view().proc_ptr == old_table.view().proc_ptr
         &&& new_table.view().did == old_table.view().did
     } else {

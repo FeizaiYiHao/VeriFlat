@@ -139,8 +139,7 @@ impl KernelK{
         // processes and their page tables and IOMMU tables name each other
         &&& process_pagetable_wf(self.prc_mp, self.pt_mp)
         &&& process_iommu_table_wf(self.prc_mp, self.it_mp)
-        // IOMMU leaf sizes, emptied tables, and hidden user L4 entries
-        &&& iommu_table_no_huge_leaf_wf(self.it_mp)
+        // emptied tables and hidden user L4 entries
         &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.pt_lower.view(), self.it_mp, self.pg_arr)
         &&& pagetable_hidden_roots_only_when_write_locked_or_emptied(self.pt_mp, self.prc_mp)
         // owners of the pages that make up processes and kernel objects

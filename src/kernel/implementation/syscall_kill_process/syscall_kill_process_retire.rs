@@ -501,8 +501,6 @@ pub(crate) fn kill_retire_commit(
             &&& it_lock_perm->Some_0.lock_id() == it.locking_thread()->Write_lock_id
             &&& it.view().page_closure() =~= set![it.view().cr3]
             &&& it.view().mapping_4k().dom() =~= Set::<VAddr>::empty()
-            &&& it.view().mapping_2m().dom() =~= Set::<VAddr>::empty()
-            &&& it.view().mapping_1g().dom() =~= Set::<VAddr>::empty()
         },
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == allc_ptr,

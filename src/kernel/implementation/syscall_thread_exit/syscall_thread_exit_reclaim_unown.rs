@@ -135,7 +135,6 @@ pub(super) fn thread_exit_reclaim_unown(
             &&& final(krnl).it_mp.dom().contains(it)
             &&& table.view().leaves_present()
             &&& table.view().proc_ptr == prc_ptr
-            &&& table.view().kernel_l4_end == 0
             &&& table.view().did is None
             &&& ret.0.view()->Some_0.state() is WriteLock
             &&& ret.0.view()->Some_0.thread_id() == old(lctx).thread_id()
@@ -202,7 +201,6 @@ pub(super) fn thread_exit_reclaim_unown(
         if empty { assert(krnl.pt_mp.spec_index(pagetable).view().higher.pci.view() =~= Map::<PciBdf, Set<PciBarMapping>>::empty()); }
         if let Some(it) = iommu_table {
             iommu_table_perms_wf_at(krnl.it_mp, it);
-            assert(krnl.it_mp.spec_index(it).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(it).view().kernel_entries_wf_iommu_l4_end_at(); };
             // A table without functions has no DID: a DID's anchor is a function of its owner's array.
             if empty {
                 iommu_root_table_process_wf_table_at(unown_k.irt.view(), unown_k.prc_mp, unown_k.it_mp, it);

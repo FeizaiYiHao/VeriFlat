@@ -82,8 +82,9 @@ pub ghost enum SyscallProgress {
     Mmap2m { range: VaRange2M, mapped: usize, directory: Mmap2mDirectory, phase: Mmap2mPhase, flushed: bool },
     /// Unmapping of the 2M pages of `range`; the first `unmapped` leaves are hidden, and `flushed` records the TLB flush.
     Unmap2m { range: VaRange2M, unmapped: usize, flushed: bool },
-    /// Anonymous 1G mapping of `range` under the page table's write lock; the first `mapped` pages are done, `directory` records that the L3 page for the next one is installed, `hidden` that the range's L3 entries linking an L2 page were hidden, and `flushed` that they were flushed from
-    /// every cpu, so reclaiming their L2 and L1 pages may proceed.
+    /// Anonymous 1G mapping of `range` under the page table's write lock; the first `mapped` pages are done, `directory` records that
+    /// the L3 page for the next one is installed, `hidden` that the range's L3 entries linking an L2 page were hidden, and `flushed`
+    /// that they were flushed from every cpu, so reclaiming their L2 and L1 pages may proceed.
     Mmap1g { range: VaRange1G, mapped: usize, directory: bool, hidden: bool, flushed: bool },
     /// Unmapping of the 1G pages of `range` under the page table's write lock; the first `unmapped` leaves are hidden, and `flushed` records the TLB flush.
     Unmap1g { range: VaRange1G, unmapped: usize, flushed: bool },

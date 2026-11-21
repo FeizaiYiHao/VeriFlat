@@ -34,36 +34,8 @@ pub proof fn iommu_table_perms_wf_at(it_mp: IommuTableLockedMap, it_ptr: RwLockP
         it_mp.spec_index(it_ptr).view().inv(),
 { reveal(iommu_table_perms_wf); }
 
-/// IOMMU table `it_ptr` maps no kernel L4 entries.
-pub proof fn iommu_table_perms_wf_kernel_l4_end_at(it_mp: IommuTableLockedMap, it_ptr: RwLockPageTableRoot)
-    requires
-        iommu_table_perms_wf(it_mp),
-        it_mp.dom().contains(it_ptr),
-    ensures it_mp.spec_index(it_ptr).view().kernel_l4_end == 0,
-{ reveal(iommu_table_perms_wf); reveal(IommuTable::kernel_entries_wf); }
-
 pub proof fn iommu_table_perms_wf_map(it_mp: IommuTableLockedMap)
     requires iommu_table_perms_wf(it_mp)
     ensures it_mp.perms_wf()
 { reveal(iommu_table_perms_wf); }
-
-/// Every IOMMU table maps only 4K leaves.
-#[verifier::opaque]
-pub open spec fn iommu_table_no_huge_leaf_wf(it_mp: IommuTableLockedMap) -> bool {
-    forall|it: RwLockPageTableRoot|
-        #![trigger it_mp.spec_index(it)]
-        it_mp.dom().contains(it) ==> {
-            &&& it_mp.spec_index(it).view().mapping_2m().dom() =~= Set::<VAddr>::empty()
-            &&& it_mp.spec_index(it).view().mapping_1g().dom() =~= Set::<VAddr>::empty()
-        }
-}
-
-pub proof fn iommu_table_no_huge_leaf_wf_at(it_mp: IommuTableLockedMap, it_ptr: RwLockPageTableRoot)
-    requires
-        iommu_table_no_huge_leaf_wf(it_mp),
-        it_mp.dom().contains(it_ptr),
-    ensures
-        it_mp.spec_index(it_ptr).view().mapping_2m().dom() =~= Set::<VAddr>::empty(),
-        it_mp.spec_index(it_ptr).view().mapping_1g().dom() =~= Set::<VAddr>::empty(),
-{ reveal(iommu_table_no_huge_leaf_wf); }
 }

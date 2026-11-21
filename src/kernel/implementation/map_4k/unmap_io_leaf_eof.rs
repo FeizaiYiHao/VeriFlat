@@ -16,6 +16,8 @@ pub(super) open spec fn remove_held_io_4k_mapping_eof_transition_framing(pre: Ke
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
     &&& new_c.higher == old_c.higher
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+        pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -150,6 +152,8 @@ pub(super) open spec fn remove_held_io_2m_mapping_eof_transition_framing(pre: Ke
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
     &&& new_c.higher == old_c.higher
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+        pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != leaf ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -285,6 +289,8 @@ pub(super) open spec fn remove_io_4k_mapping_eof_transition_framing(pre: KernelK
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
     &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher })
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+        pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == (PageTableHigher { pci: post.pt_mp.spec_index(r).view().higher.pci, ..pre.pt_mp.spec_index(r).view().higher })
     &&& new_c.kernel_l4_end() == old_c.kernel_l4_end()
     &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_held_l4(l4i)] new_c.higher.spec_held_l4(l4i) == old_c.higher.spec_held_l4(l4i)
     &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_resolve_mapping_l4(l4i)] new_c.higher.spec_resolve_mapping_l4(l4i) == old_c.higher.spec_resolve_mapping_l4(l4i)
@@ -429,6 +435,8 @@ pub(super) open spec fn remove_io_2m_mapping_eof_transition_framing(pre: KernelK
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
     &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher })
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+        pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == (PageTableHigher { pci: post.pt_mp.spec_index(r).view().higher.pci, ..pre.pt_mp.spec_index(r).view().higher })
     &&& new_c.kernel_l4_end() == old_c.kernel_l4_end()
     &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_held_l4(l4i)] new_c.higher.spec_held_l4(l4i) == old_c.higher.spec_held_l4(l4i)
     &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_resolve_mapping_l4(l4i)] new_c.higher.spec_resolve_mapping_l4(l4i) == old_c.higher.spec_resolve_mapping_l4(l4i)

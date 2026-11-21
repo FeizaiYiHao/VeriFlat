@@ -729,10 +729,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.it_mp.spec_index(layout.iommu_table).locking_thread() is None
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().wf()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().cr3 == layout.iommu_l4
-    &&& krnl.it_mp.spec_index(layout.iommu_table).view().pcid is None
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().did is None
-    &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_l4_end == 0
-    &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_entries.view() =~= Seq::<PageEntry>::empty()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().is_empty()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().page_closure() =~= set![layout.iommu_l4]
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().proc_ptr == layout.root_process
@@ -1098,7 +1095,7 @@ pub fn finish_init_from_boot(
             iommu_l4_perm.value().wf_at(i as usize);
         });
     };
-    let iommu_table = IommuTable::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
+    let iommu_table = IommuTable::new(iommu_l4, Tracked(iommu_l4_perm), layout.root_process);
     let (Tracked(thread_region_perm), thread_sched_node, thread_proc_node, thread_endpoint_node, thread_trap_frame, thread_frame) = split_thread_page_node_slots(layout.root_thread, Tracked(thread_page_perm));
     let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint, thread_sched_node, thread_proc_node, thread_endpoint_node, thread_trap_frame);
     let mut thrd_mp = ThreadLockedMap::new_empty();
@@ -1158,9 +1155,18 @@ pub fn finish_init_from_boot(
     let mut allc_2m_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_2M>::new_empty();
     let mut allc_1g_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_1G>::new_empty();
 
-    proof { assert(vstd::layout::size_of::<PageTableRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<PageTableRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_PageTableRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, PageTableBigLocked { higher: cpu_pagetable, lower_backup: Ghost(PageTableLower::spec_empty()) }, (), Ghost(()), Tracked(cpu_pagetable_page_perm), 0, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
-    proof { assert(vstd::layout::size_of::<IommuTableRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<IommuTableRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_IommuTableRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
+    proof {
+        assert(vstd::layout::size_of::<PageTableRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<PageTableRwLock>() <= PAGE_SZ_4K) by {
+            broadcast use crate::VERUS_layout_of_PageTableRwLock; assert(PAGE_SZ_4K == 4096) by (compute);
+        };
+    }
+    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, PageTableBigLocked { higher: cpu_pagetable, lower_backup: Ghost(PageTableLower::spec_empty()) }, (), Ghost(()),
+        Tracked(cpu_pagetable_page_perm), 0, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
+    proof {
+        assert(vstd::layout::size_of::<IommuTableRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<IommuTableRwLock>() <= PAGE_SZ_4K) by {
+            broadcast use crate::VERUS_layout_of_IommuTableRwLock; assert(PAGE_SZ_4K == 4096) by (compute);
+        };
+    }
     it_mp.retype_4k_as_unlocked_singleton(layout.iommu_table, iommu_table, (), Ghost(()), Tracked(iommu_table_page_perm), 0, Ghost(KernelObjId::IommuTable(layout.iommu_table)));
     let tracked mut root_retype_lctx = LocalContext::new_bootstrap(0);
     proof { assert(ctn_mp.typed_lock_map_aligned(root_retype_lctx.container_lock_map(), root_retype_lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
@@ -1169,7 +1175,11 @@ pub fn finish_init_from_boot(
     ctn_mp.dynamic_wunlock(layout.root_container, Tracked(&mut root_retype_lctx), root_container_lock_perm, Ghost(KernelObjId::Container(layout.root_container)));
     let tracked boot_lctx = LocalContext::new_bootstrap(0);
     sched_mp.retype_page_to_scheduler_and_insert(layout.scheduler, scheduler, Tracked(scheduler_page_perm), Tracked(&boot_lctx));
-    proof { assert(vstd::layout::size_of::<PcidAllocatorRwLock>() <= PAGE_SZ_2M && vstd::layout::align_of::<PcidAllocatorRwLock>() <= PAGE_SZ_2M) by { broadcast use crate::VERUS_layout_of_PcidAllocatorRwLock; assert(PAGE_SZ_2M == 0x200000) by (compute); }; }
+    proof {
+        assert(vstd::layout::size_of::<PcidAllocatorRwLock>() <= PAGE_SZ_2M && vstd::layout::align_of::<PcidAllocatorRwLock>() <= PAGE_SZ_2M) by {
+            broadcast use crate::VERUS_layout_of_PcidAllocatorRwLock; assert(PAGE_SZ_2M == 0x200000) by (compute);
+        };
+    }
     pcid_allc_mp.retype_2m_as_unlocked_singleton(layout.pcid_allocator, pcid_allocator, (), Ghost(()), Tracked(pcid_allocator_page_perm), 0, Ghost(KernelObjId::PcidAllocator(layout.pcid_allocator)));
     proof { assert(vstd::layout::size_of::<CpuSetRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<CpuSetRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_CpuSetRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     cpu_set_mp.retype_4k_as_unlocked_singleton(layout.cpu_set, cpu_set, (), Ghost(()), Tracked(cpu_set_page_perm), 0, Ghost(KernelObjId::CpuSet(layout.cpu_set)));
@@ -1187,7 +1197,8 @@ pub fn finish_init_from_boot(
     proof { pt_lower.tracked_insert(layout.cpu_pagetable, cpu_pagetable_lower); }
     let dflt_pt = default_pagetable_cell_init(default_pagetable);
     let krnl = KernelK {
-        pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op), cpu_regs: Tracked(cpu_regs), cpu_trap_frame: Tracked(cpu_trap_frame), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
+        pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op),
+        cpu_regs: Tracked(cpu_regs), cpu_trap_frame: Tracked(cpu_trap_frame), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
         prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt, pci_bars,
     };
     proof {

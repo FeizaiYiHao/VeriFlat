@@ -51,10 +51,6 @@ pub(super) fn iommu_unmap_4k_hide_range(
             ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova_range.view()[j]) && old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k()[iova_range.view()[j]].present,
         forall|v: VAddr| #![trigger old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v)]
             old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v) && !iova_range.view().contains(v) ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k()[v].present,
-        forall|v: VAddr| #![trigger old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v)]
-            old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v) ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m()[v].present,
-        forall|v: VAddr| #![trigger old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v)]
-            old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v) ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g()[v].present,
         iommu_unmap_4k_partial_trace(old(steps).view(), cpu_id, *iova_range),
         1 <= old(steps).view().len(),
     ensures
@@ -98,10 +94,6 @@ pub(super) fn iommu_unmap_4k_hide_range(
             ==> final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova_range.view()[j]) && !final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k()[iova_range.view()[j]].present,
         forall|v: VAddr| #![trigger final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v)]
             final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v) && !iova_range.view().contains(v) ==> final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k()[v].present,
-        forall|v: VAddr| #![trigger final(krnl).it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v)]
-            final(krnl).it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v) ==> final(krnl).it_mp.spec_index(iommu_table).view().mapping_2m()[v].present,
-        forall|v: VAddr| #![trigger final(krnl).it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v)]
-            final(krnl).it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v) ==> final(krnl).it_mp.spec_index(iommu_table).view().mapping_1g()[v].present,
         iommu_unmap_4k_partial_trace(final(steps).view(), cpu_id, *iova_range),
         final(steps).view().len() == old(steps).view().len() + iova_range.len,
         final(steps).view()[0] == old(steps).view()[0],
@@ -181,10 +173,6 @@ pub(super) fn iommu_unmap_4k_hide_range(
                 ==> krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(r.view()[j]) && krnl.it_mp.spec_index(iommu_table).view().mapping_4k()[r.view()[j]].present == (k <= j),
             forall|v: VAddr| #![trigger krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v)]
                 krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v) && !r.view().contains(v) ==> krnl.it_mp.spec_index(iommu_table).view().mapping_4k()[v].present,
-            forall|v: VAddr| #![trigger krnl.it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v)]
-                krnl.it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v) ==> krnl.it_mp.spec_index(iommu_table).view().mapping_2m()[v].present,
-            forall|v: VAddr| #![trigger krnl.it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v)]
-                krnl.it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v) ==> krnl.it_mp.spec_index(iommu_table).view().mapping_1g()[v].present,
 
             iommu_unmap_4k_partial_trace(steps.view(), cpu_id, r),
             steps.view().len() == old(steps).view().len() + k,
@@ -254,10 +242,6 @@ pub(super) fn iommu_unmap_4k_reclaim_range(
         iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
         forall|v: VAddr| #![trigger old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v)]
             old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v) && !iova_range.view().contains(v) ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k()[v].present,
-        forall|v: VAddr| #![trigger old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v)]
-            old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v) ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m()[v].present,
-        forall|v: VAddr| #![trigger old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v)]
-            old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v) ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g()[v].present,
         forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < iova_range.len
             ==> old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova_range.view()[j]) && !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k()[iova_range.view()[j]].present,
     ensures
@@ -378,10 +362,6 @@ pub(super) fn iommu_unmap_4k_reclaim_range(
             iommu_table_tlb_entries_present(krnl.iommu_tlb, krnl.irt.view(), krnl.it_mp, iommu_table),
             forall|v: VAddr| #![trigger krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v)]
                 krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(v) && !r.view().contains(v) ==> krnl.it_mp.spec_index(iommu_table).view().mapping_4k()[v].present,
-            forall|v: VAddr| #![trigger krnl.it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v)]
-                krnl.it_mp.spec_index(iommu_table).view().mapping_2m().dom().contains(v) ==> krnl.it_mp.spec_index(iommu_table).view().mapping_2m()[v].present,
-            forall|v: VAddr| #![trigger krnl.it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v)]
-                krnl.it_mp.spec_index(iommu_table).view().mapping_1g().dom().contains(v) ==> krnl.it_mp.spec_index(iommu_table).view().mapping_1g()[v].present,
 
             forall|j: int| #![trigger r.view()[j]] 0 <= j < r.len
                 ==> krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(r.view()[j]) == (k <= j) && (k <= j ==> !krnl.it_mp.spec_index(iommu_table).view().mapping_4k()[r.view()[j]].present),

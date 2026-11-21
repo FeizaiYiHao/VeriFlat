@@ -268,8 +268,6 @@ impl KernelSteps {
                     let after = krnl.it_mp.spec_index(p).view();
                     &&& after.did == if p != table { before.did } else if before.did is Some { before.did } else { Some(pci_bdf_did(bus, device, function)) }
                     &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
-                    &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
-                    &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
                 },
             kernel_endpoint_nonlock_fields_unchanged(old(self).snapshot_k().ep_mp, krnl.ep_mp),
             krnl.irt.view().owners() == old(self).snapshot_k().irt.view().owners(),

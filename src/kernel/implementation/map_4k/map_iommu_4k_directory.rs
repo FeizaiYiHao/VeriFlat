@@ -114,29 +114,23 @@ pub fn install_staged_4k_iommu_table_page(
         *final(krnl) == (KernelK { it_mp: final(krnl).it_mp, pg_arr: final(krnl).pg_arr, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) }),
         final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, iommu_table_ptr),
         final(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread() == old(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table_ptr).view().kernel_l4_end,
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().did == old(krnl).it_mp.spec_index(iommu_table_ptr).view().did,
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().page_closure() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().page_closure().insert(pg_ptr),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(pg_ptr)),
         final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, quota_thrd_ptr),
         match level {
             MissingPageTableLevel::L4 => {
                 &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is Some
                 &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is None
-                &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_1g_l3(indices.0, indices.1) is None
             },
             MissingPageTableLevel::L3 => {
                 &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is Some
                 &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is None
-                &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None
             },
             MissingPageTableLevel::L2 => {
                 &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some
-                &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None
             },
         },
 {
@@ -151,14 +145,9 @@ pub fn install_staged_4k_iommu_table_page(
         if krnl.it_mp.spec_index(iommu_table_ptr).view().page_closure().contains(pg_ptr) { iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, iommu_table_ptr, pg_ptr); }
     };
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
+        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr);
         krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
     }
-    assert(krnl.it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_1g_l3(indices.0, indices.1) is None
-        && krnl.it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None) by {
-        iommu_table_no_huge_leaf_wf_at(krnl.it_mp, iommu_table_ptr);
-        krnl.it_mp.spec_index(iommu_table_ptr).view().wf_mapping_1g_at(indices.0, indices.1); krnl.it_mp.spec_index(iommu_table_ptr).view().wf_mapping_2m_at(indices.0, indices.1, indices.2);
-    };
 
     let parent_page_map_ptr;
     {

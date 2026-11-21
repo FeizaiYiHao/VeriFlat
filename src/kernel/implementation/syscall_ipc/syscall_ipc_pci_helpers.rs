@@ -545,8 +545,6 @@ verus! {
                     ipc_pci_detach_eof(locked, *krnl, sender_proc, sender_pt, t, bdf, new_anchor);
                     assert({
                         &&& krnl.it_mp.spec_index(t).view().mapping_4k() == locked.it_mp.spec_index(t).view().mapping_4k()
-                        &&& krnl.it_mp.spec_index(t).view().mapping_2m() == locked.it_mp.spec_index(t).view().mapping_2m()
-                        &&& krnl.it_mp.spec_index(t).view().mapping_1g() == locked.it_mp.spec_index(t).view().mapping_1g()
                     });
                 }
                 Tracked(Some(perm))

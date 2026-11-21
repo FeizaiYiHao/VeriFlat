@@ -201,7 +201,6 @@ pub(super) open spec fn flush_local_va_range_and_clear_eof_transition_framing(pr
     let old_entry = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let new_entry = post.pcid_needflush.spec_index(cpu_id, pcid);
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
-    &&& pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& cpu_tlb_va_range_flushed(pre, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
@@ -224,6 +223,7 @@ pub(super) proof fn flush_local_va_range_and_clear_eof(pre: KernelK, post: Kerne
         index_valid(NUM_CPUS, cpu_id),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
     ensures post.inv(),

@@ -209,13 +209,15 @@ proof fn update_pci_entry_eof_pci_mappings(pre: KernelK, post: KernelK, root: Rw
         update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
-    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at, vstd::set::lemma_set_contains_len;
+    broadcast use vstd::set::lemma_set_contains_len;
     update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
     reveal(update_pci_entry_eof_transition_framing);
     pagetable_perms_wf_at(pre.pt_mp, root);
-    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
-    update_pci_entry_eof_table_wf(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), whole_pagetable(post.pt_mp, post.pt_lower.view(), root));
-    if update is Release { pre.pt_mp.spec_index(root).view().higher.pci.wf_entry_at(index); }
+    if update is Release {
+        let pci = pre.pt_mp.spec_index(root).view().higher.pci;
+        pci.wf_entry_at(index);
+        pci.wf_function_at(pci.spec_entry(index).bdf);
+    }
     reveal(pagetable_pci_mappings_wf);
 }
 

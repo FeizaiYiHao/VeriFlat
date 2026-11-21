@@ -259,8 +259,6 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
         mid.it_mp.spec_index(iommu_table_ptr).view().mapping_4k()[iova_range.view()[unmapped as int]].present,
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == mid.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().insert(iova_range.view()[unmapped as int],
             MapEntry { present: false, ..mid.it_mp.spec_index(iommu_table_ptr).view().mapping_4k()[iova_range.view()[unmapped as int]] }),
-        post.it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == mid.it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
-        post.it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == mid.it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
         post.it_mp.spec_index(iommu_table_ptr).view().did == mid.it_mp.spec_index(iommu_table_ptr).view().did,
     ensures
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),

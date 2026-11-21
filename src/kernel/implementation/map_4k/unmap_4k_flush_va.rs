@@ -103,14 +103,16 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
         },
         final(krnl).cpu_hw_cr3_pcid[local_cpu as int].view() == (cr3, pcid),
         final(krnl).cpu_op.view().view()[local_cpu as int] == old(krnl).cpu_op.view().view()[local_cpu as int],
-        old(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu) ==> final(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu) && final(krnl).cpu_trap_frame.view().view()[local_cpu] == old(krnl).cpu_trap_frame.view().view()[local_cpu],
+        old(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu)
+            ==> final(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu) && final(krnl).cpu_trap_frame.view().view()[local_cpu] == old(krnl).cpu_trap_frame.view().view()[local_cpu],
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> final(krnl).cpu_arr.spec_index(held_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(held_cpu_id).view().view(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id)
+            ==> final(krnl).cpu_arr.spec_index(held_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(held_cpu_id).view().view(),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
@@ -213,7 +215,8 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
             krnl.cpu_arr.spec_index(local_cpu).view().view().view().current_pcid == pcid,
             krnl.cpu_hw_cr3_pcid[local_cpu as int].view() == (cr3, pcid),
             krnl.cpu_op.view().view()[local_cpu as int] == old(krnl).cpu_op.view().view()[local_cpu as int],
-            old(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu) ==> krnl.cpu_trap_frame.view().view().dom().contains(local_cpu) && krnl.cpu_trap_frame.view().view()[local_cpu] == old(krnl).cpu_trap_frame.view().view()[local_cpu],
+            old(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu)
+                ==> krnl.cpu_trap_frame.view().view().dom().contains(local_cpu) && krnl.cpu_trap_frame.view().view()[local_cpu] == old(krnl).cpu_trap_frame.view().view()[local_cpu],
             old(krnl).cpu_op.view().view()[local_cpu as int] is InStep,
             krnl.pt_mp.dom().contains(pagetable),
             krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
@@ -283,7 +286,6 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
     proof {
         flush_pagetable_tlbs_va_range_eol_exit(*old(krnl), krnl_flushed, *krnl, old(lctx), &held, old(steps), steps, cpu_id, pagetable, va, count, stride_2m, local_cpu, thrd_ptr, cpu_set_ptr, cpu_set_entry);
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged; };
-        assert(Set::range(cpu_id, NUM_CPUS) =~= Set::<CpuId>::empty());
     }
 }
 }

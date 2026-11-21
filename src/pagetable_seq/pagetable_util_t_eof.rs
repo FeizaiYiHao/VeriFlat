@@ -42,7 +42,8 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
     assert(pagetable_perms_wf(old_k.pt_mp) && new_k.pt_mp.perms_wf() ==> pagetable_perms_wf(new_k.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(pagetable_lower_wf(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_lower_wf(new_k.pt_mp, new_k.pt_lower.view())) by { reveal(pagetable_lower_wf); };
     assert(pagetable_window_holders_hold_pagetable(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_window_holders_hold_pagetable(new_k.pt_mp, new_k.pt_lower.view())) by {
-        reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableHigher::wf_l4);
+        reveal(pagetable_window_holders_hold_pagetable);
+        retype_page_to_pagetable_and_insert_eof_new_table_windows(new_k, pg_ptr, higher, lower);
     };
     assert(pagetable_hidden_leaves_only_when_locked(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_hidden_leaves_only_when_locked(new_k.pt_mp, new_k.pt_lower.view())) by {
         reveal(pagetable_hidden_leaves_only_when_locked);
@@ -61,6 +62,20 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
         reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4);
     };
 }
+
+/// EOF closure of `KernelK::retype_page_to_pagetable_and_insert` for the new table `pg_ptr`: it is empty, so none of its user windows
+/// exists or is locked.
+proof fn retype_page_to_pagetable_and_insert_eof_new_table_windows(new_k: KernelK, pg_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>, lower: PageTableLower<PT_TYPE>)
+    requires
+        higher.wf_l4(),
+        (WholePageTable { higher, lower }).is_empty(),
+        whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), pg_ptr) == (WholePageTable { higher, lower }),
+    ensures
+        forall|r: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+            #![trigger whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+            r == pg_ptr && whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r).kernel_l4_end() <= l4i && pei_valid(l4i)
+                ==> !whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+{ reveal(PageTableHigher::wf_l4); }
 
 /// EOF closure of `remove_iommu_table_and_reclaim_4k_page_perms`: removing IOMMU table `iommu_table_ptr` keeps `iommu_table_perms_wf`.
 pub(super) proof fn remove_iommu_table_and_reclaim_4k_page_perms_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
@@ -117,9 +132,7 @@ pub(super) proof fn remove_pagetable_and_reclaim_4k_page_perms_eof(old_k: Kernel
         reveal(pagetable_window_stale_cpus_only_when_locked);
     };
     let removed = old_k.pt_mp.spec_index(pagetable_ptr).view().higher;
-    assert(removed.l3_tables.view().dom().subset_of(whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure())
-        && removed.l4_table.view().dom().disjoint(removed.l3_tables.view().dom())) by { reveal(PageTableHigher::table_pages_wf); };
-    assert(removed.l3_tables.view().dom() =~= Set::<PageMapPtr>::empty()) by { reveal(PageTableHigher::wf_l4); };
+    assert(removed.l3_tables.view().dom() =~= Set::<PageMapPtr>::empty()) by { reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::wf_l4); };
     assert(pagetable_window_typed_lock_map_aligned(new_k.pt_mp, new_k.pt_lower.view(), new_lctx.pagetable_window_lock_map(), new_lctx.pagetable_lock_map(), new_lctx.thread_id())) by {
         broadcast use spec_va_2m_valid_index_roundtrip; reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4);
     };

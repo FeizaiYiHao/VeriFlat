@@ -451,7 +451,6 @@ pub(super) proof fn boot_memory_management_inv_eof(
     prove_boot_iommu_table_pages_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     assert(process_pagetable_wf(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(process_iommu_table_wf(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(iommu_table_no_huge_leaf_wf(krnl.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr)) by { reveal(process_emptied_tables_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(krnl.pt_mp, krnl.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     prove_boot_process_kernel_pages_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);

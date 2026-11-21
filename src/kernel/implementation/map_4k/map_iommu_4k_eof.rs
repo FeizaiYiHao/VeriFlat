@@ -17,8 +17,6 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& new_it.locking_thread() == old_it.locking_thread()
     &&& new_it.being_killed() == old_it.being_killed()
     &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().insert(iova, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va))
-    &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
-    &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
     &&& new_it.view().page_closure() == old_it.view().page_closure()
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
@@ -108,7 +106,6 @@ pub(super) proof fn map_shared_page_into_iommu_4k_eof(
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         map_shared_page_into_iommu_4k_eof_page_iommu_table(pre, post, pg_idx, prc_ptr, thrd_ptr, source_pagetable, va, iommu_table_ptr, iova);
         assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-        assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
             reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);
             process_perms_wf_at(pre.prc_mp, prc_ptr); process_emptied_threads_wf_at(pre.prc_mp, pre.thrd_mp, prc_ptr, thrd_ptr);
