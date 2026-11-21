@@ -15,7 +15,7 @@ pub(super) open spec fn unmap_4k_range_eol_loop_framing(pre: KernelK, cur: Kerne
     let e = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let c = whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable);
     let thrd = cur.thrd_mp.spec_index(thrd_ptr).view();
-    &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> cur.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view()
+    &&& cur.cpu_hw_cr3_pcid[cpu_id as int].view() == pre.cpu_hw_cr3_pcid[cpu_id as int].view()
     &&& cur.cpu_op.view().view()[cpu_id as int] == pre.cpu_op.view().view()[cpu_id as int]
     &&& held_containers_unchanged(pre.ctn_mp, cur.ctn_mp, pre_lctx)
     &&& held_processes_unchanged(pre.prc_mp, cur.prc_mp, pre_lctx)
@@ -114,6 +114,7 @@ pub(super) proof fn unmap_4k_range_eol_step(pre: KernelK, mid: KernelK, post: Ke
         mid_lctx.cpu_id() == pre_lctx.cpu_id(),
         mid_lctx.thread_id() == pre_lctx.thread_id(),
         cpu_id == pre_lctx.cpu_id(),
+        index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(pre_lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(pre_lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
@@ -134,7 +135,8 @@ pub(super) proof fn unmap_4k_range_eol_step(pre: KernelK, mid: KernelK, post: Ke
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct == post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
-        forall|depth: int| #![trigger indirect[depth]] 0 <= depth < post.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect[depth] == post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+        forall|depth: int| #![trigger indirect[depth]] 0 <= depth < post.thrd_mp.spec_index(thrd_ptr).view().container_depth
+            ==> indirect[depth] == post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         held_pagetables_unchanged(mid.pt_mp, post.pt_mp, mid_lctx),
         !whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(i as int)),
         forall|w: WindowVa| #![trigger mid_lctx.pagetable_window_lock_map().dom().contains((pagetable, w))] mid_lctx.pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
@@ -169,6 +171,7 @@ pub(super) proof fn unmap_4k_range_eol_exit(pre: KernelK, cur: KernelK, pre_lctx
     range: VaRange4K, indirect: [usize; MAX_CONTAINER_TREE_DEPTH], direct: usize, pt_lock_id: usize)
     requires
         unmap_4k_range_eol_loop_framing(pre, cur, pre_lctx, pagetable, thrd_ptr, cpu_id, range, indirect, direct, range.len, pt_lock_id),
+        cpu_id == pre_lctx.cpu_id(),
     ensures
         index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> cur.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view(),
         cur.cpu_op.view().view()[cpu_id as int] == pre.cpu_op.view().view()[cpu_id as int],

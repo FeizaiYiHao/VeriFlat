@@ -36,7 +36,7 @@ flock -u 9
 printf 'verification run #%s\n' "$run_count" >&2
 
 # -Zthreads parallelizes rustc type checking and borrow checking.
-verus_args=(-Zthreads=8 "$@")
+verus_args=(-Zthreads=8 -V parallel-hir-lowering "$@")
 
 # The final erasure check reruns rustc on the ghost-erased crate and does not
 # depend on verification, so a --no-verify process runs it while the main
@@ -58,7 +58,7 @@ fi
 erasure_args=()
 for arg in "${verus_args[@]}"; do
     case "$arg" in
-        --output-json|--time|--time-expanded) ;;
+        --output-json|--time|--time-expanded|-V|parallel-hir-lowering) ;;
         *) erasure_args+=("$arg") ;;
     esac
 done

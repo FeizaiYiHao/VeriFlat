@@ -10,9 +10,9 @@ impl IommuTable {
             self.wf_l4(),
             self.disjoint_l4(),
             self.disjoint_l3(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
-            self.kernel_l4_end <= l4j && pei_valid(l4j),
+            pei_valid(l4j),
             pei_valid(l3j),
         ensures
             #![trigger self.spec_resolve_mapping_l3(l4i, l3i), self.spec_resolve_mapping_l3(l4j, l3j)]
@@ -30,10 +30,10 @@ impl IommuTable {
             self.disjoint_l4(),
             self.disjoint_l3(),
             self.disjoint_l2(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
-            self.kernel_l4_end <= l4j && pei_valid(l4j),
+            pei_valid(l4j),
             pei_valid(l3j),
             pei_valid(l2j),
         ensures
@@ -69,7 +69,7 @@ impl IommuTable {
             self.wf_l4(),
             self.wf_l3(),
             self.wf_l2(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
         ensures
@@ -83,7 +83,6 @@ impl IommuTable {
 
     pub proof fn resolve_l2_unchanged(&self, other: &Self)
         requires
-            self.kernel_l4_end == other.kernel_l4_end,
             self.cr3 == other.cr3,
             self.l4_table.view() == other.l4_table.view(),
             self.l3_tables.view() == other.l3_tables.view(),
@@ -91,7 +90,7 @@ impl IommuTable {
         ensures
             forall|l4i: L4Index|
                 #![trigger pei_valid(l4i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
+                pei_valid(l4i) ==> forall|l3i: L3Index|
                     #![trigger pei_valid(l3i)]
                     pei_valid(l3i) ==> forall|l2i: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)] pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {

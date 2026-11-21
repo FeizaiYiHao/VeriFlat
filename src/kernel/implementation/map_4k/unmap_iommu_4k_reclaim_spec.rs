@@ -23,14 +23,9 @@ pub(super) open spec fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transitio
     &&& post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread()
     &&& post.it_mp.spec_index(iommu_table).being_killed() == pre.it_mp.spec_index(iommu_table).being_killed()
     &&& post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().remove(iova)
-    &&& post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m()
-    &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g()
     &&& post.it_mp.spec_index(iommu_table).view().page_closure() == pre.it_mp.spec_index(iommu_table).view().page_closure()
-    &&& post.it_mp.spec_index(iommu_table).view().kernel_entries == pre.it_mp.spec_index(iommu_table).view().kernel_entries
-    &&& post.it_mp.spec_index(iommu_table).view().kernel_l4_end == pre.it_mp.spec_index(iommu_table).view().kernel_l4_end
     &&& post.it_mp.spec_index(iommu_table).view().cr3 == pre.it_mp.spec_index(iommu_table).view().cr3
     &&& post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr
-    &&& post.it_mp.spec_index(iommu_table).view().pcid == pre.it_mp.spec_index(iommu_table).view().pcid
     &&& post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex|

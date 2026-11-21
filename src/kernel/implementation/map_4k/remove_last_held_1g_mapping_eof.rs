@@ -193,7 +193,6 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
@@ -214,7 +213,6 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
     remove_last_held_1g_mapping_to_allocator_eof_process_links(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
 

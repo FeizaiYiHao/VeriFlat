@@ -35,7 +35,8 @@ pub(super) fn flush_pagetable_tlb_va_range_on_cpu(krnl: &mut KernelK, pagetable:
         old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
             == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
         old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Read,
-        old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().with_reader(local_cpu),
+        old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()
+            == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().with_reader(local_cpu),
         old(krnl).inv(),
         entry.inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -109,8 +110,10 @@ pub(super) fn flush_pagetable_tlb_va_range_on_cpu(krnl: &mut KernelK, pagetable:
         final(lctx).kernel_view_locking_state() is Acquire,
         final(krnl).cpu_hw_cr3_pcid[local_cpu as int].view() == old(krnl).cpu_hw_cr3_pcid[local_cpu as int].view(),
         final(krnl).cpu_op.view().view()[local_cpu as int] == old(krnl).cpu_op.view().view()[local_cpu as int],
-        old(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu) ==> final(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu) && final(krnl).cpu_trap_frame.view().view()[local_cpu] == old(krnl).cpu_trap_frame.view().view()[local_cpu],
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> final(krnl).cpu_arr.spec_index(held_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(held_cpu_id).view().view(),
+        old(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu)
+            ==> final(krnl).cpu_trap_frame.view().view().dom().contains(local_cpu) && final(krnl).cpu_trap_frame.view().view()[local_cpu] == old(krnl).cpu_trap_frame.view().view()[local_cpu],
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id)
+            ==> final(krnl).cpu_arr.spec_index(held_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(held_cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().view() == old(krnl).cpu_arr.spec_index(local_cpu).view().view(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread() == old(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().being_killed() == old(krnl).cpu_arr.spec_index(local_cpu).view().being_killed(),
@@ -241,8 +244,12 @@ fn flush_va_range_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLo
     };
     krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
     proof {
-        assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedHeldLock { lock_id: krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid), mode: TypedLockMode::Write }); };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); };
+        assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
+            map_insert_remove_absent_lemma(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedHeldLock { lock_id: krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid), mode: TypedLockMode::Write });
+        };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by {
+            broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
+        };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
     hw_cr3_pcid
@@ -443,7 +450,7 @@ pub(super) proof fn held_window_vas_flushed_implies_window_tlb_entries_present(p
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     assert(!pre.cpu_tlb.spec_index((cpu_id, pcid)).is_empty() ==> single_tlb_subset_of_whole_pagetable(pre.cpu_tlb.spec_index((cpu_id, pcid)), table)) by { reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match); };
-    assert(table.mapping_4k() == table.lower.mapping_4k && table.mapping_2m() == table.lower.mapping_2m);
+    assert(table.mapping_4k() =~= table.lower.mapping_4k && table.mapping_2m() =~= table.lower.mapping_2m);
     reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
     reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m);
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;

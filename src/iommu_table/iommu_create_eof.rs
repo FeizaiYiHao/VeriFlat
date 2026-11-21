@@ -30,7 +30,7 @@ impl IommuTable {
     pub(super) proof fn create_entry_l4_eof(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -46,21 +46,18 @@ impl IommuTable {
         Self::create_entry_l4_eof_disjoint_l3(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_disjoint_l2(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_wf_mapping_4k(pre, post, target_l4i, page_map_ptr);
-        assert(post.wf_mapping_2m()) by { reveal(IommuTable::create_entry_l4_eof_transition_framing); reveal(IommuTable::wf_mapping_2m); };
-        assert(post.wf_mapping_1g()) by { reveal(IommuTable::create_entry_l4_eof_transition_framing); reveal(IommuTable::wf_mapping_1g); };
         Self::create_entry_l4_eof_user_only(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_rwx_upper_level_entries(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_table_pages_wf(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_tables_reachable_wf(pre, post, target_l4i, page_map_ptr);
-        Self::create_entry_l4_eof_kernel_entries_wf(pre, post, target_l4i, page_map_ptr);
-        Self::create_entry_l4_eof_va_addr_valid_and_pcid_wf(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, page_map_ptr);
     }
 
     /// EOF closure of `create_entry_l4`: `wf_l4`.
     proof fn create_entry_l4_eof_wf_l4(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -76,7 +73,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -92,7 +89,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_wf_l2(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -108,7 +105,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_wf_l1(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -124,7 +121,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_disjoint_l4(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -140,7 +137,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_disjoint_l3(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -156,7 +153,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_disjoint_l2(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -172,7 +169,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -188,7 +185,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_user_only(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -204,7 +201,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_rwx_upper_level_entries(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -220,7 +217,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_table_pages_wf(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -236,7 +233,7 @@ impl IommuTable {
     proof fn create_entry_l4_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -248,34 +245,17 @@ impl IommuTable {
         assert(post.tables_reachable_wf()) by { reveal(IommuTable::tables_reachable_wf); reveal(IommuTable::wf_l4); };
     }
 
-    /// EOF closure of `create_entry_l4`: `kernel_entries_wf`.
-    proof fn create_entry_l4_eof_kernel_entries_wf(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+    /// EOF closure of `create_entry_l4`: `va_addr_valid` and `did_wf`.
+    proof fn create_entry_l4_eof_va_addr_valid_and_did_wf(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
-            pre.spec_resolve_mapping_l4(target_l4i) is None,
-            page_ptr_valid(page_map_ptr),
-            pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
-        ensures
-            post.kernel_entries_wf(),
-    {
-        reveal(IommuTable::create_entry_l4_eof_transition_framing);
-        assert(post.kernel_entries_wf()) by { reveal(IommuTable::kernel_entries_wf); };
-    }
-
-    /// EOF closure of `create_entry_l4`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
-    proof fn create_entry_l4_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
-        requires
-            pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
             post.va_addr_valid(),
-            post.pcid_wf(),
             post.did_wf(),
     {
         reveal(IommuTable::create_entry_l4_eof_transition_framing);
@@ -308,12 +288,11 @@ impl IommuTable {
     pub(super) proof fn create_entry_l3_eof(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -328,26 +307,22 @@ impl IommuTable {
         Self::create_entry_l3_eof_disjoint_l3(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        assert(post.wf_mapping_2m()) by { reveal(IommuTable::create_entry_l3_eof_transition_framing); reveal(IommuTable::wf_mapping_2m); };
-        assert(post.wf_mapping_1g()) by { reveal(IommuTable::create_entry_l3_eof_transition_framing); reveal(IommuTable::wf_mapping_1g); };
         Self::create_entry_l3_eof_user_only(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_rwx_upper_level_entries(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_kernel_entries_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_va_addr_valid_and_pcid_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
+        Self::create_entry_l3_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
     }
 
     /// EOF closure of `create_entry_l3`: `wf_l4`.
     proof fn create_entry_l3_eof_wf_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -362,12 +337,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -382,12 +356,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_wf_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -402,12 +375,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_wf_l1(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -422,12 +394,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_disjoint_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -442,12 +413,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_disjoint_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -462,12 +432,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_disjoint_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -482,12 +451,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -502,12 +470,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_user_only(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -522,12 +489,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_rwx_upper_level_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -542,12 +508,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_table_pages_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -562,12 +527,11 @@ impl IommuTable {
     proof fn create_entry_l3_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
@@ -578,42 +542,20 @@ impl IommuTable {
         assert(post.tables_reachable_wf()) by { reveal(IommuTable::tables_reachable_wf); reveal(IommuTable::wf_l4); reveal(IommuTable::wf_l3); reveal(IommuTable::disjoint_l4); };
     }
 
-    /// EOF closure of `create_entry_l3`: `kernel_entries_wf`.
-    proof fn create_entry_l3_eof_kernel_entries_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    /// EOF closure of `create_entry_l3`: `va_addr_valid` and `did_wf`.
+    proof fn create_entry_l3_eof_va_addr_valid_and_did_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
-            page_ptr_valid(page_map_ptr),
-            pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
-        ensures
-            post.kernel_entries_wf(),
-    {
-        reveal(IommuTable::create_entry_l3_eof_transition_framing);
-        assert(post.kernel_entries_wf()) by { reveal(IommuTable::kernel_entries_wf); };
-    }
-
-    /// EOF closure of `create_entry_l3`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
-    proof fn create_entry_l3_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
-        requires
-            pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
-            pei_valid(target_l3i),
-            pre.spec_resolve_mapping_l4(target_l4i) is Some,
-            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
         ensures
             post.va_addr_valid(),
-            post.pcid_wf(),
             post.did_wf(),
     {
         reveal(IommuTable::create_entry_l3_eof_transition_framing);
@@ -646,13 +588,12 @@ impl IommuTable {
     pub(super) proof fn create_entry_l2_eof(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -667,27 +608,23 @@ impl IommuTable {
         Self::create_entry_l2_eof_disjoint_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
-        assert(post.wf_mapping_2m()) by { reveal(IommuTable::create_entry_l2_eof_transition_framing); reveal(IommuTable::wf_mapping_2m); };
-        assert(post.wf_mapping_1g()) by { reveal(IommuTable::create_entry_l2_eof_transition_framing); reveal(IommuTable::wf_mapping_1g); };
         Self::create_entry_l2_eof_user_only(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_rwx_upper_level_entries(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
-        Self::create_entry_l2_eof_kernel_entries_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
-        Self::create_entry_l2_eof_va_addr_valid_and_pcid_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
+        Self::create_entry_l2_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
     }
 
     /// EOF closure of `create_entry_l2`: `wf_l4`.
     proof fn create_entry_l2_eof_wf_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -702,13 +639,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -723,13 +659,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_wf_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -744,13 +679,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_wf_l1(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -765,13 +699,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_disjoint_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -786,13 +719,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_disjoint_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -807,13 +739,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_disjoint_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -828,13 +759,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -849,13 +779,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_user_only(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -870,13 +799,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_rwx_upper_level_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -891,13 +819,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_table_pages_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -912,13 +839,12 @@ impl IommuTable {
     proof fn create_entry_l2_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
@@ -929,44 +855,21 @@ impl IommuTable {
         assert(post.tables_reachable_wf()) by { reveal(IommuTable::tables_reachable_wf); reveal(IommuTable::wf_l4); reveal(IommuTable::wf_l3); reveal(IommuTable::wf_l2); broadcast use IommuTable::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 
-    /// EOF closure of `create_entry_l2`: `kernel_entries_wf`.
-    proof fn create_entry_l2_eof_kernel_entries_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    /// EOF closure of `create_entry_l2`: `va_addr_valid` and `did_wf`.
+    proof fn create_entry_l2_eof_va_addr_valid_and_did_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
-            page_ptr_valid(page_map_ptr),
-            pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
-        ensures
-            post.kernel_entries_wf(),
-    {
-        reveal(IommuTable::create_entry_l2_eof_transition_framing);
-        assert(post.kernel_entries_wf()) by { reveal(IommuTable::kernel_entries_wf); };
-    }
-
-    /// EOF closure of `create_entry_l2`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
-    proof fn create_entry_l2_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
-        requires
-            pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
-            pei_valid(target_l3i),
-            pei_valid(target_l2i),
-            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
-            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
-            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
         ensures
             post.va_addr_valid(),
-            post.pcid_wf(),
             post.did_wf(),
     {
         reveal(IommuTable::create_entry_l2_eof_transition_framing);

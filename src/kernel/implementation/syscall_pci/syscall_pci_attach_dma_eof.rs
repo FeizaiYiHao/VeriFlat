@@ -14,8 +14,6 @@ pub(super) open spec fn pci_attach_dma_eof_transition_framing(pre: KernelK, post
         &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
         &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
         &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
-        &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
-        &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
         &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
             #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
             &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
@@ -76,13 +74,11 @@ proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
     ensures
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
     reveal(pci_attach_dma_eof_transition_framing);
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(iommu_table_pages_wf); };
 }
 
@@ -130,8 +126,6 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
             &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
             &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
             &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
-            &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
-            &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
             &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
                 #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
                 &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)

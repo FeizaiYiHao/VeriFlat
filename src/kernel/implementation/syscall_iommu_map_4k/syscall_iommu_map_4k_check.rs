@@ -397,7 +397,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::ErrorIommuVaNotMapped); }
             RetValueType::ErrorIommuVaNotMapped
         } else {
-            proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr); }
+            proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); }
             let it = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(&iommu_table_lock_perm));
             if !it.mapping_4k_va_range_absent(&iova_range) {
                 proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::ErrorIommuIovaAlreadyMapped); }

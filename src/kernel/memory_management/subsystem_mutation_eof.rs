@@ -2260,9 +2260,7 @@ proof fn iommu_table_map_set_did_eof_table_mappings(pre_table: IommuTable, post_
         post_table == (IommuTable { did, ..pre_table }),
     ensures
         post_table.wf_mapping_4k(),
-        post_table.wf_mapping_2m(),
-        post_table.wf_mapping_1g(),
-{ reveal(IommuTable::wf_mapping_4k); reveal(IommuTable::wf_mapping_2m); reveal(IommuTable::wf_mapping_1g); }
+{ reveal(IommuTable::wf_mapping_4k); }
 
 /// EOF closure of `iommu_table_map_set_did` for the changed table's entry permissions, which do not read the DID.
 proof fn iommu_table_map_set_did_eof_table_permissions(pre_table: IommuTable, post_table: IommuTable, did: Option<VtdDomainId>)
@@ -2274,7 +2272,7 @@ proof fn iommu_table_map_set_did_eof_table_permissions(pre_table: IommuTable, po
         post_table.rwx_upper_level_entries(),
 { reveal(IommuTable::user_only); reveal(IommuTable::rwx_upper_level_entries); }
 
-/// EOF closure of `iommu_table_map_set_did` for the changed table's table pages, reachability, and kernel entries, which do not read the DID.
+/// EOF closure of `iommu_table_map_set_did` for the changed table's table pages and reachability, which do not read the DID.
 proof fn iommu_table_map_set_did_eof_table_table_pages(pre_table: IommuTable, post_table: IommuTable, did: Option<VtdDomainId>)
     requires
         pre_table.wf(),
@@ -2282,8 +2280,7 @@ proof fn iommu_table_map_set_did_eof_table_table_pages(pre_table: IommuTable, po
     ensures
         post_table.table_pages_wf(),
         post_table.tables_reachable_wf(),
-        post_table.kernel_entries_wf(),
-{ reveal(IommuTable::table_pages_wf); reveal(IommuTable::tables_reachable_wf); reveal(IommuTable::kernel_entries_wf); }
+{ reveal(IommuTable::table_pages_wf); reveal(IommuTable::tables_reachable_wf); }
 
 /// EOF closure of `iommu_table_map_set_did`: neither a table's well-formedness nor the hidden-leaf lock rule reads its DID.
 pub(super) proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>)

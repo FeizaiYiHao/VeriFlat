@@ -102,8 +102,6 @@ pub(super) fn iommu_map_4k_install_directory(
         final(krnl).it_mp.dom().contains(iommu_table_ptr),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
         final(krnl).prc_mp.dom().contains(prc_ptr),
         final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock(),
         final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init(),
@@ -418,7 +416,7 @@ pub(super) fn iommu_map_4k_ensure_l1(
     let indices = va2index(iova);
     proof {
         krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
+        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr);
     }
     let (l4_present, l3_present, l2_present) = {
         let it = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));

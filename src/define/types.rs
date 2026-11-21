@@ -383,9 +383,7 @@ pub proof fn va_2m_range_valid_implies_covering_4k_range_valid(va: VAddr, len: u
         assert(i * 4096 == q * 0x200000 + r * 4096) by (nonlinear_arith) requires i == 512 * q + r;
         assert(q * 0x200000 <= len * 0x200000) by (nonlinear_arith) requires q < len;
         let x = spec_va_add_range_2m(va, q);
-        assert(spec_va_2m_valid(x));
         let y = spec_va_add_range(va, i);
-        assert(y == x + r * 4096);
         assert((x & (!MEM_2M_MASK) as usize == 0) && (x as u64 >> 39u64 & 0x1ffu64) >= 1u64 && r < 512 && y == x + r * 4096
             ==> (y & (!MEM_4K_MASK) as usize == 0) && (y as u64 >> 39u64 & 0x1ffu64) >= 1u64) by (bit_vector);
     };

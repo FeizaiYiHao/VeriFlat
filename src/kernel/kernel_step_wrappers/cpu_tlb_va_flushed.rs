@@ -20,7 +20,8 @@ pub proof fn kernel_cpu_tlb_va_range_flushed_implies_u_va_range_flushed(krnl: &K
         cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, cpu.current_process->Some_0); kernel_process_user_projection_at(krnl, cpu.current_process->Some_0);
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), cpu.current_pagetable->Some_0); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g);
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip,
+            WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
     }
     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_user_projection(*krnl)) by { reveal(kernel_k_to_kernel_u); };
 }
@@ -79,8 +80,10 @@ impl KernelK {
                 old(self).cpu_tlb.structure_cache((cpu_id, pcid))),
             old(self).ctn_mp.dom().contains(ctn_ptr),
             old(self).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
-            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed() == old(steps).snapshot_k().cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
-            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() == old(steps).snapshot_k().cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().with_reader(old(lctx).cpu_id()),
+            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
+                == old(steps).snapshot_k().cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
+            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()
+                == old(steps).snapshot_k().cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().with_reader(old(lctx).cpu_id()),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -92,7 +95,8 @@ impl KernelK {
             old(steps).snapshot_u().container_map.dom().contains(ctn_ptr),
             kernel_k_to_kernel_u(*old(self)) == (KernelU {
                 cpu_tlb: old(self).cpu_tlb.view(),
-                container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old(steps).snapshot_u().container_map[ctn_ptr].cpu_set_lock.with_reader(old(lctx).cpu_id()), ..old(steps).snapshot_u().container_map[ctn_ptr] }),
+                container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr,
+                    ContainerU { cpu_set_lock: old(steps).snapshot_u().container_map[ctn_ptr].cpu_set_lock.with_reader(old(lctx).cpu_id()), ..old(steps).snapshot_u().container_map[ctn_ptr] }),
                 ..old(steps).snapshot_u()
             }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),

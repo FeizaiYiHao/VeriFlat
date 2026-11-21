@@ -42,7 +42,9 @@ pub(crate) fn kill_reclaim_target(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
-        scope is Subtree ==> kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) <= kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + kill_process_target_step_bound(),
+        scope is Subtree
+            ==> kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id)
+                <= kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + kill_process_target_step_bound(),
         kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + 1 <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *final(chain_perms)),
         parent == if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] },
@@ -135,7 +137,8 @@ pub(crate) fn kill_retire_zombie(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -207,7 +210,8 @@ pub(crate) fn kill_reclaim_live(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -310,7 +314,8 @@ pub(crate) fn kill_reclaim_lock_table(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -336,12 +341,12 @@ pub(crate) fn kill_reclaim_lock_table(
         let stale = *krnl;
         let before_u = kernel_k_to_kernel_u(before);
         kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_lock_table_pre_from_k(&before, target);
-        kill_lock_table_step_from_k(&before, &after, &after_lctx, cpu_id, thrd_ptr, target, pagetable, scope);
-        kernel_cpu_nonlock_fields_unchanged_for_equal(after.cpu_arr, stale.cpu_arr); kernel_cpu_tlb_updated_implies_u_step(&after, &stale); kernel_u_domains_projection(&after); kernel_u_domains_projection(&stale);
+        kernel_cpu_nonlock_fields_unchanged_for_equal(after.cpu_arr, stale.cpu_arr); kernel_cpu_tlb_updated_implies_u_step(&after, &stale);
+        kill_lock_table_step_from_k(&before, &after, &stale, &after_lctx, cpu_id, thrd_ptr, target, pagetable, scope);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_perms_wf_at(krnl.prc_mp, target);
-        kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(after), cpu_id, ctx);
+        kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(stale), cpu_id, ctx);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
     }
     Tracked(pagetable_perm)
@@ -421,7 +426,7 @@ pub(crate) fn kill_reclaim_unown_functions(
         final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         forall|l4i: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
-        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0,
+        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present(),
         iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
 {
     let ghost before = *krnl;
@@ -489,7 +494,7 @@ pub(crate) fn kill_reclaim_unown_functions(
     let ghost after = *krnl;
     proof {
         if let Some(it) = iommu_table {
-            iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it); krnl.it_mp.spec_index(it).view().kernel_entries_wf_iommu_l4_end_at();
+            iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it);
         }
         kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
         kill_reclaim_pre_from_k(&before, &before_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, iommu_table);

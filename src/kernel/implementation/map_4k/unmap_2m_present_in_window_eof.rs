@@ -88,7 +88,14 @@ proof fn clear_2m_mapping_present_in_window_eof_pci_mappings(pre: KernelK, post:
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == l2_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
-{ reveal(clear_2m_mapping_present_in_window_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+{
+    let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
+    let (l4i, l3i, l2i) = (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+    assert(old_c.spec_held_2m_l2(l4i, l3i, l2i) is Some ==> new_c.spec_held_2m_l2(l4i, l3i, l2i)->0.addr == old_c.spec_held_2m_l2(l4i, l3i, l2i)->0.addr
+        && new_c.spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io == old_c.spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io) by { reveal(clear_2m_mapping_present_in_window_eof_transition_framing); };
+    reveal(clear_2m_mapping_present_in_window_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+}
 
 pub(super) proof fn clear_2m_mapping_present_in_window_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
@@ -123,7 +130,6 @@ pub(super) proof fn clear_2m_mapping_present_in_window_eof(pre: KernelK, post: K
         assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
-        assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
         assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };

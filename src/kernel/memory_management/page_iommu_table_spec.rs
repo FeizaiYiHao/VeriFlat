@@ -5,7 +5,7 @@ verus! {
 // Proof dependency (confirmed): iommu_table_perms_wf.
 #[verifier::opaque]
 pub open spec fn page_iommu_table_wf(ctn_mp: ContainerLockedMap, prc_mp: ProcessLockedMap, it_mp: IommuTableLockedMap, pg_arr: PageLockedArray) -> bool {
-    // Every `(it, iova)` in a mapped page's IOMMU mappings is a leaf of the page's size in table `it` that points at the page.
+    // Every `(it, iova)` in a mapped page's IOMMU mappings belongs to a 4K page and is a 4K leaf of table `it` that points at the page.
     &&& forall|p_i: PageIndex|
         #![trigger pg_arr.spec_index(p_i)]
         index_valid(NUM_PAGES, p_i) && pg_arr.spec_index(p_i).view().view().is_mapped()
@@ -14,14 +14,10 @@ pub open spec fn page_iommu_table_wf(ctn_mp: ContainerLockedMap, prc_mp: Process
                 #![trigger pg_arr.spec_index(p_i).view().view().iommu_mappings().contains((it, iova))]
                 #![trigger it_mp.spec_index(it).view().mapping_4k().spec_index(iova)]
                 pg_arr.spec_index(p_i).view().view().iommu_mappings().contains((it, iova)) ==> {
-                    let mapping = match pg_arr.spec_index(p_i).view().view().state {
-                        PageState::Mapped4k => it_mp.spec_index(it).view().mapping_4k(),
-                        PageState::Mapped2m => it_mp.spec_index(it).view().mapping_2m(),
-                        _ => it_mp.spec_index(it).view().mapping_1g(),
-                    };
+                    &&& pg_arr.spec_index(p_i).view().view().state is Mapped4k
                     &&& it_mp.dom().contains(it)
-                    &&& mapping.contains_key(iova)
-                    &&& mapping.spec_index(iova).addr == page_index2page_ptr(p_i)
+                    &&& it_mp.spec_index(it).view().mapping_4k().contains_key(iova)
+                    &&& it_mp.spec_index(it).view().mapping_4k().spec_index(iova).addr == page_index2page_ptr(p_i)
                 }
     // Every 4K leaf of an IOMMU table points at a Mapped4k page that lists it in its IOMMU mappings and shares the leaf's
     // container.

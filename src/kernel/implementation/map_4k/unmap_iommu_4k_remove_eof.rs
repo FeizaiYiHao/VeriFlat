@@ -16,13 +16,8 @@ pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_fram
     &&& new_it.locking_thread() == old_it.locking_thread()
     &&& new_it.being_killed() == old_it.being_killed()
     &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().remove(iova)
-    &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
-    &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
     &&& new_it.view().page_closure() == old_it.view().page_closure()
-    &&& new_it.view().kernel_entries == old_it.view().kernel_entries
-    &&& new_it.view().kernel_l4_end == old_it.view().kernel_l4_end
     &&& new_it.view().cr3 == old_it.view().cr3
-    &&& new_it.view().pcid == old_it.view().pcid
     &&& new_it.view().did == old_it.view().did
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
@@ -112,7 +107,6 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
         assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-        assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
         assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, pg_idx); };
         assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, pg_idx); };

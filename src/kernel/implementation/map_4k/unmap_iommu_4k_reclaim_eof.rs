@@ -64,7 +64,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_tables(
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
     reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
@@ -81,7 +80,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_tables(
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf);
     };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
 }
 
@@ -186,7 +184,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
         allocator_free_page_ptrs_wf(post.allc_2m_mp),
@@ -381,11 +378,7 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
         post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread(),
         post.it_mp.spec_index(iommu_table).being_killed() == pre.it_mp.spec_index(iommu_table).being_killed(),
         post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().remove(spec_index2va(indices)),
-        post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m(),
-        post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g(),
         post.it_mp.spec_index(iommu_table).view().page_closure() == pre.it_mp.spec_index(iommu_table).view().page_closure(),
-        post.it_mp.spec_index(iommu_table).view().kernel_entries == pre.it_mp.spec_index(iommu_table).view().kernel_entries,
-        post.it_mp.spec_index(iommu_table).view().kernel_l4_end == pre.it_mp.spec_index(iommu_table).view().kernel_l4_end,
         post.it_mp.spec_index(iommu_table).view().cr3 == pre.it_mp.spec_index(iommu_table).view().cr3,
         post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr,
         post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,

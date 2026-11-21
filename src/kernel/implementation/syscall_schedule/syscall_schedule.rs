@@ -225,7 +225,6 @@ fn schedule_switch_to_queue_head(
     let tracked scheduler_lock_perm = scheduler_lock_perm.get();
     let tracked next_lock_perm = next_lock_perm.get();
     let tracked cpu_lock_perm = cpu_lock_perm.get();
-    proof { kernel_scheduler_shards_projection_at(old(krnl).sched_mp.spec_index(sched_ptr), cpu_id); }
     let (next_process, next_pagetable, cr3, pcid, depth) = schedule_switch_read_target(&*krnl, Tracked(&*lctx), cpu_id, sched_ptr, next_thread, Tracked(&scheduler_lock_perm), Tracked(&next_lock_perm));
     let same = match current_process { Some(prc_ptr) => prc_ptr == next_process, None => false };
     let tracked mut needflush_perm: Option<LockPerm> = None;

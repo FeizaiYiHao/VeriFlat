@@ -3,8 +3,7 @@ use crate::*;
 use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
 use super::mmap_1g_install_directory_spec::*;
-#[cfg(verus_keep_ghost)]
-use super::mmap_4k_create_entry_install_eof::*;
+use super::mmap_4k_create_entry_install::install_staged_4k_page_table_page;
 #[cfg(verus_keep_ghost)]
 use super::mmap_1g_install_directory_trace::mmap_1g_directory_step_from_k;
 
@@ -252,6 +251,16 @@ verus! {
             pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4i) is None,
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_held_l4(l4i) is None,
+            old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+            KERNEL_MEM_END_L4INDEX <= l4i,
+            old(lctx).scheduler_lock_map().dom().is_empty(),
+            old(lctx).cpu_set_lock_map().dom().is_empty(),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
+            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -317,46 +326,10 @@ verus! {
                 },
     {
         let pg_idx = page_ptr2page_index(pg_ptr);
-        let ghost staged_k = *krnl;
-        assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(thrd_ptr).inv()) by {
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
-        };
-        assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().is_init() && krnl.pg_arr.spec_index(pg_idx).view().inv()
-            && krnl.pg_arr.spec_index(pg_idx).view().view().inv() && krnl.pg_arr.spec_index(pg_idx).view().view().addr == pg_ptr) by {
-            page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
-        };
-        assert(!whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr)) by {
-            if whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr) {
-                pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable_ptr, pg_ptr);
-            }
-        };
-        proof {
-            pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
-            pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-        }
+        assert(page_table_key_2m_valid::<PT_TYPE>(spec_index2va((l4i, 0usize, 0usize, 0usize)))) by { spec_index2va_2m_valid(l4i, 0usize, 0usize); };
         let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
-        let Tracked(page_perm) = {
-            let page = krnl.pg_arr.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
-            let tracked_perm = take_perm_4k(page);
-            page.state = PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: pagetable_ptr, table_type: PT_TYPE } };
-            tracked_perm
-        };
-        {
-            let thread = krnl.thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm));
-            thread.temp_alloc_cache_4k = Ghost(thread.temp_alloc_cache_4k.view().remove(pg_ptr));
-            thread.quota_4k = thread.quota_4k - 1;
-        }
-        let (page_map_ptr, Tracked(page_map_perm)) = page_perm_to_page_map(pg_ptr, Tracked(page_perm));
-        pagetable_map_create_entry_l4(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable_ptr, (l4i, 0usize, 0usize, 0usize), page_map_ptr, Tracked(page_map_perm),
-            Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
-        proof {
-            lctx.update_lock_id(KernelObjId::Page(pg_idx), staged_page_lock_id, krnl.pg_arr.lock_id_by_index(pg_idx));
-            assert(krnl.pt_lower.view() =~= staged_k.pt_lower.view().insert(pagetable_ptr, krnl.pt_lower.view().spec_index(pagetable_ptr)));
-            assert(install_staged_4k_page_table_page_eof_transition_framing(staged_k, *krnl, MissingPageTableLevel::L4, pg_ptr, thrd_ptr, pagetable_ptr)) by {
-                reveal(install_staged_4k_page_table_page_eof_transition_framing);
-            };
-            install_staged_4k_page_table_page_eof(staged_k, *krnl, MissingPageTableLevel::L4, pg_ptr, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
-        }
+        let _ = install_staged_4k_page_table_page(krnl, MissingPageTableLevel::L4, pg_ptr, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr, (l4i, 0usize, 0usize), 0usize, 0usize, true,
+            Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None));
         let ghost installed_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {

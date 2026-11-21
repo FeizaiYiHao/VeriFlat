@@ -11,7 +11,6 @@ impl IommuTable {
         recommends
             self.wf(),
             range.wf(),
-            self.kernel_l4_end <= spec_va2index(range.start).0,
     {
         forall|i: int|
             #![trigger self.mapping_4k().dom().contains(range.view().spec_index(i))]
@@ -19,7 +18,6 @@ impl IommuTable {
             0 <= i < range.len ==> {
                 let va = range.view().spec_index(i);
                 let indices = spec_va2index(va);
-                &&& self.kernel_l4_end <= indices.0
                 &&& pei_valid(indices.0)
                 &&& pei_valid(indices.1)
                 &&& pei_valid(indices.2)
@@ -67,7 +65,7 @@ impl IommuTable {
     fn mapping_4k_l1_range_empty(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l2_entry: &PageEntry, start_l1i: L1Index, end_l1i: L1Index) -> (ret: bool)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
             pei_valid(start_l1i),
@@ -81,7 +79,7 @@ impl IommuTable {
         while l1i <= end_l1i
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(l3i),
                 pei_valid(l2i),
                 pei_valid(start_l1i),
@@ -104,7 +102,7 @@ impl IommuTable {
     fn mapping_4k_l2_range_empty(&self, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index), end: (L2Index, L1Index)) -> (ret: bool)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(start.0),
             pei_valid(start.1),
@@ -119,7 +117,7 @@ impl IommuTable {
         while l2i <= end.0
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(l3i),
                 pei_valid(start.0),
                 pei_valid(start.1),
@@ -148,7 +146,7 @@ impl IommuTable {
     fn mapping_4k_l3_range_empty(&self, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index), end: (L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(start.0),
             pei_valid(start.1),
             pei_valid(start.2),
@@ -164,7 +162,7 @@ impl IommuTable {
         while l3i <= end.0
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(start.0),
                 pei_valid(start.1),
                 pei_valid(start.2),
@@ -195,7 +193,6 @@ impl IommuTable {
     pub fn mapping_4k_range_empty(&self, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
             self.wf(),
-            self.kernel_l4_end <= start.0,
             pei_valid(start.0),
             pei_valid(start.1),
             pei_valid(start.2),
@@ -212,7 +209,7 @@ impl IommuTable {
         while l4i <= end.0
             invariant
                 self.wf(),
-                self.kernel_l4_end <= start.0 <= l4i,
+                start.0 <= l4i,
                 pei_valid(start.0),
                 pei_valid(start.1),
                 pei_valid(start.2),
@@ -244,7 +241,7 @@ impl IommuTable {
     fn next_mapped_4k_l1_from(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l2_entry: &PageEntry, start_l1i: L1Index) -> (ret: Option<L1Index>)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
             start_l1i <= 512,
@@ -264,7 +261,7 @@ impl IommuTable {
         while l1i < 512
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(l3i),
                 pei_valid(l2i),
                 start_l1i <= l1i <= 512,
@@ -285,7 +282,7 @@ impl IommuTable {
     fn next_mapped_4k_l2_from(&self, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index)) -> (ret: Option<(L2Index, L1Index)>)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(start.0),
             start.1 <= 512,
@@ -307,7 +304,7 @@ impl IommuTable {
         while l2i < 512
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(l3i),
                 pei_valid(start.0),
                 start.1 <= 512,
@@ -334,7 +331,7 @@ impl IommuTable {
     fn next_mapped_4k_l3_from(&self, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index)) -> (ret: Option<(L3Index, L2Index, L1Index)>)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(start.0),
             pei_valid(start.1),
             start.2 <= 512,
@@ -357,7 +354,7 @@ impl IommuTable {
         while l3i < 512
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(start.0),
                 pei_valid(start.1),
                 start.2 <= 512,
@@ -384,7 +381,6 @@ impl IommuTable {
     pub fn next_mapped_4k_from(&self, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
         requires
             self.wf(),
-            self.kernel_l4_end <= cursor.0,
             pei_valid(cursor.0),
             pei_valid(cursor.1),
             pei_valid(cursor.2),
@@ -392,7 +388,6 @@ impl IommuTable {
         ensures
             ret is Some ==> {
                 let found = ret->Some_0;
-                &&& self.kernel_l4_end <= found.0
                 &&& pei_valid(found.0)
                 &&& pei_valid(found.1)
                 &&& pei_valid(found.2)
@@ -410,7 +405,7 @@ impl IommuTable {
         while l4i < 512
             invariant
                 self.wf(),
-                self.kernel_l4_end <= cursor.0 <= l4i <= 512,
+                cursor.0 <= l4i <= 512,
                 pei_valid(cursor.0),
                 pei_valid(cursor.1),
                 pei_valid(cursor.2),
@@ -437,7 +432,6 @@ impl IommuTable {
         requires
             self.wf(),
             range.wf(),
-            self.kernel_l4_end <= spec_va2index(range.start).0,
         ensures
             ret == self.spec_mapping_4k_va_range_present(range),
             ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len
@@ -452,7 +446,6 @@ impl IommuTable {
                 range.wf(),
                 range_start == range.start,
                 range_len == range.len,
-                self.kernel_l4_end <= spec_va2index(range.start).0,
                 0 <= i <= range_len,
                 forall|done: int|
                     #![trigger self.mapping_4k().dom().contains(range.view().spec_index(done))]
@@ -461,7 +454,6 @@ impl IommuTable {
                     0 <= done < i ==> {
                         let va = range.view().spec_index(done);
                         let indices = spec_va2index(va);
-                        &&& self.kernel_l4_end <= indices.0
                         &&& pei_valid(indices.0)
                         &&& pei_valid(indices.1)
                         &&& pei_valid(indices.2)
@@ -481,7 +473,6 @@ impl IommuTable {
             let va = va_add_range(range_start, i);
             proof { assert(va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); }; }
             let (l4i, l3i, l2i, l1i) = va2index(va);
-            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); }; spec_v2l4index_monotonic(range_start, va); }; }
             let resolved = self.resolve_mapping_4k_l1(l4i, l3i, l2i, l1i);
             if resolved.2.is_none() {
                 proof { assert(!self.mapping_4k().dom().contains(range.view().spec_index(i as int))) by { range.wf_implies_view_index_is_start_plus_offset(); self.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }
@@ -499,7 +490,6 @@ impl IommuTable {
                 assert({
                     let checked_va = range.view().spec_index(i as int);
                     let checked_indices = spec_va2index(checked_va);
-                    &&& self.kernel_l4_end <= checked_indices.0
                     &&& pei_valid(checked_indices.0)
                     &&& pei_valid(checked_indices.1)
                     &&& pei_valid(checked_indices.2)
@@ -525,7 +515,6 @@ impl IommuTable {
         requires
             self.wf(),
             range.wf(),
-            self.kernel_l4_end <= spec_va2index(range.start).0,
         ensures
             ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> !self.mapping_4k().dom().contains(range.view().spec_index(j)),
     {
@@ -538,7 +527,6 @@ impl IommuTable {
                 range.wf(),
                 range_start == range.start,
                 range_len == range.len,
-                self.kernel_l4_end <= spec_va2index(range.start).0,
                 0 <= i <= range_len,
                 forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < i ==> !self.mapping_4k().dom().contains(range.view().spec_index(j)),
             decreases range_len - i,
@@ -546,7 +534,6 @@ impl IommuTable {
             let va = va_add_range(range_start, i);
             proof { assert(va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); }; }
             let (l4i, l3i, l2i, l1i) = va2index(va);
-            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); }; spec_v2l4index_monotonic(range_start, va); }; }
             let resolved = self.resolve_mapping_4k_l1(l4i, l3i, l2i, l1i);
             if resolved.2.is_some() {
                 proof { assert(self.mapping_4k().dom().contains(range.view().spec_index(i as int))) by { range.wf_implies_view_index_is_start_plus_offset(); self.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }

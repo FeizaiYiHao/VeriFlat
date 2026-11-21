@@ -68,7 +68,6 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked); reveal(pagetable_window_stale_cpus_only_when_locked);
         reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
@@ -178,7 +177,6 @@ pub(super) proof fn runlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_typed_lock_map_aligned); reveal(pagetable_window_stale_cpus_only_when_locked);
         reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
@@ -231,7 +229,6 @@ pub(super) proof fn wunlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_typed_lock_map_aligned); reveal(pagetable_window_stale_cpus_only_when_locked);
         reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
@@ -255,7 +252,6 @@ pub(super) open spec fn downgrade_pagetable_eof_transition_framing(pre: KernelK,
     &&& post == (KernelK { pt_mp: post.pt_mp, ..pre })
     &&& post.pt_mp.perms_wf()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
-    &&& pre.pt_mp.spec_index(pagetable_ptr).wlocked_by_thread(thread_id)
     &&& post.pt_mp.spec_index(pagetable_ptr).locking_thread() == RwLockState::Read {
         reader_map: Map::empty().insert(thread_id, pre.pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id) }
     &&& post.pt_mp.spec_index(pagetable_ptr).inv()
@@ -272,6 +268,7 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(pagetable_ptr),
+        pre.pt_mp.spec_index(pagetable_ptr).wlocked_by_thread(thread_id),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).leaves_present(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
@@ -296,7 +293,6 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
         lock_op_implies_pagetable_perms_wf_preserved_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked);
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_stale_cpus_only_when_locked); reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
