@@ -729,10 +729,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.it_mp.spec_index(layout.iommu_table).locking_thread() is None
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().wf()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().cr3 == layout.iommu_l4
-    &&& krnl.it_mp.spec_index(layout.iommu_table).view().pcid is None
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().did is None
-    &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_l4_end == 0
-    &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_entries.view() =~= Seq::<PageEntry>::empty()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().is_empty()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().page_closure() =~= set![layout.iommu_l4]
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().proc_ptr == layout.root_process
@@ -1098,7 +1095,7 @@ pub fn finish_init_from_boot(
             iommu_l4_perm.value().wf_at(i as usize);
         });
     };
-    let iommu_table = IommuTable::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
+    let iommu_table = IommuTable::new(iommu_l4, Tracked(iommu_l4_perm), layout.root_process);
     let (Tracked(thread_region_perm), thread_sched_node, thread_proc_node, thread_endpoint_node, thread_trap_frame, thread_frame) = split_thread_page_node_slots(layout.root_thread, Tracked(thread_page_perm));
     let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint, thread_sched_node, thread_proc_node, thread_endpoint_node, thread_trap_frame);
     let mut thrd_mp = ThreadLockedMap::new_empty();

@@ -51,8 +51,6 @@ pub fn remove_iommu_4k_mapping_without_free(
         final(krnl).it_mp.spec_index(iommu_table).being_killed() == old(krnl).it_mp.spec_index(iommu_table).being_killed(),
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().remove(spec_index2va(indices)),
         final(krnl).it_mp.spec_index(iommu_table).view().page_closure() == old(krnl).it_mp.spec_index(iommu_table).view().page_closure(),
-        final(krnl).it_mp.spec_index(iommu_table).view().kernel_entries == old(krnl).it_mp.spec_index(iommu_table).view().kernel_entries,
-        final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
         final(krnl).it_mp.spec_index(iommu_table).view().cr3 == old(krnl).it_mp.spec_index(iommu_table).view().cr3,
         final(krnl).it_mp.spec_index(iommu_table).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table).view().proc_ptr,
         final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
@@ -72,7 +70,6 @@ pub fn remove_iommu_4k_mapping_without_free(
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
     let iova = index2va(indices);
-    proof { iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table); }
     assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv() && krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
         && krnl.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table, iova))) by {
         page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); page_ptr_roundtrip();

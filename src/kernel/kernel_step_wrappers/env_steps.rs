@@ -52,7 +52,7 @@ pub proof fn kernel_iommu_tlb_within_may_cache_projection(krnl: &KernelK, did: V
             &&& krnl.it_mp.spec_index(it).view().did == Some(did)
         }) by { reveal(iommu_root_table_process_wf); root_table.wf_context_entry_at(anchor.0, anchor.1, anchor.2); };
         process_perms_wf_at(krnl.prc_mp, owner); kernel_process_user_projection_at(krnl, owner);
-        process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, owner); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, it);
+        process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, owner);
         if krnl.prc_mp.spec_index(owner).view().zombie {
             assert(tlb.tlb_4k().dom() =~= Set::<VAddr>::empty() && tlb.tlb_2m().dom() =~= Set::<VAddr>::empty() && tlb.tlb_1g().dom() =~= Set::<VAddr>::empty());
         }

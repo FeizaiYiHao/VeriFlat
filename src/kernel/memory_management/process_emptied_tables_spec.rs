@@ -5,7 +5,7 @@ verus! {
 /// The page table, and the IOMMU table if any, of a process whose tables were emptied or that is a zombie map no 4K leaf;
 /// no mapped page lists its page table in its mappings, no user L4 entry of its page table resolves, its page table holds
 /// no user leaf of any size, RAM or IO, and its page table's PCI function array is empty.
-/// IOMMU 2M/1G leaves are excluded by the IOMMU table's own `wf`, and the IOMMU 4K mapping holds hidden leaves too. The
+/// An IOMMU table maps 4K leaves only, and its 4K mapping holds hidden leaves too. The
 /// held-leaf clauses exclude the page table's 2M/1G and held 4K leaves directly: an IO leaf is listed by no page, so the
 /// no-listing clause with `mapped_2m_page_pagetable_wf` and `mapped_1g_page_pagetable_wf` excludes RAM leaves only.
 #[verifier::opaque]

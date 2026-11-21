@@ -22,7 +22,7 @@ verus! {
 /// Retire every table page below the root of the empty zombie target's write-held page table and, once a scan finds that
 /// root alone, of its write-held IOMMU table, one step per page, to the caches of their owner, the killer's container;
 /// then refund their quota to the killer's container chain. Both tables then hold only their roots: a zombie's tables map
-/// nothing (`process_emptied_tables_wf`, `mapped_1g_page_pagetable_wf`, the IOMMU table's own `wf`), so no scan is Blocked.
+/// nothing (`process_emptied_tables_wf`, `mapped_1g_page_pagetable_wf`), so no scan is Blocked.
 pub(crate) fn kill_retire_structure_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
@@ -256,8 +256,6 @@ pub(crate) fn kill_retire_table_pages(
             let it = final(krnl).it_mp.spec_index(table).view();
             &&& it.page_closure() =~= set![it.cr3]
             &&& it.mapping_4k().dom() =~= Set::<VAddr>::empty()
-            &&& it.mapping_2m().dom() =~= Set::<VAddr>::empty()
-            &&& it.mapping_1g().dom() =~= Set::<VAddr>::empty()
         },
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -381,8 +379,6 @@ pub(crate) fn kill_retire_table_pages(
             proof {
                 if iommu {
                     assert(krnl.it_mp.spec_index(table).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by { process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target); };
-                    assert(krnl.it_mp.spec_index(table).view().mapping_2m().dom() =~= Set::<VAddr>::empty() && krnl.it_mp.spec_index(table).view().mapping_1g().dom() =~= Set::<VAddr>::empty()) by { iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, table); };
-                    assert(krnl.it_mp.spec_index(table).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(table).view().kernel_entries_wf_iommu_l4_end_at(); };
                 } else {
                     assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), table).mapping_4k().dom() =~= Set::<VAddr>::empty()) by { process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target); };
                     assert(krnl.pt_mp.spec_index(table).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(table); };

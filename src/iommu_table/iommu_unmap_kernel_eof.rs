@@ -23,7 +23,7 @@ impl IommuTable {
     pub(super) proof fn unmap_4k_page_kernel_eof(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -42,21 +42,18 @@ impl IommuTable {
         Self::unmap_4k_page_kernel_eof_disjoint_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
-        assert(post.wf_mapping_2m()) by { reveal(IommuTable::unmap_4k_page_kernel_eof_transition_framing); reveal(IommuTable::wf_mapping_2m); };
-        assert(post.wf_mapping_1g()) by { reveal(IommuTable::unmap_4k_page_kernel_eof_transition_framing); reveal(IommuTable::wf_mapping_1g); };
         Self::unmap_4k_page_kernel_eof_user_only(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_rwx_upper_level_entries(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
-        Self::unmap_4k_page_kernel_eof_kernel_entries_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
-        Self::unmap_4k_page_kernel_eof_va_addr_valid_and_pcid_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_kernel_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
     }
 
     /// EOF closure of `unmap_4k_page_kernel`: `wf_l4`.
     proof fn unmap_4k_page_kernel_eof_wf_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -75,7 +72,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -94,7 +91,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_wf_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -113,7 +110,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_wf_l1(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -132,7 +129,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_disjoint_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -151,7 +148,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_disjoint_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -170,7 +167,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_disjoint_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -189,7 +186,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -208,7 +205,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_wf_mapping_4k_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -220,7 +217,7 @@ impl IommuTable {
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
                 #![trigger post.mapping_4k.view().spec_index(spec_index2va((l4i,l3i,l2i,l1i)))]
                 #![trigger post.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                post.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> {
+                pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> {
                     &&& post.mapping_4k.view().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
                     &&& post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
                         ==> post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
@@ -242,7 +239,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_user_only(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -261,7 +258,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_rwx_upper_level_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -280,7 +277,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_table_pages_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -299,7 +296,7 @@ impl IommuTable {
     proof fn unmap_4k_page_kernel_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -314,30 +311,11 @@ impl IommuTable {
         assert(post.tables_reachable_wf()) by { reveal(IommuTable::tables_reachable_wf); post.resolve_l2_unchanged(&pre); };
     }
 
-    /// EOF closure of `unmap_4k_page_kernel`: `kernel_entries_wf`.
-    proof fn unmap_4k_page_kernel_eof_kernel_entries_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
+    /// EOF closure of `unmap_4k_page_kernel`: `va_addr_valid` and `did_wf`.
+    proof fn unmap_4k_page_kernel_eof_va_addr_valid_and_did_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
-            pei_valid(target_l3i),
-            pei_valid(target_l2i),
-            pei_valid(target_l1i),
-            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
-            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
-            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
-        ensures
-            post.kernel_entries_wf(),
-    {
-        reveal(IommuTable::unmap_4k_page_kernel_eof_transition_framing);
-        assert(post.kernel_entries_wf()) by { reveal(IommuTable::kernel_entries_wf); };
-    }
-
-    /// EOF closure of `unmap_4k_page_kernel`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
-    proof fn unmap_4k_page_kernel_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
-        requires
-            pre.wf(),
-            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -347,7 +325,6 @@ impl IommuTable {
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.va_addr_valid(),
-            post.pcid_wf(),
             post.did_wf(),
     {
         reveal(IommuTable::unmap_4k_page_kernel_eof_transition_framing);

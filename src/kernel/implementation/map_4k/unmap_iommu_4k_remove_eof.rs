@@ -17,10 +17,7 @@ pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_fram
     &&& new_it.being_killed() == old_it.being_killed()
     &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().remove(iova)
     &&& new_it.view().page_closure() == old_it.view().page_closure()
-    &&& new_it.view().kernel_entries == old_it.view().kernel_entries
-    &&& new_it.view().kernel_l4_end == old_it.view().kernel_l4_end
     &&& new_it.view().cr3 == old_it.view().cr3
-    &&& new_it.view().pcid == old_it.view().pcid
     &&& new_it.view().did == old_it.view().did
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)

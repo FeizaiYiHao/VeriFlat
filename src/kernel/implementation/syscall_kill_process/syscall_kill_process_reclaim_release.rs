@@ -564,7 +564,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable) == held_pt,
-        old(krnl).it_mp.spec_index(iommu_table).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == 0,
+        old(krnl).it_mp.spec_index(iommu_table).view().leaves_present(),
         old(krnl).it_mp.spec_index(iommu_table).view().did is None,
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
@@ -653,7 +653,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             same ==> forall|d: int| #![trigger indirect[d]] #![trigger krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < entry_thread.container_depth
                 ==> indirect[d] == krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
             !same ==> krnl.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
-            krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0,
             krnl.it_mp.spec_index(iommu_table).view().did is None,
             pei_valid(cursor.0),
             pei_valid(cursor.1),

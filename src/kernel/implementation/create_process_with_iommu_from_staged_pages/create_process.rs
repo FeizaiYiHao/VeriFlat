@@ -293,7 +293,7 @@ pub fn create_process_with_iommu_from_staged_pages(
             iommu_l4_perm.value().wf_at(i as usize);
         });
     };
-    let iommu_table_value = IommuTable::new(None, Ghost(Seq::empty()), iommu_l4_ptr, Tracked(iommu_l4_perm), 0, process_pg_ptr);
+    let iommu_table_value = IommuTable::new(iommu_l4_ptr, Tracked(iommu_l4_perm), process_pg_ptr);
 
     let Tracked(iommu_table_page_perm) = page_array_retype_owned_4k(
         &mut krnl.pg_arr, iommu_table_pg_idx, PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: IOMMU_TYPE } },

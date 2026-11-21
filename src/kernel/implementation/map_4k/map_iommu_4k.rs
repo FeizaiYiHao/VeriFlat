@@ -70,7 +70,7 @@ pub fn map_shared_page_into_iommu_4k(
     let indices = va2index(iova);
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
+        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr);
     }
     assert({
         &&& spec_index2va(source_indices) == va

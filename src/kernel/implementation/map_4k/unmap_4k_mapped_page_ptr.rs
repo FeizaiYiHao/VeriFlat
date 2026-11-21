@@ -12,7 +12,6 @@ pub(super) fn unmap_iommu_4k_mapped_page_ptr(
         krnl.it_mp.dom().contains(iommu_table),
         krnl.it_mp.spec_index(iommu_table).inv(),
         krnl.it_mp.spec_index(iommu_table).view().inv(),
-        krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0,
         typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), iommu_table, TypedLockMode::Write),
         iommu_table_perm.view().state() is WriteLock,
         iommu_table_perm.view().thread_id() == lctx.thread_id(),

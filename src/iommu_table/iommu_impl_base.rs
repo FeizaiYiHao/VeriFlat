@@ -10,7 +10,7 @@ impl IommuTable {
     pub fn get_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
         ensures
             self.spec_resolve_mapping_l4(target_l4i) == ret,
             forall|l3i: L3Index, l2i: L2Index, l1i: L1Index|
@@ -37,7 +37,7 @@ impl IommuTable {
     pub fn get_entry_l3(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             self.spec_resolve_mapping_l4(target_l4i) =~= Some(*l4_entry),
         ensures
@@ -63,22 +63,10 @@ impl IommuTable {
         ret
     }
 
-    pub fn get_entry_1g_l3(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: Option<PageEntry>)
-        requires
-            self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
-            pei_valid(target_l3i),
-            self.spec_resolve_mapping_l4(target_l4i) =~= Some(*l4_entry),
-        ensures
-            self.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) =~= ret,
-    {
-        None
-    }
-
     pub fn get_entry_l2(&self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
@@ -106,23 +94,10 @@ impl IommuTable {
         ret
     }
 
-    pub fn get_entry_2m_l2(&self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
-        requires
-            self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
-            pei_valid(target_l3i),
-            pei_valid(target_l2i),
-            self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
-        ensures
-            self.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) =~= ret,
-    {
-        None
-    }
-
     pub fn get_entry_l1(&self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -159,7 +134,7 @@ impl IommuTable {
     pub fn create_entry_l4(&mut self, target_l4i: L4Index, target_l3i: L3Index, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
-            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             old(self).spec_resolve_mapping_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
@@ -175,20 +150,14 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
-            final(self).kernel_l4_end == old(self).kernel_l4_end,
-            final(self).pcid == old(self).pcid,
             final(self).did == old(self).did,
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
             final(self).mapping_4k() =~= old(self).mapping_4k(),
-            final(self).mapping_2m() =~= old(self).mapping_2m(),
-            final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).spec_resolve_mapping_l4(target_l4i) is Some,
             final(self).spec_resolve_mapping_l4(target_l4i)->0.addr == page_map_ptr,
             final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            final(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
-            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         proof {
             self.wf_l4_at(target_l4i);
@@ -207,13 +176,12 @@ impl IommuTable {
     pub fn create_entry_l3(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
-            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             old(self).spec_resolve_mapping_l4(target_l4i) is Some,
             old(self).spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             old(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
-            old(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             old(self).page_closure().contains(page_map_ptr) == false,
             page_map_perm.addr() == page_map_ptr,
@@ -232,22 +200,15 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
-            final(self).kernel_l4_end == old(self).kernel_l4_end,
-            final(self).pcid == old(self).pcid,
             final(self).did == old(self).did,
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
             final(self).mapping_4k() =~= old(self).mapping_4k(),
-            final(self).mapping_2m() =~= old(self).mapping_2m(),
-            final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(target_l4i),
             final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             final(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == page_map_ptr,
-            final(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            final(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
-            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         proof {
             self.wf_l4_at(target_l4i);
@@ -268,13 +229,12 @@ impl IommuTable {
     pub fn create_entry_l2(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
-            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             old(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             old(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            old(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             page_ptr_valid(page_map_ptr),
             old(self).page_closure().contains(page_map_ptr) == false,
             page_map_perm.addr() == page_map_ptr,
@@ -293,21 +253,15 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
-            final(self).kernel_l4_end == old(self).kernel_l4_end,
-            final(self).pcid == old(self).pcid,
             final(self).did == old(self).did,
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
             final(self).mapping_4k() =~= old(self).mapping_4k(),
-            final(self).mapping_2m() =~= old(self).mapping_2m(),
-            final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(target_l4i),
             final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) == old(self).spec_resolve_mapping_l3(target_l4i, target_l3i),
             final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == page_map_ptr,
-            final(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
-            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         proof {
             self.wf_l4_at(target_l4i);
@@ -329,7 +283,7 @@ impl IommuTable {
     pub fn map_4k_page(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, target_entry: &MapEntry, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
-            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
@@ -348,24 +302,19 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
-            final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).page_closure() == old(self).page_closure(),
             final(self).mapping_4k.view() == old(self).mapping_4k.view().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry),
             final(self).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
                 perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: false, kernel_present: true } }),
-            final(self).mapping_2m() =~= old(self).mapping_2m(),
-            final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(target_l4i),
             final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) == old(self).spec_resolve_mapping_l3(target_l4i, target_l3i),
             forall|l4i: L4Index|
                 #![trigger pei_valid(l4i)]
-                final(self).kernel_l4_end <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
+                pei_valid(l4i) ==> forall|l3i: L3Index|
                     #![trigger pei_valid(l3i)]
                     pei_valid(l3i) ==> forall|l2i: L2Index|
                         #![trigger final(self).spec_resolve_mapping_l2(l4i, l3i, l2i)]
                         pei_valid(l2i) ==> final(self).spec_resolve_mapping_l2(l4i, l3i, l2i) == old(self).spec_resolve_mapping_l2(l4i, l3i, l2i),
-            final(self).kernel_entries =~= old(self).kernel_entries,
-            final(self).pcid == old(self).pcid,
             final(self).did == old(self).did,
             final(self).cr3 =~= old(self).cr3,
             final(self).proc_ptr =~= old(self).proc_ptr,

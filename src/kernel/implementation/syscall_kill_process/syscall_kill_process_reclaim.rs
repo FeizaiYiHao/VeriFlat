@@ -426,7 +426,7 @@ pub(crate) fn kill_reclaim_unown_functions(
         final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         forall|l4i: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
-        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0,
+        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present(),
         iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
 {
     let ghost before = *krnl;
@@ -494,7 +494,7 @@ pub(crate) fn kill_reclaim_unown_functions(
     let ghost after = *krnl;
     proof {
         if let Some(it) = iommu_table {
-            iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it); krnl.it_mp.spec_index(it).view().kernel_entries_wf_iommu_l4_end_at();
+            iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it);
         }
         kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
         kill_reclaim_pre_from_k(&before, &before_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, iommu_table);

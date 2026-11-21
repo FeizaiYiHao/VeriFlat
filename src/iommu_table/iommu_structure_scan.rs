@@ -11,36 +11,30 @@ impl IommuTable {
     pub open spec fn structure_scan_wf(&self, scan: StructureScan) -> bool {
         match scan {
             StructureScan::L1 { l4i, l3i, l2i, l2_p, l1_p } => {
-                &&& self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                &&& pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                 &&& self.spec_resolve_mapping_l3(l4i, l3i) is Some && self.spec_resolve_mapping_l3(l4i, l3i)->0.addr == l2_p
                 &&& self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr == l1_p
                 &&& forall|i: L1Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i)] pei_valid(i) ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i) is None
                 &&& self.page_closure().contains(l1_p) && l1_p != self.cr3
             },
             StructureScan::L2 { l4i, l3i, l3_p, l2_p } => {
-                &&& self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i)
+                &&& pei_valid(l4i) && pei_valid(l3i)
                 &&& self.spec_resolve_mapping_l4(l4i) is Some && self.spec_resolve_mapping_l4(l4i)->0.addr == l3_p
                 &&& self.spec_resolve_mapping_l3(l4i, l3i) is Some && self.spec_resolve_mapping_l3(l4i, l3i)->0.addr == l2_p
                 &&& forall|i: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, i)] pei_valid(i) ==> self.spec_resolve_mapping_l2(l4i, l3i, i) is None
-                &&& forall|i: L2Index| #![trigger self.spec_resolve_mapping_2m_l2(l4i, l3i, i)] pei_valid(i) ==> self.spec_resolve_mapping_2m_l2(l4i, l3i, i) is None
                 &&& self.page_closure().contains(l2_p) && l2_p != self.cr3
             },
             StructureScan::L3 { l4i, l3_p } => {
-                &&& self.kernel_l4_end <= l4i && pei_valid(l4i)
+                &&& pei_valid(l4i)
                 &&& self.spec_resolve_mapping_l4(l4i) is Some && self.spec_resolve_mapping_l4(l4i)->0.addr == l3_p
                 &&& forall|i: L3Index| #![trigger self.spec_resolve_mapping_l3(l4i, i)] pei_valid(i) ==> self.spec_resolve_mapping_l3(l4i, i) is None
-                &&& forall|i: L3Index| #![trigger self.spec_resolve_mapping_1g_l3(l4i, i)] pei_valid(i) ==> self.spec_resolve_mapping_1g_l3(l4i, i) is None
                 &&& self.page_closure().contains(l3_p) && l3_p != self.cr3
             },
             StructureScan::Empty => {
-                &&& forall|i: L4Index| #![trigger self.spec_resolve_mapping_l4(i)] self.kernel_l4_end <= i && pei_valid(i) ==> self.spec_resolve_mapping_l4(i) is None
+                &&& forall|i: L4Index| #![trigger self.spec_resolve_mapping_l4(i)] pei_valid(i) ==> self.spec_resolve_mapping_l4(i) is None
                 &&& self.page_closure() =~= set![self.cr3]
-                // When every valid key lies in the user part, no mapping is left.
-                &&& self.kernel_l4_end <= KERNEL_MEM_END_L4INDEX ==> {
-                    &&& self.mapping_4k().dom() =~= Set::<VAddr>::empty()
-                    &&& self.mapping_2m().dom() =~= Set::<VAddr>::empty()
-                    &&& self.mapping_1g().dom() =~= Set::<VAddr>::empty()
-                }
+                // No mapping is left.
+                &&& self.mapping_4k().dom() =~= Set::<VAddr>::empty()
             },
             StructureScan::Blocked => true,
         }
@@ -51,16 +45,14 @@ impl IommuTable {
         requires self.wf(),
         ensures
             self.structure_scan_wf(ret),
-            self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty() && self.mapping_1g().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
+            self.mapping_4k().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
-        proof { self.kernel_entries_wf_l4_end_valid_at(); }
-        let mut l4i = self.kernel_l4_end;
+        let mut l4i: L4Index = 0;
         while l4i < 512
             invariant
                 self.wf(),
-                pei_valid(self.kernel_l4_end),
-                self.kernel_l4_end <= l4i <= 512,
-                forall|j: L4Index| #![trigger self.spec_resolve_mapping_l4(j)] self.kernel_l4_end <= j < l4i ==> self.spec_resolve_mapping_l4(j) is None,
+                l4i <= 512,
+                forall|j: L4Index| #![trigger self.spec_resolve_mapping_l4(j)] j < l4i ==> self.spec_resolve_mapping_l4(j) is None,
             decreases 512 - l4i,
         {
             if let Some(l4_entry) = self.get_entry_l4(l4i) {
@@ -85,14 +77,9 @@ impl IommuTable {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
-            final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).page_closure() =~= old(self).page_closure().remove(scan.spec_table_page()->Some_0),
             final(self).mapping_4k() =~= old(self).mapping_4k(),
-            final(self).mapping_2m() =~= old(self).mapping_2m(),
-            final(self).mapping_1g() =~= old(self).mapping_1g(),
-            final(self).kernel_entries =~= old(self).kernel_entries,
             final(self).cr3 == old(self).cr3,
-            final(self).pcid == old(self).pcid,
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             ret.view().is_init(),
@@ -109,28 +96,23 @@ impl IommuTable {
     fn scan_l3_table(&self, l4i: L4Index, l4_entry: &PageEntry) -> (ret: StructureScan)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
         ensures
             self.structure_scan_wf(ret),
             !(ret is Empty),
-            self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty() && self.mapping_1g().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
+            self.mapping_4k().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
         let mut l3i: L3Index = 0;
         while l3i < 512
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
                 l3i <= 512,
                 forall|j: L3Index| #![trigger self.spec_resolve_mapping_l3(l4i, j)] j < l3i ==> self.spec_resolve_mapping_l3(l4i, j) is None,
-                forall|j: L3Index| #![trigger self.spec_resolve_mapping_1g_l3(l4i, j)] j < l3i ==> self.spec_resolve_mapping_1g_l3(l4i, j) is None,
             decreases 512 - l3i,
         {
-            if self.get_entry_1g_l3(l4i, l3i, l4_entry).is_some() {
-                proof { self.wf_mapping_1g_at(l4i, l3i); }
-                return StructureScan::Blocked;
-            }
             if let Some(l3_entry) = self.get_entry_l3(l4i, l3i, l4_entry) {
                 return self.scan_l2_table(l4i, l3i, l4_entry, &l3_entry);
             }
@@ -143,32 +125,27 @@ impl IommuTable {
     fn scan_l2_table(&self, l4i: L4Index, l3i: L3Index, l4_entry: &PageEntry, l3_entry: &PageEntry) -> (ret: StructureScan)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
             self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
         ensures
             self.structure_scan_wf(ret),
             !(ret is Empty),
-            self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty() && self.mapping_1g().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
+            self.mapping_4k().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
         let mut l2i: L2Index = 0;
         while l2i < 512
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(l3i),
                 self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
                 self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
                 l2i <= 512,
                 forall|j: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, j)] j < l2i ==> self.spec_resolve_mapping_l2(l4i, l3i, j) is None,
-                forall|j: L2Index| #![trigger self.spec_resolve_mapping_2m_l2(l4i, l3i, j)] j < l2i ==> self.spec_resolve_mapping_2m_l2(l4i, l3i, j) is None,
             decreases 512 - l2i,
         {
-            if self.get_entry_2m_l2(l4i, l3i, l2i, l3_entry).is_some() {
-                proof { self.wf_mapping_2m_at(l4i, l3i, l2i); }
-                return StructureScan::Blocked;
-            }
             if let Some(l2_entry) = self.get_entry_l2(l4i, l3i, l2i, l3_entry) {
                 if self.l1_table_has_no_leaf(l4i, l3i, l2i, &l2_entry) {
                     proof { self.wf_l4_at(l4i); self.wf_l3_at(self.l4_entry(l4i).addr, l3i); self.wf_l2_at(l3_entry.addr, l2i); self.table_pages_wf_l1_at(l2_entry.addr); }
@@ -185,7 +162,7 @@ impl IommuTable {
     fn l1_table_has_no_leaf(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l2_entry: &PageEntry) -> (ret: bool)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
             self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
@@ -197,7 +174,7 @@ impl IommuTable {
         while l1i < 512
             invariant
                 self.wf(),
-                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l4i),
                 pei_valid(l3i),
                 pei_valid(l2i),
                 self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),

@@ -34,17 +34,6 @@ pub proof fn iommu_table_perms_wf_at(it_mp: IommuTableLockedMap, it_ptr: RwLockP
         it_mp.spec_index(it_ptr).view().inv(),
 { reveal(iommu_table_perms_wf); }
 
-/// IOMMU table `it_ptr` maps no kernel L4 entries and no 2M or 1G leaves.
-pub proof fn iommu_table_perms_wf_kernel_l4_end_at(it_mp: IommuTableLockedMap, it_ptr: RwLockPageTableRoot)
-    requires
-        iommu_table_perms_wf(it_mp),
-        it_mp.dom().contains(it_ptr),
-    ensures
-        it_mp.spec_index(it_ptr).view().kernel_l4_end == 0,
-        it_mp.spec_index(it_ptr).view().mapping_2m().dom() =~= Set::<VAddr>::empty(),
-        it_mp.spec_index(it_ptr).view().mapping_1g().dom() =~= Set::<VAddr>::empty(),
-{ reveal(iommu_table_perms_wf); reveal(IommuTable::kernel_entries_wf); reveal(IommuTable::wf_mapping_2m); reveal(IommuTable::wf_mapping_1g); }
-
 pub proof fn iommu_table_perms_wf_map(it_mp: IommuTableLockedMap)
     requires iommu_table_perms_wf(it_mp)
     ensures it_mp.perms_wf()

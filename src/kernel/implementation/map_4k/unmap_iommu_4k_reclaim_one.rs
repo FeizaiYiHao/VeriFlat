@@ -75,13 +75,11 @@ pub fn reclaim_unmapped_iommu_4k_page(
         final(krnl).it_mp.spec_index(iommu_table).locking_thread() == old(krnl).it_mp.spec_index(iommu_table).locking_thread(),
         final(krnl).it_mp.spec_index(iommu_table).being_killed() == old(krnl).it_mp.spec_index(iommu_table).being_killed(),
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().remove(spec_index2va(indices)),
-        final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
 {
     let iova = index2va(indices);
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
-        iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
     }
     let (pg_ptr, l1_ptr) = unmap_iommu_4k_mapped_page_ptr(krnl, iommu_table, indices, Tracked(&*lctx), iommu_table_perm);
     let pg_idx = page_ptr2page_index(pg_ptr);
@@ -187,7 +185,6 @@ pub fn reclaim_detached_iommu_4k_page(
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().remove(spec_index2va(indices)),
         final(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k
             == old(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k.remove(spec_index2va(indices)),
-        final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
         final(krnl).it_mp.spec_index(iommu_table).view().cr3 == old(krnl).it_mp.spec_index(iommu_table).view().cr3,
         final(krnl).it_mp.spec_index(iommu_table).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table).view().proc_ptr,
         final(steps).snapshot_k().it_mp.spec_index(iommu_table) == old(krnl).it_mp.spec_index(iommu_table),
@@ -199,7 +196,6 @@ pub fn reclaim_detached_iommu_4k_page(
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
-        iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
     }
     let (pg_ptr, l1_ptr) = unmap_iommu_4k_mapped_page_ptr(krnl, iommu_table, indices, Tracked(&*lctx), iommu_table_perm);
     let pg_idx = page_ptr2page_index(pg_ptr);

@@ -16,10 +16,7 @@ pub(super) open spec fn clear_iommu_4k_mapping_present_eof_transition_framing(pr
     &&& !new_it.view().spec_resolve_mapping_4k_l1(spec_v2l4index(iova), spec_v2l3index(iova), spec_v2l2index(iova), spec_v2l1index(iova))->0.perm.write
     &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().insert(iova, MapEntry { present: false, ..old_it.view().mapping_4k().spec_index(iova) })
     &&& new_it.view().page_closure() == old_it.view().page_closure()
-    &&& new_it.view().kernel_entries == old_it.view().kernel_entries
-    &&& new_it.view().kernel_l4_end == old_it.view().kernel_l4_end
     &&& new_it.view().cr3 == old_it.view().cr3
-    &&& new_it.view().pcid == old_it.view().pcid
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& new_it.view().did == old_it.view().did
 }

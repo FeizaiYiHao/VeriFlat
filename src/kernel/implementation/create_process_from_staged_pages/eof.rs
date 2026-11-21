@@ -241,10 +241,8 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
         &&& post.it_mp.spec_index(iommu_table_pg_ptr).is_init()
         &&& !post.it_mp.spec_index(iommu_table_pg_ptr).being_killed()
         &&& post.it_mp.spec_index(iommu_table_pg_ptr).view().proc_ptr == process_pg_ptr
-        &&& post.it_mp.spec_index(iommu_table_pg_ptr).view().pcid is None
         &&& post.it_mp.spec_index(iommu_table_pg_ptr).view().did is None
         &&& post.it_mp.spec_index(iommu_table_pg_ptr).view().cr3 == iommu_l4_pg_ptr
-        &&& post.it_mp.spec_index(iommu_table_pg_ptr).view().kernel_l4_end == 0
         &&& post.it_mp.spec_index(iommu_table_pg_ptr).view().is_empty()
         &&& post.it_mp.spec_index(iommu_table_pg_ptr).view().page_closure() == set![iommu_l4_pg_ptr]
         &&& post.it_mp.spec_index(iommu_table_pg_ptr).locking_thread() is Write
