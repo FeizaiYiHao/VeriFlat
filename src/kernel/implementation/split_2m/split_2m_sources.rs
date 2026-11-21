@@ -74,7 +74,7 @@ pub fn split_2m_select_source(krnl: &KernelK, allocator: RwLockPageAllocatorPtr,
                 && krnl.allc_2m_mp.spec_index(allocator).merge_2m_source_list(source).view().len() == 0,
         krnl.allc_2m_mp.spec_index(allocator).merge_2m_source_list(*final(cursor)).length > 0,
         krnl.allc_2m_mp.spec_index(allocator).merge_2m_source_list(*final(cursor)).view().len() > 0,
-        krnl.allc_2m_mp.spec_index(allocator).merge_2m_source_list(*final(cursor)).view().spec_index(0) == head * PAGE_SZ_4K,
+        krnl.allc_2m_mp.spec_index(allocator).merge_2m_source_list(*final(cursor)).view().spec_index(0) == spec_page_index2page_ptr(head),
         page_index_2m_valid(head),
         head <= NUM_PAGES - 512,
         krnl.pg_arr.spec_index(head).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(allocator), state:
@@ -142,7 +142,7 @@ pub fn split_2m_select_source(krnl: &KernelK, allocator: RwLockPageAllocatorPtr,
             else { allocator_free_2m_pages_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, allocator, pointer); }
         };
         assert(page_index_2m_valid(head)) by { hugepage_2m_wf_head_at(krnl.pg_arr, head); };
-        assert(pointer == head * PAGE_SZ_4K) by { assert(PAGE_SZ_4K == 4096) by (compute); page_ptr_roundtrip(); };
+        assert(pointer == spec_page_index2page_ptr(head)) by { page_ptr_roundtrip(); };
     }
     head
 }

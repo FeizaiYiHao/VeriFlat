@@ -2,7 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The entry-state result of `syscall_alloc_quota_1g` in check order: cpu not Running or killer-marked, killed container, container write-held by a live owner below the caller depth, zombie container, killed process, short container 1G quota, process 1G quota overflow.
+/// The entry-state result of `syscall_alloc_quota_1g` in check order:
+/// cpu not Running or killer-marked, killed container, container write-held by a live owner below the caller depth, zombie container, killed process, short container 1G quota, process 1G quota overflow.
 pub open spec fn alloc_quota_1g_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
@@ -59,7 +60,8 @@ pub open spec fn alloc_quota_1g_syscall_trace(trace: Seq<KernelStep>, pre: Kerne
     }
 }
 
-/// The result of `syscall_alloc_thread_quota_1g` from the state at entry, in the implementation's check order: a cpu no longer Running or marked by a killer, a killed process or thread, too little process 1G quota, and thread 1G quota overflow.
+/// The result of `syscall_alloc_thread_quota_1g` from the state at entry, in the implementation's check order:
+/// a cpu no longer Running or marked by a killer, a killed process or thread, too little process 1G quota, and thread 1G quota overflow.
 pub open spec fn alloc_thread_quota_1g_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let process = pre.process_map[cpu.current_process->Some_0];

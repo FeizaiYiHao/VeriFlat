@@ -15,14 +15,14 @@ pub(super) proof fn mmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
         krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         !(range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range)),
-        mmap_2m_syscall_va_range(va, range).wf(),
+        spec_va_range_2m(va, range).wf(),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
             let thrd_ptr = cpu.view().view().current_thread->Some_0;
             let thread = krnl.thrd_mp.spec_index(thrd_ptr);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
-            let va_range = mmap_2m_syscall_va_range(va, range);
+            let va_range = spec_va_range_2m(va, range);
             let checked = cur->Some_0;
             let clear = forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> {
                 let idx = spec_va2index(va_range.view()[j]);
@@ -80,7 +80,7 @@ pub(super) proof fn mmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
             let u_pt = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
             assert(u_pt == table.user_view(krnl.pt_mp.spec_index(root).lock_state_u())) by { kernel_process_projection_at(krnl, prc_ptr); };
             if cur is Some && ret is ErrorVaInUse {
-                let va_range = mmap_2m_syscall_va_range(va, range);
+                let va_range = spec_va_range_2m(va, range);
                 let at_va = va_range.view()[at];
                 let at_idx = spec_va2index(at_va);
                 assert(spec_va_2m_valid(at_va) && spec_index2va((at_idx.0, at_idx.1, at_idx.2, 0usize)) == at_va && pei_valid(at_idx.0) && pei_valid(at_idx.1) && pei_valid(at_idx.2)) by {
@@ -132,7 +132,7 @@ pub(super) proof fn mmap_2m_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu
     pagetable_ptr: RwLockPageTableRoot, va: VAddr, len: usize, range: VaRange2M, phase: Mmap2mPhase, windows: Map<WindowVa, LockStateU>)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        range == mmap_2m_syscall_va_range(va, len),
+        range == spec_va_range_2m(va, len),
         range.wf(),
         mmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
         krnl.prc_mp.dom().contains(prc_ptr),
@@ -183,7 +183,7 @@ pub(super) proof fn mmap_2m_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
     owner: RwLockProcessPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        range == mmap_2m_syscall_va_range(va, len),
+        range == spec_va_range_2m(va, len),
         range.wf(),
         mmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
         krnl.prc_mp.dom().contains(prc_ptr),
@@ -244,7 +244,7 @@ pub(super) proof fn mmap_2m_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
 pub(super) proof fn mmap_2m_hold_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, va: VAddr, len: usize)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        mmap_2m_syscall_va_range(va, len).wf(),
+        spec_va_range_2m(va, len).wf(),
         len > 0,
         mmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success || mmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is ErrorVaInUse,
         !krnl.cpu_arr.spec_index(cpu_id).view().locked(),
@@ -258,7 +258,7 @@ pub(super) proof fn mmap_2m_hold_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, 
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.ctn_mp.dom().contains(krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container),
-    ensures mmap_2m_hold_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, mmap_2m_syscall_va_range(va, len)),
+    ensures mmap_2m_hold_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, spec_va_range_2m(va, len)),
 { kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr); reveal(mmap_2m_hold_step_pre); }
 
 /// Write-locking the caller's cpu and its current thread `thrd_ptr` with the cpu inside its kernel step and changing nothing
@@ -499,7 +499,7 @@ pub(super) proof fn mmap_2m_trace_hold_step(steps: &KernelSteps, before: Seq<Ker
 /// The release step recorded after the partial trace after holding is the failure trace.
 pub(super) proof fn mmap_2m_trace_release_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize)
     requires
-        mmap_2m_trace_after_hold(before, cpu_id, mmap_2m_syscall_va_range(va, range)),
+        mmap_2m_trace_after_hold(before, cpu_id, spec_va_range_2m(va, range)),
         steps.view() == record_user_view_change(before, pre, post),
         mmap_4k_release_step_pre(pre, cpu_id),
         mmap_4k_release_step(pre, post, cpu_id),
@@ -536,7 +536,7 @@ pub(super) proof fn mmap_2m_trace_range_steps(steps: &KernelSteps, before: Seq<K
 /// The exit step pushed after the mapped partial trace completes the syscall trace.
 pub(super) proof fn mmap_2m_trace_exit_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, phase: Mmap2mPhase)
     requires
-        mmap_2m_trace_after_range(before, cpu_id, mmap_2m_syscall_va_range(va, range), phase),
+        mmap_2m_trace_after_range(before, cpu_id, spec_va_range_2m(va, range), phase),
         phase is Read || phase is Fill,
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         mmap_2m_exit_step_pre(pre, cpu_id),

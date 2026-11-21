@@ -1,31 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
-#[cfg(verus_keep_ghost)]
-use vstd::{assert_seqs_equal, assert_seqs_equal_internal};
 
 verus! {
-/// The first `n` CPU caches of the 1G allocator `allc_ptr` hold no page, so their length fold is zero: 1G pages never enter a CPU cache.
-pub(crate) proof fn allocator_1g_cpu_caches_empty_implies_cache_len_fold_zero(k: &KernelK, allc_ptr: RwLockPageAllocatorPtr, n: int)
-    requires
-        k.inv(),
-        k.allc_1g_mp.dom().contains(allc_ptr),
-        0 <= n <= NUM_CPUS,
-    ensures
-        k.allc_1g_mp.spec_index(allc_ptr).cpu_caches.view().take(n).fold_left(0int, |sum: int, cache_lock: LockCell<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| { sum + cache_lock.view().linked_list.len() }) == 0,
-    decreases n,
-{
-    let caches = k.allc_1g_mp.spec_index(allc_ptr).cpu_caches;
-    if n > 0 {
-        allocator_1g_cpu_caches_empty_implies_cache_len_fold_zero(k, allc_ptr, n - 1);
-        allocator_perms_wf_map(k.allc_1g_mp); allocator_perms_wf_at(k.allc_1g_mp, allc_ptr);
-        assert_seqs_equal!(caches.view().take(n).drop_last(), caches.view().take(n - 1));
-        caches.view_index_eq_element_value();
-        caches.spec_index((n - 1) as usize).view().view().linked_list.wf_implies_view_len_eq_len();
-        allocator_1g_cpu_caches_empty_wf_at(k.allc_1g_mp, allc_ptr, (n - 1) as usize);
-    }
-}
-
-/// A thread of container `ctn_ptr` with 1G quota left proves the global pool of the container's 1G allocator non-empty: the allocator's free pages are its pool pages (its CPU caches are empty) and cover every member of the 1G quota conservation sum.
+/// A thread of container `ctn_ptr` with 1G quota left proves the global pool of the container's 1G allocator non-empty:
+/// the allocator's free pages are its pool pages (its CPU caches are empty) and cover every member of the 1G quota conservation sum.
 pub(crate) proof fn thread_effective_quota_1g_positive_implies_global_pool_1g_nonempty(k: &KernelK, ctn_ptr: RwLockContainerPtr, alloc_ptr_1g: RwLockPageAllocatorPtr, thrd_ptr: RwLockThreadPtr)
     requires
         k.inv(),
@@ -39,10 +17,10 @@ pub(crate) proof fn thread_effective_quota_1g_positive_implies_global_pool_1g_no
     let owned_processes = k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
     let owned_threads = k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view();
     assert(k.allc_1g_mp.dom().contains(alloc_ptr_1g)) by { container_allocator_wf_at(k.ctn_mp, k.allc_4k_mp, k.allc_2m_mp, k.allc_1g_mp, ctn_ptr); };
-    allocator_1g_cpu_caches_empty_implies_cache_len_fold_zero(k, alloc_ptr_1g, NUM_CPUS as int);
     assert(k.allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.view().len() > 0) by {
         allocator_perms_wf_map(k.allc_1g_mp); allocator_perms_wf_at(k.allc_1g_mp, alloc_ptr_1g);
-        assert_seqs_equal!(k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view().take(NUM_CPUS as int), k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view());
+        reveal(allocator_1g_cpu_caches_empty_wf); k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view_index_eq_element_value();
+        empty_caches_implies_cache_len_fold_zero(k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view());
         reveal(container_thread_wf); reveal(container_process_allocator_quota_1g_wf); reveal(thread_perms_wf);
         process_effective_quota_1g_nonneg_implies_fold_nonneg(owned_processes, k.prc_mp);
         thread_effective_quota_1g_nonneg_implies_fold_ge_member(owned_threads, k.thrd_mp, thrd_ptr);

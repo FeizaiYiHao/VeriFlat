@@ -92,7 +92,8 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             final(steps).snapshot_k() == *final(krnl),
             final(steps).view() == if alloc_amount > 0 { old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }) } else { old(steps).view() },
-            alloc_quota_1g_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
+            alloc_quota_1g_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
     {
         proof {
             assert(krnl.prc_mp.perms_wf() && krnl.allc_1g_mp.perms_wf() && krnl.prc_mp.spec_index(prc_ptr).is_init()) by {
@@ -102,7 +103,8 @@ verus! {
         if alloc_amount > 0 {
             let process_mut = krnl.prc_mp.borrow_mut_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm.borrow()));
             process_mut.quota_1g = process_mut.quota_1g + alloc_amount;
-            let quota_mut = krnl.allc_1g_mp.borrow_mut_quota_typed(alloc_ptr_1g, Ghost(lctx.allocator_quota_1g_lock_map()), Ghost(lctx.allocator_cache_1g_lock_map()), Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(quota_lock_perm.borrow()));
+            let quota_mut = krnl.allc_1g_mp.borrow_mut_quota_typed(alloc_ptr_1g, Ghost(lctx.allocator_quota_1g_lock_map()),
+                Ghost(lctx.allocator_cache_1g_lock_map()), Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(quota_lock_perm.borrow()));
             quota_mut.value = quota_mut.value - alloc_amount;
         }
 
@@ -130,7 +132,8 @@ verus! {
                     broadcast use kernel_endpoint_nonlock_fields_unchanged_transitive;
                 };
                 steps.end_kernel_step_process_quota_changed(&*krnl, &*lctx, cpu_id, prc_ptr, ctn_ptr, alloc_amount as int, PageSize::SZ1g);
-                assert(alloc_quota_1g_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
+                assert(alloc_quota_1g_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int),
+                    kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
                     alloc_quota_1g_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, ctn_ptr, alloc_amount);
                     alloc_quota_1g_trace_step(&*steps, quota_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount);
                 };
@@ -233,7 +236,8 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             final(steps).snapshot_k() == *final(krnl),
             final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
-            alloc_thread_quota_1g_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
+            alloc_thread_quota_1g_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
     {
         proof {
             assert(
@@ -264,7 +268,8 @@ verus! {
                 reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             };
             steps.end_kernel_step_process2thread_quota_changed(&*krnl, &*lctx, cpu_id, prc_ptr, thrd_ptr, alloc_amount as int, PageSize::SZ1g);
-            assert(alloc_thread_quota_1g_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
+            assert(alloc_thread_quota_1g_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int),
+                kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
                 alloc_thread_quota_1g_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, alloc_amount);
                 alloc_thread_quota_1g_trace_step(&*steps, quota_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount);
             };

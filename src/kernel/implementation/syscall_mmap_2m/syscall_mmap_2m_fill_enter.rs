@@ -28,7 +28,7 @@ pub(super) fn mmap_2m_fill_enter(
         mmap_2m_trace_after_hold(old(steps).view(), cpu_id, *va_range),
         old(steps).view().len() == 1,
         !(range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range)),
-        *va_range == mmap_2m_syscall_va_range(va, range),
+        *va_range == spec_va_range_2m(va, range),
         va_range.wf(),
         va_range.len > 0,
         *cover == va_range.covering_4k_range(),
@@ -176,10 +176,10 @@ pub(super) fn mmap_2m_fill_enter(
         mmap_2m_downgrade_step_from_u(&filled_k, kernel_k_to_kernel_u(downgraded_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr,
             whole_pagetable(downgraded_k.pt_mp, downgraded_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
         mmap_2m_range_steps_from_downgrade(&*steps, filled_steps, entered.len() as int, cpu_id);
-        process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
+        process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         broadcast use spec_va_2m_valid_index_roundtrip;
     }
-    mmap_2m_map_leaves_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr,
+    mmap_2m_map_leaves_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr,
         Ghost(Mmap2mPhase::Fill), Ghost(entered), Ghost(whole_pagetable(filled_k.pt_mp, filled_k.pt_lower.view(), pagetable_ptr)), Tracked(thread_lock_perm),
         Tracked(pagetable_read_perm), Tracked(cpu_lock_perm), Tracked(window_perms));
     RetValueType::Success

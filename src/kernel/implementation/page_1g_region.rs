@@ -14,7 +14,7 @@ pub open spec fn page_1g_all_ptrs(head: PageIndex) -> Set<PagePtr> {
     page_1g_ptr_prefix(head, 262144)
 }
 
-proof fn page_1g_ptr_prefix_contains_head(head: PageIndex, count: nat)
+proof fn page_index_1g_valid_implies_ptr_prefix_contains_head_and_len_eq_count(head: PageIndex, count: nat)
     requires
         page_index_1g_valid(head),
         0 < count <= 262144,
@@ -24,23 +24,25 @@ proof fn page_1g_ptr_prefix_contains_head(head: PageIndex, count: nat)
     decreases count,
 {
     if count == 1 {} else {
-        page_1g_ptr_prefix_contains_head(head, (count - 1) as nat);
-        assert(!page_1g_ptr_prefix(head, (count - 1) as nat).contains(spec_page_index2page_ptr((head + count - 1) as usize))) by { broadcast use page_1g_ptr_prefix_member_bounds; page_index_roundtrip(); };
+        page_index_1g_valid_implies_ptr_prefix_contains_head_and_len_eq_count(head, (count - 1) as nat);
+        assert(!page_1g_ptr_prefix(head, (count - 1) as nat).contains(spec_page_index2page_ptr((head + count - 1) as usize))) by {
+            broadcast use page_1g_ptr_prefix_contains_implies_valid_ptr_head_or_tail_index_in_bounds; page_index_roundtrip();
+        };
     }
 }
 
 /// The 1G region at a 1G-aligned `head` lists its head and has 262144 page pointers.
-pub proof fn page_1g_all_ptrs_contains_head(head: PageIndex)
+pub proof fn page_index_1g_valid_implies_all_ptrs_contain_head_and_len_eq_262144(head: PageIndex)
     requires
         page_index_1g_valid(head),
     ensures
         page_1g_all_ptrs(head).contains(page_index2page_ptr(head)),
         page_1g_all_ptrs(head).len() == 262144,
 {
-    page_1g_ptr_prefix_contains_head(head, 262144);
+    page_index_1g_valid_implies_ptr_prefix_contains_head_and_len_eq_count(head, 262144);
 }
 
-proof fn page_1g_ptr_prefix_contains_index(head: PageIndex, count: nat, index: PageIndex)
+proof fn index_in_page_1g_prefix_implies_ptr_prefix_contains_index_ptr(head: PageIndex, count: nat, index: PageIndex)
     requires
         page_index_1g_valid(head),
         0 < count <= 262144,
@@ -50,22 +52,22 @@ proof fn page_1g_ptr_prefix_contains_index(head: PageIndex, count: nat, index: P
     decreases count,
 {
     let last = (head as int + count as int - 1) as usize;
-    if index == last { } else { page_1g_ptr_prefix_contains_index(head, (count - 1) as nat, index); }
+    if index == last { } else { index_in_page_1g_prefix_implies_ptr_prefix_contains_index_ptr(head, (count - 1) as nat, index); }
 }
 
 /// The 1G region at `head` lists every page pointer whose index lies inside it.
-pub proof fn page_1g_all_ptrs_contains_index(head: PageIndex, index: PageIndex)
+pub proof fn index_in_page_1g_region_implies_all_ptrs_contain_index_ptr(head: PageIndex, index: PageIndex)
     requires
         page_index_1g_valid(head),
         head <= index < head + 262144,
     ensures
         page_1g_all_ptrs(head).contains(page_index2page_ptr(index)),
 {
-    page_1g_ptr_prefix_contains_index(head, 262144, index);
+    index_in_page_1g_prefix_implies_ptr_prefix_contains_index_ptr(head, 262144, index);
 }
 
 /// A member of a 1G region prefix is a valid page pointer at the head or a merged tail index inside the region.
-pub broadcast proof fn page_1g_ptr_prefix_member_bounds(head: PageIndex, count: nat, pg_ptr: PagePtr)
+pub broadcast proof fn page_1g_ptr_prefix_contains_implies_valid_ptr_head_or_tail_index_in_bounds(head: PageIndex, count: nat, pg_ptr: PagePtr)
     requires
         page_index_1g_valid(head),
         count <= 262144,
@@ -82,7 +84,7 @@ pub broadcast proof fn page_1g_ptr_prefix_member_bounds(head: PageIndex, count: 
         page_index_valid_imply_page_ptr_valid();
         page_index_roundtrip();
     } else {
-        page_1g_ptr_prefix_member_bounds(head, (count - 1) as nat, pg_ptr);
+        page_1g_ptr_prefix_contains_implies_valid_ptr_head_or_tail_index_in_bounds(head, (count - 1) as nat, pg_ptr);
     }
 }
 
@@ -97,7 +99,7 @@ pub proof fn container_owned_1g_head_implies_owned_pages_contain_all_ptrs(krnl: 
         page_1g_all_ptrs(head).subset_of(krnl.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view()),
 {
     assert(page_1g_all_ptrs(head).subset_of(krnl.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view())) by {
-        reveal(container_owned_pages_wf); broadcast use page_1g_ptr_prefix_member_bounds;
+        reveal(container_owned_pages_wf); broadcast use page_1g_ptr_prefix_contains_implies_valid_ptr_head_or_tail_index_in_bounds;
         page_ptr_roundtrip();
     };
 }

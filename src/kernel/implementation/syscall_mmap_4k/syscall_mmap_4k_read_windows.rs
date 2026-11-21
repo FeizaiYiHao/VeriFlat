@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_mmap_4k_map_range::mmap_4k_map_leaves_and_finish;
 use super::syscall_mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
-use super::syscall_mmap_4k_read_enter::mmap_4k_unlock_read_rejected;
 use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
 
