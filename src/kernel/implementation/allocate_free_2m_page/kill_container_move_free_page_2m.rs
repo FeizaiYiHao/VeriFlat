@@ -111,7 +111,6 @@ pub fn kill_container_move_free_page_2m(
         allocator_free_2m_pages_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, dst_allocator, pg_ptr);
         allocator_free_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, pg_idx);
         krnl.allc_2m_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_implies_view_len_eq_len();
-        assert(krnl.allc_2m_mp.spec_index(src_allocator).global_pool.view().view().contains(pg_ptr));
         owned_2m_all_ptrs_belong_to_container(&*krnl, pg_idx, src);
         page_2m_all_ptrs_contains_head(pg_idx);
         container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, src);
