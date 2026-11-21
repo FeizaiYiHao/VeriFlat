@@ -477,8 +477,6 @@ pub proof fn kernel_iommu_table_4k_present_cleared_implies_u_step(pre: &KernelK,
         pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova),
         pre.it_mp.spec_index(iommu_table).view().mapping_4k()[iova].present,
         post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().insert(iova, MapEntry { present: false, ..pre.it_mp.spec_index(iommu_table).view().mapping_4k()[iova] }),
-        post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m(),
-        post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g(),
         post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,
         !pre.prc_mp.spec_index(pre.it_mp.spec_index(iommu_table).view().proc_ptr).view().zombie,
     ensures

@@ -133,8 +133,6 @@ proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: Ker
         &&& post.it_mp.spec_index(iommu_table).being_killed() == pre.it_mp.spec_index(iommu_table).being_killed()
         &&& post.it_mp.spec_index(iommu_table).view() == (IommuTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() })
         &&& post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k()
-        &&& post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m()
-        &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g()
         &&& post.it_mp.spec_index(iommu_table).view().page_closure() == pre.it_mp.spec_index(iommu_table).view().page_closure()
         &&& post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr
         &&& post.pci_bars.view() == pre.pci_bars.view()

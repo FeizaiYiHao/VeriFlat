@@ -298,8 +298,6 @@ pub proof fn kernel_pagetable_mappings_projection_at(krnl: &KernelK, process: Rw
     let u = kernel_k_to_kernel_u(*krnl).process_map[process].pagetable->Some_0;
     if table.leaves_present() {
         assert_maps_equal!(u.mapping_4k, table.mapping_4k(), va => {});
-        assert_maps_equal!(u.mapping_2m, table.mapping_2m(), va => {});
-        assert_maps_equal!(u.mapping_1g, table.mapping_1g(), va => {});
     }
 }
 
@@ -343,11 +341,8 @@ pub proof fn kernel_iommu_table_mappings_projection_at(krnl: &KernelK, process: 
             &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(process)
             &&& u is Some
             &&& u->Some_0.lock_state == table.lock_state_u()
-            &&& table.view().leaves_present() ==> {
-                &&& u->Some_0.mapping_4k == table.view().mapping_4k()
-                &&& u->Some_0.mapping_2m == table.view().mapping_2m()
-                &&& u->Some_0.mapping_1g == table.view().mapping_1g()
-            }
+            &&& u->Some_0.mapping_2m == Map::<VAddr, MapEntry>::empty() && u->Some_0.mapping_1g == Map::<VAddr, MapEntry>::empty()
+            &&& table.view().leaves_present() ==> u->Some_0.mapping_4k == table.view().mapping_4k()
         }),
 {
     reveal(kernel_k_to_kernel_u);
@@ -355,8 +350,6 @@ pub proof fn kernel_iommu_table_mappings_projection_at(krnl: &KernelK, process: 
     let u = kernel_k_to_kernel_u(*krnl).process_map[process].iommu_table->Some_0;
     if table.leaves_present() {
         assert_maps_equal!(u.mapping_4k, table.mapping_4k(), va => {});
-        assert_maps_equal!(u.mapping_2m, table.mapping_2m(), va => {});
-        assert_maps_equal!(u.mapping_1g, table.mapping_1g(), va => {});
     }
 }
 

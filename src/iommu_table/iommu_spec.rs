@@ -26,24 +26,23 @@ pub struct IommuTable {
 }
 
 impl IommuTable {
-    /// The owner of the outer LockCell supplies `lock_state`, holders included; the payload has no lock state.
+    /// The owner of the outer LockCell supplies `lock_state`, holders included; the payload has no lock state. The table maps 4K
+    /// leaves only, so the 2M and 1G maps of the shared `PageTableU` are empty.
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,
             did: self.did,
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
-            mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
-            mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
+            mapping_2m: Map::empty(),
+            mapping_1g: Map::empty(),
             pagetable_window_locks: Map::empty(),
             pci_functions: Map::empty(),
         }
     }
 
-    /// Every retained 4K leaf is present, so the user view shows the whole mapping; the 2M and 1G maps are empty.
+    /// Every retained 4K leaf is present, so the user view shows the whole mapping.
     pub open spec fn leaves_present(&self) -> bool {
-        &&& forall|va: VAddr| #![trigger self.mapping_4k().dom().contains(va)] self.mapping_4k().dom().contains(va) ==> self.mapping_4k().spec_index(va).present
-        &&& forall|va: VAddr| #![trigger self.mapping_2m().dom().contains(va)] self.mapping_2m().dom().contains(va) ==> self.mapping_2m().spec_index(va).present
-        &&& forall|va: VAddr| #![trigger self.mapping_1g().dom().contains(va)] self.mapping_1g().dom().contains(va) ==> self.mapping_1g().spec_index(va).present
+        forall|va: VAddr| #![trigger self.mapping_4k().dom().contains(va)] self.mapping_4k().dom().contains(va) ==> self.mapping_4k().spec_index(va).present
     }
 
     pub open spec fn is_empty(&self) -> bool {

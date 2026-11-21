@@ -171,8 +171,6 @@ pub(crate) open spec fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transitio
     &&& new_table.locking_thread() == old_table.locking_thread()
     &&& new_table.being_killed() == old_table.being_killed()
     &&& new_table.view().mapping_4k() == old_table.view().mapping_4k().remove(iova)
-    &&& new_table.view().mapping_2m() == old_table.view().mapping_2m()
-    &&& new_table.view().mapping_1g() == old_table.view().mapping_1g()
     &&& new_table.view().page_closure() == old_table.view().page_closure()
     &&& new_table.view().kernel_entries == old_table.view().kernel_entries
     &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end

@@ -1083,8 +1083,6 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
                     let after = post.it_mp.spec_index(p).view();
                     &&& pre.prc_mp.spec_index(sender).view().iommu_table != Some(p) ==> after.did == before.did
                     &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
-                    &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
-                    &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
                 }
             &&& post.prc_mp.dom() == pre.prc_mp.dom()
             &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -1170,8 +1168,6 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
                 let after = post.it_mp.spec_index(p).view();
                 &&& pre.prc_mp.spec_index(sender).view().iommu_table != Some(p) ==> after.did == before.did
                 &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
-                &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
-                &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
             },
         post.prc_mp.dom() == pre.prc_mp.dom(),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]

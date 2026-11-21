@@ -778,8 +778,6 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             iommu_table_lock_perm.thread_id() == entry_lctx.thread_id(),
             iommu_table_lock_perm.lock_id() == locked_it.locking_thread()->Write_lock_id,
             krnl.it_mp.spec_index(iommu_table).locking_thread() == locked_it.locking_thread(),
-            krnl.it_mp.spec_index(iommu_table).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m(),
-            krnl.it_mp.spec_index(iommu_table).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g(),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
                 pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
                     ==> krnl.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,

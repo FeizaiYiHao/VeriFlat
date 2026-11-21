@@ -17,8 +17,6 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& new_it.locking_thread() == old_it.locking_thread()
     &&& new_it.being_killed() == old_it.being_killed()
     &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().insert(iova, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va))
-    &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
-    &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
     &&& new_it.view().page_closure() == old_it.view().page_closure()
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr

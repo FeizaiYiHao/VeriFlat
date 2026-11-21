@@ -63,8 +63,6 @@ pub fn map_shared_page_into_iommu_4k(
         final(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread() == old(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k()
             == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k().insert(iova, whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va)),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().did == old(krnl).it_mp.spec_index(iommu_table_ptr).view().did,
 {

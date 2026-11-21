@@ -24,8 +24,6 @@ pub(super) open spec fn install_staged_4k_iommu_table_page_eof_transition_framin
     &&& new_it.being_killed() == old_it.being_killed()
     &&& new_it.view().page_closure() == old_it.view().page_closure().insert(pg_ptr)
     &&& new_it.view().mapping_4k() == old_it.view().mapping_4k()
-    &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
-    &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& new_it.view().did == old_it.view().did

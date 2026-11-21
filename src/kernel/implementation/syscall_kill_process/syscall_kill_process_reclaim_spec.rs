@@ -95,8 +95,6 @@ pub(crate) open spec fn kill_unown_detach_eof_transition_framing(pre: KernelK, p
     &&& post.it_mp.spec_index(iommu_table).view() == (IommuTable { did: None, ..table.view() })
     &&& post.it_mp.spec_index(iommu_table).view().page_closure() == table.view().page_closure()
     &&& post.it_mp.spec_index(iommu_table).view().mapping_4k() == table.view().mapping_4k()
-    &&& post.it_mp.spec_index(iommu_table).view().mapping_2m() == table.view().mapping_2m()
-    &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == table.view().mapping_1g()
     &&& table.view().did matches Some(did) ==> {
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, empty_tlb)
         &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)

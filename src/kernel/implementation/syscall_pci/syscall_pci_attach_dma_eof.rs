@@ -14,8 +14,6 @@ pub(super) open spec fn pci_attach_dma_eof_transition_framing(pre: KernelK, post
         &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
         &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
         &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
-        &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
-        &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
         &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
             #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
             &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
@@ -128,8 +126,6 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
             &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
             &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
             &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
-            &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
-            &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
             &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
                 #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
                 &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)

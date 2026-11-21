@@ -310,11 +310,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_2m, Map::empty(), va => {});
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_1g, Map::empty(), va => {});
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.pci_functions, Map::empty(), f => {});
-    if iommu is Some {
-        assert_maps_equal!(post.process_map[child].iommu_table->Some_0.mapping_4k, Map::empty(), va => {});
-        assert_maps_equal!(post.process_map[child].iommu_table->Some_0.mapping_2m, Map::empty(), va => {});
-        assert_maps_equal!(post.process_map[child].iommu_table->Some_0.mapping_1g, Map::empty(), va => {});
-    }
+    if iommu is Some { assert_maps_equal!(post.process_map[child].iommu_table->Some_0.mapping_4k, Map::empty(), va => {}); }
 }
 
 pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, thread: RwLockThreadPtr, source: RwLockContainerPtr, target: RwLockContainerPtr, page: PagePtr, table: RwLockPageTableRoot)

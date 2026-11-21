@@ -654,8 +654,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
                 ==> indirect[d] == krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
             !same ==> krnl.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
             krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0,
-            krnl.it_mp.spec_index(iommu_table).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m(),
-            krnl.it_mp.spec_index(iommu_table).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g(),
             krnl.it_mp.spec_index(iommu_table).view().did is None,
             pei_valid(cursor.0),
             pei_valid(cursor.1),
