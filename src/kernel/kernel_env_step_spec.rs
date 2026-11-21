@@ -25,7 +25,9 @@ pub open spec fn cpu_tlb_within_may_cache(k: KernelK, cpu_id: CpuId, pcid: Pcid,
     }
 }
 
-/// What the IOTLB may cache for domain `did` in state `k`: present leaves of the IOMMU table attached at the DID's anchor B/D/F when the anchor carries `did`, nothing otherwise. Managed IOMMU words satisfy W implies R, so hardware R-or-W reachability is exactly this present/R view.
+/// What the IOTLB may cache for domain `did` in state `k`: present leaves of the IOMMU table attached at the DID's anchor B/D/F
+/// when the anchor carries `did`, nothing otherwise. Managed IOMMU words satisfy W implies R, so hardware R-or-W reachability is
+/// exactly this present/R view.
 pub open spec fn iommu_tlb_within_may_cache(k: KernelK, did: VtdDomainId, tlb: SingleTLB) -> bool {
     let anchor = pci_bdf_of_did(did);
     let root_table = k.irt.view();
@@ -301,9 +303,9 @@ pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, 
     };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
-        assert(filled.tlb_4k() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_4k().union_prefer_right(added.tlb_4k())
-            && filled.tlb_2m() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_2m().union_prefer_right(added.tlb_2m())
-            && filled.tlb_1g() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_1g().union_prefer_right(added.tlb_1g()));
+        assert(filled.tlb_4k() =~= pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_4k().union_prefer_right(added.tlb_4k())
+            && filled.tlb_2m() =~= pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_2m().union_prefer_right(added.tlb_2m())
+            && filled.tlb_1g() =~= pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_1g().union_prefer_right(added.tlb_1g()));
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
@@ -343,7 +345,7 @@ pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, pos
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
 }
 
-pub proof fn kernel_k_trap_enter_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers)
+pub proof fn kernel_k_trap_enter_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers)
     requires
         pre.inv(),
         kernel_k_trap_enter(pre, post, cpu_id, kernel_regs),
@@ -359,7 +361,7 @@ pub proof fn kernel_k_trap_enter_preserves_inv(pre: KernelK, post: KernelK, cpu_
     };
 }
 
-pub proof fn kernel_k_trap_return_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
+pub proof fn kernel_k_trap_return_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId)
     requires
         pre.inv(),
         kernel_k_trap_return(pre, post, cpu_id),
@@ -369,7 +371,7 @@ pub proof fn kernel_k_trap_return_preserves_inv(pre: KernelK, post: KernelK, cpu
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
 }
 
-pub proof fn kernel_k_trap_divert_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
+pub proof fn kernel_k_trap_divert_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId)
     requires
         pre.inv(),
         kernel_k_trap_divert(pre, post, cpu_id),
@@ -379,7 +381,7 @@ pub proof fn kernel_k_trap_divert_preserves_inv(pre: KernelK, post: KernelK, cpu
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
 }
 
-pub proof fn kernel_k_regs_changed_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers)
+pub proof fn kernel_k_regs_changed_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers)
     requires
         pre.inv(),
         kernel_k_regs_changed(pre, post, cpu_id, regs),
@@ -388,7 +390,7 @@ pub proof fn kernel_k_regs_changed_preserves_inv(pre: KernelK, post: KernelK, cp
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
 }
 
-pub proof fn kernel_k_trap_return_values_written_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64)
+pub proof fn kernel_k_trap_return_values_written_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64)
     requires
         pre.inv(),
         kernel_k_trap_return_values_written(pre, post, cpu_id, rax, rdx, rsi),
@@ -403,12 +405,12 @@ pub proof fn kernel_k_trap_return_values_written_preserves_inv(pre: KernelK, pos
     };
 }
 
-// Each environment event below happens while a thread is between two of its kernel sections. Its `respects_boundary`
-// lemma shows that the event stays within the step boundary's trusted framing of that thread, given the thread's local
+// Each environment event below happens while a thread is between two of its kernel sections. Its boundary lemma
+// shows that the event stays within the step boundary's trusted framing of that thread, given the thread's local
 // context `lctx` aligned with the pre-state; alignment keeps every remote cpu the thread holds outside a kernel step.
 
 /// A trap entry on another cpu stays within the step-boundary framing of a thread between its sections.
-pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers, lctx: LocalContext)
+pub proof fn remote_kernel_k_trap_enter_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers, lctx: LocalContext)
     requires
         pre.inv(),
         kernel_k_trap_enter(pre, post, cpu_id, kernel_regs),
@@ -416,7 +418,7 @@ pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, 
         cpu_id != lctx.cpu_id(),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_trap_enter_preserves_inv(pre, post, cpu_id, kernel_regs); };
+    assert(post.inv()) by { kernel_k_trap_enter_implies_inv_preserved(pre, post, cpu_id, kernel_regs); };
     vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
@@ -424,7 +426,7 @@ pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, 
 }
 
 /// A trap return on another cpu stays within the step-boundary framing of a thread between its sections.
-pub proof fn kernel_k_trap_return_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+pub proof fn remote_kernel_k_trap_return_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
     requires
         pre.inv(),
         kernel_k_trap_return(pre, post, cpu_id),
@@ -432,7 +434,7 @@ pub proof fn kernel_k_trap_return_respects_boundary(pre: KernelK, post: KernelK,
         cpu_id != lctx.cpu_id(),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_trap_return_preserves_inv(pre, post, cpu_id); };
+    assert(post.inv()) by { kernel_k_trap_return_implies_inv_preserved(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -440,7 +442,7 @@ pub proof fn kernel_k_trap_return_respects_boundary(pre: KernelK, post: KernelK,
 
 /// A trap diversion of another, marked cpu to its idle loop stays within the step-boundary framing of a thread between
 /// its sections.
-pub proof fn kernel_k_trap_divert_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+pub proof fn remote_kernel_k_trap_divert_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
     requires
         pre.inv(),
         kernel_k_trap_divert(pre, post, cpu_id),
@@ -448,14 +450,14 @@ pub proof fn kernel_k_trap_divert_respects_boundary(pre: KernelK, post: KernelK,
         cpu_id != lctx.cpu_id(),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_trap_divert_preserves_inv(pre, post, cpu_id); };
+    assert(post.inv()) by { kernel_k_trap_divert_implies_inv_preserved(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
 /// A register change on another cpu stays within the step-boundary framing of a thread between its sections.
-pub proof fn kernel_k_regs_changed_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers, lctx: LocalContext)
+pub proof fn remote_kernel_k_regs_changed_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers, lctx: LocalContext)
     requires
         pre.inv(),
         kernel_k_regs_changed(pre, post, cpu_id, regs),
@@ -463,7 +465,7 @@ pub proof fn kernel_k_regs_changed_respects_boundary(pre: KernelK, post: KernelK
         cpu_id != lctx.cpu_id(),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_regs_changed_preserves_inv(pre, post, cpu_id, regs); };
+    assert(post.inv()) by { kernel_k_regs_changed_implies_inv_preserved(pre, post, cpu_id, regs); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -471,7 +473,7 @@ pub proof fn kernel_k_regs_changed_respects_boundary(pre: KernelK, post: KernelK
 
 /// The trap glue of another cpu writing its return values stays within the step-boundary framing of a thread between its
 /// sections.
-pub proof fn kernel_k_trap_return_values_written_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64, lctx: LocalContext)
+pub proof fn remote_kernel_k_trap_return_values_written_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64, lctx: LocalContext)
     requires
         pre.inv(),
         kernel_k_trap_return_values_written(pre, post, cpu_id, rax, rdx, rsi),
@@ -479,7 +481,7 @@ pub proof fn kernel_k_trap_return_values_written_respects_boundary(pre: KernelK,
         cpu_id != lctx.cpu_id(),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_trap_return_values_written_preserves_inv(pre, post, cpu_id, rax, rdx, rsi); };
+    assert(post.inv()) by { kernel_k_trap_return_values_written_implies_inv_preserved(pre, post, cpu_id, rax, rdx, rsi); };
     vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
