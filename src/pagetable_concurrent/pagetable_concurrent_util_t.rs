@@ -15,6 +15,7 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
         !old(pt_mp).dom().contains(pg_ptr),
         page_perm.is_init(),
         page_perm.addr() == pg_ptr,
+        page_ptr_valid(pg_ptr),
         (WholePageTable { higher: higher_value, lower: lower_value }).wf(),
         old(pt_mp).typed_lock_map_aligned(old(lctx).pagetable_lock_map(), old(lctx).thread_id()),
         old(lctx).kernel_view_locking_state() is Acquire,
