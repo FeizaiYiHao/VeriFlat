@@ -19,7 +19,6 @@ use super::l2_page_map::*;
 pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
-    pub did: Option<VtdDomainId>,
     pub kernel_l4_end: usize,
     pub l4_table: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     pub l3_rev_map: Ghost<Map<PageMapPtr, (L4Index)>>,
@@ -110,12 +109,6 @@ pub open spec fn va_range_2m_windows(range: VaRange4K) -> ISet<WindowVa> {
 impl PageTableHigher<PT_TYPE> {
     /// A CPU table has a PCID.
     pub open spec fn pcid_wf(&self) -> bool { self.pcid is Some }
-
-    /// A CPU table has no VT-d domain id; an IOMMU table may carry one valid id.
-    pub open spec fn did_wf(&self) -> bool {
-        &&& PT_TYPE == PT_TYPE ==> self.did is None
-        &&& self.did is Some ==> vtd_domain_id_valid(self.did->Some_0)
-    }
 
     pub open spec fn pcid_value(&self) -> Pcid
         recommends self.pcid is Some,
@@ -365,7 +358,6 @@ impl LockInvTrait for PageTableHigher<PT_TYPE> {
         &&& self.tables_reachable_wf()
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
-        &&& self.did_wf()
         &&& self.pci.wf()
     }
 }
@@ -424,7 +416,6 @@ impl PageTableLower<PT_TYPE> {
 
 impl WholePageTable<PT_TYPE> {
     pub open spec fn cr3(&self) -> PageTableRoot { self.higher.cr3 }
-    pub open spec fn did(&self) -> Option<VtdDomainId> { self.higher.did }
     pub open spec fn kernel_l4_end(&self) -> usize { self.higher.kernel_l4_end }
     pub open spec fn mapping_4k(&self) -> Map<VAddr, MapEntry> { self.lower.mapping_4k }
     pub open spec fn mapping_2m(&self) -> Map<VAddr, MapEntry> { self.lower.mapping_2m }

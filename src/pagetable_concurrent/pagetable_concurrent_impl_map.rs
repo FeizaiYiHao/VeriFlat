@@ -199,7 +199,6 @@ impl PageTableHigher<PT_TYPE> {
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
-            final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
             final(self).pci == old(self).pci,

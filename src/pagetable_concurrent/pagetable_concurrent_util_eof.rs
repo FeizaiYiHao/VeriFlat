@@ -22,7 +22,6 @@ impl PageTableHigher<PT_TYPE> {
                 #![trigger page_map_perm.value().spec_index(i)]
                 0 <= i < self.kernel_l4_end ==> self.kernel_entries.view().spec_index(i as int) == page_map_perm.value().spec_index(i),
             self.pcid_wf(),
-            self.did_wf(),
             self.pci.wf(),
         ensures
             self.inv(),

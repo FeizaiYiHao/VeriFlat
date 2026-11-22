@@ -180,7 +180,6 @@ pub fn pagetable_map_remove_l3_entry(
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_entries == old(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_entries,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.cr3 == old(pagetable_map).spec_index(pagetable_ptr).view().higher.cr3,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.pcid == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pcid,
-        final(pagetable_map).spec_index(pagetable_ptr).view().higher.did == old(pagetable_map).spec_index(pagetable_ptr).view().higher.did,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr,
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).kernel_l4_end() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end(),
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).page_closure() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).page_closure().remove(l2_p),

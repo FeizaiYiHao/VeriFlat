@@ -32,7 +32,6 @@ pub(super) open spec fn mmap_1g_reclaim_table_page_to_cache_eof_transition_frami
     &&& new_table.view().higher.kernel_l4_end == old_table.view().higher.kernel_l4_end
     &&& new_table.view().higher.cr3 == old_table.view().higher.cr3
     &&& new_table.view().higher.pcid == old_table.view().higher.pcid
-    &&& new_table.view().higher.did == old_table.view().higher.did
     &&& new_table.view().higher.proc_ptr == old_table.view().higher.proc_ptr
     &&& new_table.view().higher.pci == old_table.view().higher.pci
     &&& forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.proc_ptr]

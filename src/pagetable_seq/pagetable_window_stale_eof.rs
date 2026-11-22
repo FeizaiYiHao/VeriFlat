@@ -80,6 +80,7 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
     let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), root);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, root)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& {
         &&& post.pt_mp.spec_index(root).is_init() == pre.pt_mp.spec_index(root).is_init()
         &&& post.pt_mp.spec_index(root).view_rodata() == pre.pt_mp.spec_index(root).view_rodata()

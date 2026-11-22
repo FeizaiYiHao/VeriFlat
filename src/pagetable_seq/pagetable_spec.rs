@@ -28,7 +28,6 @@ pub open spec fn page_table_key_1g_valid<const TABLE_TYPE: PTType>(addr: usize) 
 pub struct PageTable<const TABLE_TYPE: PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
-    pub did: Option<VtdDomainId>,
     pub kernel_l4_end: usize,
     pub l4_table: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     pub l3_rev_map: Ghost<Map<PageMapPtr, (L4Index)>>,
@@ -108,7 +107,6 @@ impl PageTable<PT_TYPE> {
             ret.wf(),
             ret.cr3 == page_map_ptr,
             ret.pcid == pcid,
-            ret.did is None,
             ret.kernel_l4_end == mem_end_l4_index,
             ret.kernel_entries =~= kernel_entries_ghost,
             ret.is_empty(),
@@ -118,7 +116,6 @@ impl PageTable<PT_TYPE> {
         let mut ret = Self {
             cr3: page_map_ptr,
             pcid,
-            did: None,
             kernel_l4_end: mem_end_l4_index,
             l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()),
@@ -230,9 +227,6 @@ impl PageTable<PT_TYPE> {
 
     /// A CPU table has a PCID.
     pub open spec fn pcid_wf(&self) -> bool { self.pcid is Some }
-
-    /// A CPU table has no VT-d domain id.
-    pub open spec fn did_wf(&self) -> bool { self.did is None }
 
     pub open spec fn pcid_value(&self) -> Pcid
         recommends self.pcid is Some,
@@ -627,7 +621,7 @@ impl PageTable<PT_TYPE> {
     { reveal(PageTable::kernel_entries_wf); }
 
     /// The page-table invariant: structure and disjointness of every level, the three mapping maps, user and rights
-    /// bits, table pages and their reachability, kernel entries, PCID and domain id.
+    /// bits, table pages and their reachability, kernel entries and PCID.
     pub open spec fn wf(&self) -> bool {
         &&& self.va_addr_valid()
         &&& self.wf_l4()
@@ -646,7 +640,6 @@ impl PageTable<PT_TYPE> {
         &&& self.tables_reachable_wf()
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
-        &&& self.did_wf()
     }
 }
 

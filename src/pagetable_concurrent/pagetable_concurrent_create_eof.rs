@@ -1045,8 +1045,32 @@ impl WholePageTable<PT_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
+        Self::create_entry_l2_eof_resolve_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); };
+    }
+
+    /// EOF closure of `create_entry_l2`: every 4K walk resolves as before; the new L1 page is empty.
+    proof fn create_entry_l2_eof_resolve_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
+            pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
+                    ==> post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+    {
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
     }
 
     /// EOF closure of `create_entry_l2`: `wf_mapping_2m`.

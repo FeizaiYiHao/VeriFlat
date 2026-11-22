@@ -14,6 +14,7 @@ pub(super) open spec fn lock_pagetable_window_eof_transition_framing(pre: Kernel
     let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), root);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, root)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& post.pt_mp.spec_index(root).is_init() == pre.pt_mp.spec_index(root).is_init()
     &&& post.pt_mp.spec_index(root).view_rodata() == pre.pt_mp.spec_index(root).view_rodata()
     &&& post.pt_mp.spec_index(root).locking_thread() == pre.pt_mp.spec_index(root).locking_thread()
@@ -58,6 +59,7 @@ pub(super) open spec fn unlock_pagetable_window_eof_transition_framing(pre: Kern
     let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), root);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, root)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& post.pt_mp.spec_index(root).is_init() == pre.pt_mp.spec_index(root).is_init()
     &&& post.pt_mp.spec_index(root).view_rodata() == pre.pt_mp.spec_index(root).view_rodata()
     &&& post.pt_mp.spec_index(root).locking_thread() == pre.pt_mp.spec_index(root).locking_thread()

@@ -96,7 +96,7 @@ pub open spec fn boot_dom0_pagetable_model(
     l2_tables: Map<PageMapPtr, PointsTo<PageMap>>, l1_tables: Map<PageMapPtr, PointsTo<PageMap>>, rev_maps: BootRevMaps,
 ) -> PageTable<PT_TYPE> {
     PageTable {
-        cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.0), l3_tables: Tracked(l3_tables),
+        cr3: raw_cr3, pcid: Some(1), kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.1), l2_tables: Tracked(l2_tables), l1_rev_map: Ghost(rev_maps.2), l1_tables: Tracked(l1_tables),
         mapping_4k: Ghost(manifest_4k), mapping_2m: Ghost(Map::empty()), mapping_1g: Ghost(Map::empty()), kernel_entries: Ghost(kernel_entries), proc_ptr: prc_ptr,
     }
@@ -303,7 +303,6 @@ pub fn adopt_boot_dom0_pagetable(
         ret.0.cr3 == raw_cr3,
         ret.0.pcid == Some(1usize),
         ret.0.pcid_value() == 1,
-        ret.0.did is None,
         ret.0.proc_ptr == prc_ptr,
         ret.0.kernel_l4_end == kernel_l4_end,
         ret.0.kernel_entries == kernel_entries,
@@ -319,7 +318,7 @@ pub fn adopt_boot_dom0_pagetable(
         ret.0.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
 {
     let higher = PageTableHigher {
-        cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
+        cr3: raw_cr3, pcid: Some(1), kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()),
         pci: PciFunctionArray::new_empty(),
     };
