@@ -10,7 +10,7 @@ pub open spec fn window_stale_cpus_after_set(stale: Map<(PageMapPtr, L2Index), S
 
 /// The stale-CPU map after `cpu_id` is dropped from every record the thread may change: all of them while it write-holds
 /// the table, otherwise the records of the windows it holds in `lower`.
-pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId, cpu_id: CpuId)
+pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower, root_write_held: bool, thread_id: LockThreadId, cpu_id: CpuId)
     -> Map<(PageMapPtr, L2Index), Set<CpuId>>
 {
     Map::new(stale.dom(), |k: (PageMapPtr, L2Index)| if root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Write && lower.l2_owner(k.0, k.1)->Write_thread_id == thread_id)) {
@@ -22,7 +22,7 @@ pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2In
 
 /// Every 4K or 2M translation `tlb` caches under a window that thread `thread_id` holds is a present leaf of `table`, so a
 /// `RemoveCpu` of that thread may drop the cpu from those windows' records.
-pub open spec fn single_tlb_held_window_entries_present(tlb: SingleTLB, table: WholePageTable<PT_TYPE>, thread_id: LockThreadId) -> bool {
+pub open spec fn single_tlb_held_window_entries_present(tlb: SingleTLB, table: WholePageTable, thread_id: LockThreadId) -> bool {
     &&& forall|va: VAddr| #![trigger tlb.tlb_4k().spec_index(va)]
         tlb.tlb_4k().dom().contains(va) && table.window_locked_by_thread(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), thread_id) ==> {
             let leaf = table.spec_resolve_mapping_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
@@ -37,7 +37,7 @@ pub open spec fn single_tlb_held_window_entries_present(tlb: SingleTLB, table: W
 
 /// The stale-CPU map after the empty records the thread may change are deleted: all of them while it write-holds the table,
 /// otherwise those of the windows it holds in `lower`.
-pub open spec fn window_stale_cpus_after_clear_empty(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
+pub open spec fn window_stale_cpus_after_clear_empty(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
     stale.filter_keys(|k: (PageMapPtr, L2Index)| !(stale.spec_index(k) == Set::<CpuId>::empty() && (root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Write && lower.l2_owner(k.0, k.1)->Write_thread_id == thread_id)))))
 }
 
@@ -64,7 +64,7 @@ pub open spec fn table_stale_cpus_after(update: TableStaleUpdate, stale: Set<Cpu
 
 /// The stale-CPU map of `table` after `update`, applied by thread `thread_id` that write-holds the table iff
 /// `root_write_held`; a `Set` records the window under its L2 page and entry, as `window_view` reads it.
-pub open spec fn window_stale_cpus_after(update: WindowStaleUpdate, table: WholePageTable<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
+pub open spec fn window_stale_cpus_after(update: WindowStaleUpdate, table: WholePageTable, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
     match update {
         WindowStaleUpdate::Set { window, cpus } => window_stale_cpus_after_set(table.lower.window_stale_cpus, table.window_l2_page(spec_v2l4index(window.va), spec_v2l3index(window.va)), spec_v2l2index(window.va), cpus),
         WindowStaleUpdate::RemoveCpu { cpu_id } => window_stale_cpus_after_remove_cpu(table.lower.window_stale_cpus, table.lower, root_write_held, thread_id, cpu_id),
@@ -80,6 +80,7 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
     let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), root);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, root)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& {
         &&& post.pt_mp.spec_index(root).is_init() == pre.pt_mp.spec_index(root).is_init()
         &&& post.pt_mp.spec_index(root).view_rodata() == pre.pt_mp.spec_index(root).view_rodata()
@@ -264,7 +265,7 @@ pub(super) proof fn window_stale_cpus_update_eof_held_windows(pre: KernelK, root
 }
 
 /// EOF closure of `KernelK::replace_window_stale_cpus` for the table itself: no table invariant reads the stale-CPU map.
-proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable, post: WholePageTable)
     requires
         pre.wf(),
         post.higher == pre.higher,

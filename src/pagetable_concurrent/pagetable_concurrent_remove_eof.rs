@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `remove_l2_entry`: entry `target_l2i` of the L2 page `target_l2_p` is cleared and the
     /// L1 page `target_l1_p` leaves the L1 pages and their reverse index; every other field is unchanged.
     #[verifier::opaque]
@@ -559,7 +559,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         reveal(WholePageTable::remove_l3_entry_eof_transition_framing);
         reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4); reveal(WholePageTable::l3_links_l2_wf);
         spec_index2va_injective();
-        broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq, spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip;
+        broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq, spec_va_2m_valid_index_roundtrip;
         reveal(WholePageTable::wf_window_locks);
     }
 

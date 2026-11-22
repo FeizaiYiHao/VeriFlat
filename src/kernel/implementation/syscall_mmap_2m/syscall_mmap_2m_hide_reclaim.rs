@@ -76,7 +76,7 @@ fn mmap_2m_window_l2_word(krnl: &KernelK, pagetable_ptr: RwLockPageTableRoot, va
 /// keeps its empty L1 page behind a non-present L2 entry and lists every CPU stale. Records no step and returns whether any
 /// window hid its page; when none did, nothing changed.
 pub(super) fn mmap_2m_hide_linked_l1_range(
-    krnl: &mut KernelK, va_range: &VaRange2M, pagetable_ptr: RwLockPageTableRoot, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
+    krnl: &mut KernelK, va_range: &VaRange2M, pagetable_ptr: RwLockPageTableRoot, Ghost(t4k): Ghost<WholePageTable>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 ) -> (hidden: bool)
     requires
@@ -282,7 +282,7 @@ pub(super) fn mmap_2m_hide_linked_l1_range(
 /// returned page; afterwards no window of the range owns an L1 page or lists a stale CPU.
 pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
     krnl: &mut KernelK, va_range: &VaRange2M, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
-    Ghost(phase): Ghost<Mmap2mPhase>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, Tracked(cpu_lock_perm): Tracked<&LockPerm>,
+    Ghost(phase): Ghost<Mmap2mPhase>, Ghost(t4k): Ghost<WholePageTable>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, Tracked(cpu_lock_perm): Tracked<&LockPerm>,
     Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires

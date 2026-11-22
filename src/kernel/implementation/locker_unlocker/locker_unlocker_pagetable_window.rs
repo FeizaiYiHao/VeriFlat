@@ -18,7 +18,7 @@ impl KernelK {
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
-            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((l4i, l3i, l2i, 0))),
+            va_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_exists(l4i, l3i),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).scheduler_lock_map().dom().is_empty(),
@@ -87,7 +87,7 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_locked_by_thread(l4i, l3i, l2i, final(lctx).thread_id()),
             forall|w: WindowVa|
                 #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_view(w)]
-                page_table_key_2m_valid::<PT_TYPE>(w.va) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+                va_2m_valid(w.va) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                     && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != spec_index2va((l4i, l3i, l2i, 0))
                     ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_view(w) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(w),
             big.state() is ReadLock ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_leaves_present(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }),
@@ -247,7 +247,7 @@ impl KernelK {
                 ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
             forall|w: WindowVa|
                 #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_view(w)]
-                page_table_key_2m_valid::<PT_TYPE>(w.va) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+                va_2m_valid(w.va) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                     && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != spec_index2va((l4i, l3i, l2i, 0))
                     ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_view(w) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(w),
     {

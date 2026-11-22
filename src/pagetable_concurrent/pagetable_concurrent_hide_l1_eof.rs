@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `hide_l1_page`: entry `target_l2i` of the L2 page `target_l2_p` now publishes the L1 page
     /// `target_l1_p` with every permission bit clear and keeps owning it; every other field is unchanged.
     #[verifier::opaque]
@@ -20,6 +20,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& post.lower.l2_entry(target_l2_p, target_l2i) == (PageEntry { addr: target_l1_p, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
         &&& post.lower.l2_owner(target_l2_p, target_l2i) == pre.lower.l2_owner(target_l2_p, target_l2i)
         &&& post.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() == pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1()
+        &&& forall|q: PageMapPtr, j: L2Index| #![trigger post.lower.l2_page(q).entry_lock(j).l1()] post.lower.l2_page(q).entry_lock(j).l1() == pre.lower.l2_page(q).entry_lock(j).l1()
     }
 
     /// EOF closure of `hide_l1_page`: every page-table invariant leaf, the unchanged page closure, the walks, and the hidden
@@ -221,6 +222,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& post.lower.l2_entry(target_l2_p, target_l2i).is_empty()
         &&& post.lower.l2_owner(target_l2_p, target_l2i) == pre.lower.l2_owner(target_l2_p, target_l2i)
         &&& post.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is None
+        &&& forall|q: PageMapPtr, j: L2Index| #![trigger post.lower.l2_page(q).entry_lock(j).l1()]
+            q != target_l2_p || j != target_l2i ==> post.lower.l2_page(q).entry_lock(j).l1() == pre.lower.l2_page(q).entry_lock(j).l1()
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: every page-table invariant leaf and the shrunk page closure.
@@ -276,11 +279,27 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
-        assert(post.user_only()) by { reveal(WholePageTable::user_only); };
+        Self::unlink_hidden_l1_page_eof_user_only(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
         assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
         assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
         assert(post.page_closure() =~= pre.page_closure().remove(target_l1_p)) by { reveal(WholePageTable::table_pages_wf); };
+    }
+
+    /// EOF closure of `unlink_hidden_l1_page`: `user_only`.
+    proof fn unlink_hidden_l1_page_eof_user_only(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+        target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::unlink_hidden_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.user_only(),
+    {
+        reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
+        reveal(WholePageTable::user_only);
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: `wf_l2`. Every other L1 owner names another page, which stays in the reverse
@@ -484,6 +503,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& post.lower.l2_entry(target_l2_p, target_l2i).is_empty()
         &&& post.lower.l2_owner(target_l2_p, target_l2i) == pre.lower.l2_owner(target_l2_p, target_l2i)
         &&& post.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is None
+        &&& forall|q: PageMapPtr, j: L2Index| #![trigger post.lower.l2_page(q).entry_lock(j).l1()]
+            q != target_l2_p || j != target_l2i ==> post.lower.l2_page(q).entry_lock(j).l1() == pre.lower.l2_page(q).entry_lock(j).l1()
     }
 
     /// EOF closure of `unlink_unresolvable_l1_page`: every page-table invariant leaf and the shrunk page closure.
@@ -539,11 +560,28 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
-        assert(post.user_only()) by { reveal(WholePageTable::user_only); };
+        Self::unlink_unresolvable_l1_page_eof_user_only(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
         assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
         assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
         assert(post.page_closure() =~= pre.page_closure().remove(target_l1_p)) by { reveal(WholePageTable::table_pages_wf); };
+    }
+
+    /// EOF closure of `unlink_unresolvable_l1_page`: `user_only`.
+    proof fn unlink_unresolvable_l1_page_eof_user_only(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is Some,
+            pre.lower.l2_entry(target_l2_p, target_l2i).addr == target_l1_p,
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::unlink_unresolvable_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.user_only(),
+    {
+        reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
+        reveal(WholePageTable::user_only);
     }
 
     /// EOF closure of `unlink_unresolvable_l1_page`: `wf_l2`.

@@ -44,7 +44,7 @@ verus! {
             pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2),
             KERNEL_MEM_END_L4INDEX <= indices.0,
             pei_valid(lo) && pei_valid(hi) && lo <= hi,
-            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, indices.2, 0))),
+            va_2m_valid(spec_index2va((indices.0, indices.1, indices.2, 0))),
             !(level is L2) ==> write_held,
             level is L2 ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })),
             level is L2 ==> window_perm is Some
@@ -471,7 +471,7 @@ verus! {
             pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2),
             KERNEL_MEM_END_L4INDEX <= indices.0,
             pei_valid(lo) && pei_valid(hi) && lo <= hi,
-            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, indices.2, 0))),
+            va_2m_valid(spec_index2va((indices.0, indices.1, indices.2, 0))),
             !(level is L2) ==> write_held,
             level is L2 ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })),
             level is L2 ==> window_perm is Some

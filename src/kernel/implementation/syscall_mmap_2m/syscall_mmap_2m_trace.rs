@@ -9,7 +9,7 @@ verus! {
 /// 2M window, and a range found in use has page `at` whose held window has its leaves present and holds the 4K leaf `found`
 /// or, if there is none, a 2M leaf or a covering 1G leaf, all of which are present. Without a checked table, a range result
 /// is only known to be success or in use.
-pub(super) proof fn mmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType, cur: Option<WholePageTable<PT_TYPE>>,
+pub(super) proof fn mmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType, cur: Option<WholePageTable>,
     found: Option<(L4Index, L3Index, L2Index, L1Index)>, at: int)
     requires
         krnl.inv(),

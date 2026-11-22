@@ -24,6 +24,8 @@ pub(super) open spec fn create_endpoint_from_staged_page_eof_transition_framing(
     &&& post_page.locking_thread() == pre_page.locking_thread()
     &&& post_page.being_killed() == pre_page.being_killed()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr)
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c).view_ghost().owned_threads.view()]
+        pre.ctn_mp.dom().contains(c) ==> post.ctn_mp.spec_index(c).view_ghost().owned_threads.view() == pre.ctn_mp.spec_index(c).view_ghost().owned_threads.view()
     &&& post_container.view() == pre_container.view()
     &&& post_container.view_rodata() == pre_container.view_rodata()
     &&& post_container.view_ghost() == (ContainerGhost { owned_endpoints: Ghost(pre_container.view_ghost().owned_endpoints.view().insert(pg_ptr)), ..pre_container.view_ghost() })
@@ -44,6 +46,8 @@ pub(super) open spec fn create_endpoint_from_staged_page_eof_transition_framing(
     &&& post_staging.view_ghost() == pre_staging.view_ghost()
     &&& post.ep_mp.dom() == pre.ep_mp.dom().insert(pg_ptr)
     &&& forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e)] pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e) == pre.ep_mp.spec_index(e)
+    &&& forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e).view().owning_threads.view()]
+        pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e).view().owning_threads.view() == pre.ep_mp.spec_index(e).view().owning_threads.view()
     &&& endpoint.is_init()
     &&& !endpoint.being_killed()
     &&& endpoint.view().queue.view() == Seq::<RwLockThreadPtr>::empty()

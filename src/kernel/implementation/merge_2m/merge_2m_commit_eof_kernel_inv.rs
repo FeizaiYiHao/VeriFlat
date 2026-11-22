@@ -9,7 +9,7 @@ use super::merge_2m_commit_spec::*;
 use super::merge_2m_commit_eof_allocator::*;
 
 #[cfg(verus_keep_ghost)]
-use super::merge_2m_commit_eof::{merge_2m_commit_eof_implies_container_owned_pages_wf,
+use super::merge_2m_commit_eof::{merge_2m_commit_eof_implies_container_owned_pages_wf, merge_2m_commit_eof_implies_hugepage_2m_wf,
     merge_2m_commit_eof_implies_mapped_4k_page_pagetable_wf, merge_2m_commit_eof_implies_mapped_2m_page_pagetable_wf,
     merge_2m_commit_eof_implies_typed_lock_maps_aligned};
 
@@ -117,7 +117,7 @@ pub proof fn merge_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
     };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     merge_2m_commit_eof_implies_container_owned_pages_wf(pre, post, thread, allocator_4k, allocator_2m, candidate);
-    assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
+    merge_2m_commit_eof_implies_hugepage_2m_wf(pre, post, thread, allocator_4k, allocator_2m, candidate);
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
     merge_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, candidate);
     merge_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre, post, thread, allocator_4k, allocator_2m, candidate);

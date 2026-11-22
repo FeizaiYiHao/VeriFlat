@@ -494,6 +494,8 @@ proof fn remove_last_held_2m_mapping_to_allocator_eof_free_2m_pages(
             &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m == allc_ptr
         }),
         post.subsystems_inv(),
+        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_2m_mp.spec_index(a).global_pool] #![trigger pre.allc_2m_mp.spec_index(a).global_pool]
+            pre.allc_2m_mp.dom().contains(a) ==> post.allc_2m_mp.spec_index(a).global_pool == pre.allc_2m_mp.spec_index(a).global_pool,
     ensures
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         allocator_free_page_ptrs_wf(post.allc_2m_mp),

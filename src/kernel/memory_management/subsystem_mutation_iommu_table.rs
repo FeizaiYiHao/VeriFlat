@@ -176,7 +176,7 @@ pub fn iommu_table_map_insert_4k(
         pei_valid(indices.1),
         pei_valid(indices.2),
         pei_valid(indices.3),
-        page_table_key_4k_valid::<IOMMU_TYPE>(spec_index2va(indices)),
+        iova_4k_valid(spec_index2va(indices)),
         old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3) is None

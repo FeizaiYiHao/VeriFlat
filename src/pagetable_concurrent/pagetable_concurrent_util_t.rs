@@ -7,8 +7,8 @@ pub type PageTableHigherLockedMap = PageTableLockedMap;
 
 /// Publish a fresh page table: retype `pg_ptr` into the write-held big lock around `higher_value`, insert it into
 /// `pt_mp`, and file its window half under the same root in `pt_lower`.
-pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLockedMap, Tracked(pt_lower): Tracked<&mut Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>>,
-    pg_ptr: PagePtr, higher_value: PageTableHigher<PT_TYPE>, Tracked(lower_value): Tracked<PageTableLower<PT_TYPE>>, Tracked(page_perm): Tracked<PagePerm4k>,
+pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLockedMap, Tracked(pt_lower): Tracked<&mut Map<RwLockPageTableRoot, PageTableLower>>,
+    pg_ptr: PagePtr, higher_value: PageTableHigher, Tracked(lower_value): Tracked<PageTableLower>, Tracked(page_perm): Tracked<PagePerm4k>,
     Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
     requires
         old(pt_mp).perms_wf(),
@@ -50,7 +50,7 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
         final(pt_mp).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
 {
     proof { assert(vstd::layout::size_of::<PageTableRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<PageTableRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_PageTableRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>(
+    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableBigLocked, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>(
         pg_ptr, PageTableBigLocked { higher: higher_value, lower_backup: Ghost(lower_value) }, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pg_ptr)));
     pt_mp.insert_with_perm(pg_ptr, Tracked(pagetable_rwlock_perm));
     proof {
@@ -60,7 +60,7 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
     Tracked(pagetable_perm)
 }
 
-impl PageTableHigher<PT_TYPE> {
+impl PageTableHigher {
     /// Copy this table's kernel-half root entries into an unpublished root page.
     pub fn copy_kernel_entries_to_unpublished_root(&self, target_ptr: PageMapPtr, Tracked(target_perm): Tracked<&mut PointsTo<PageMap>>)
         requires
@@ -87,4 +87,4 @@ impl PageTableHigher<PT_TYPE> {
 } // verus!
 
 // Layout contract: the page-table big lock, per-cpu reader slots included, fits the 4K page it is retyped from.
-const _: () = assert!(core::mem::size_of::<LockCell<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K);
+const _: () = assert!(core::mem::size_of::<LockCell<PageTableBigLocked, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K);

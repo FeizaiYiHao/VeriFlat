@@ -3,7 +3,7 @@ use crate::*;
 verus! {
     /// Every directory entry a CPU's paging-structure cache keeps is a user entry the table still holds, present or as a
     /// placeholder, naming the same page: the structure-cache form of `single_tlb_subset_of_whole_pagetable`.
-    pub open spec fn single_structure_cache_subset_of_whole_pagetable(cache: PagingStructureCache, table: WholePageTable<PT_TYPE>) -> bool {
+    pub open spec fn single_structure_cache_subset_of_whole_pagetable(cache: PagingStructureCache, table: WholePageTable) -> bool {
         &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] #![trigger cache.pml4e.spec_index(i)]
             cache.pml4e.dom().contains(i) ==> table.kernel_l4_end() <= i && pei_valid(i) && table.spec_held_l4(i) is Some && table.spec_held_l4(i)->0.addr == cache.pml4e.spec_index(i)
         &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] #![trigger cache.pdpte.spec_index(key)]
@@ -16,7 +16,7 @@ verus! {
 
     /// Every directory entry the cache keeps is held and its path resolves: the shape after a flush or a CR3 write, the
     /// structure-cache form of `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
-    pub open spec fn single_structure_cache_subset_of_present_pagetable(cache: PagingStructureCache, table: WholePageTable<PT_TYPE>) -> bool {
+    pub open spec fn single_structure_cache_subset_of_present_pagetable(cache: PagingStructureCache, table: WholePageTable) -> bool {
         &&& single_structure_cache_subset_of_whole_pagetable(cache, table)
         &&& forall|i: L4Index| #![trigger cache.pml4e.spec_index(i)] cache.pml4e.dom().contains(i) ==> table.spec_resolve_mapping_l4(i) is Some
         &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.spec_index(key)] cache.pdpte.dom().contains(key) ==> table.spec_resolve_mapping_l3(key.0, key.1) is Some
@@ -26,7 +26,7 @@ verus! {
     /// The cache of CPU `cpu_id` keeps a directory entry the table no longer resolves only while `cpu_id` is listed stale
     /// for it: an L2 entry by the record of its 2M window while the L3 path still resolves, any other entry by the table
     /// record. The structure-cache form of `single_tlb_present_or_stale`.
-    pub open spec fn single_structure_cache_present_or_stale(cache: PagingStructureCache, table: WholePageTable<PT_TYPE>, cpu_id: CpuId) -> bool {
+    pub open spec fn single_structure_cache_present_or_stale(cache: PagingStructureCache, table: WholePageTable, cpu_id: CpuId) -> bool {
         &&& forall|i: L4Index| #![trigger cache.pml4e.spec_index(i)]
             cache.pml4e.dom().contains(i) && table.spec_resolve_mapping_l4(i) is None ==> table.higher.table_stale_cpus.view().contains(cpu_id)
         &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.spec_index(key)]

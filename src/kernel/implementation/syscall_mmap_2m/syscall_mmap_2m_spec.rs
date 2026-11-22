@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// User-visible and physical result of a successful anonymous 2M mmap.
-pub open spec fn mmap_2m_syscall_range_mapped(pagetable: WholePageTable<PT_TYPE>, va: VAddr, len: usize) -> bool {
+pub open spec fn mmap_2m_syscall_range_mapped(pagetable: WholePageTable, va: VAddr, len: usize) -> bool {
     forall|i: usize| #![trigger pagetable.mapping_2m().dom().contains(spec_va_add_range_2m(va, i))] i < len ==> {
         let mapped_va = spec_va_add_range_2m(va, i);
         &&& pagetable.mapping_2m().dom().contains(mapped_va)

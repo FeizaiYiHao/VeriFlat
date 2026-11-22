@@ -135,7 +135,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr,
     prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, iommu_table: Option<RwLockPageTableRoot>, Ghost(entry_lctx): Ghost<LocalContext>,
     Ghost(table_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(it_entry): Ghost<TypedHeldLock>,
-    Ghost(emptied_pt): Ghost<WholePageTable<PT_TYPE>>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<LockPerm>,
+    Ghost(emptied_pt): Ghost<WholePageTable>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<LockPerm>,
     Tracked(iommu_table_lock_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
     requires

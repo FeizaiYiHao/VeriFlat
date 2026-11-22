@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `unmap_4k_page_user_view`: entry `target_l1i` of the L1 map `target_l1_p` loses its
     /// present bit and the 4K mapping of its address is kept with `present` cleared; every other field is unchanged.
     #[verifier::opaque]
@@ -215,13 +215,38 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
+        Self::unmap_4k_page_user_view_eof_resolve_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         reveal(WholePageTable::unmap_4k_page_user_view_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by {
-            reveal(WholePageTable::wf_mapping_4k);
-            spec_index2va_injective();
-            post.resolve_l2_unchanged(&pre);
-            broadcast use WholePageTable::disjoint_l2_implies_resolve_l2_addr_unique_at, WholePageTable::wf_l2_implies_resolve_l2_target_in_l1_rev_map_at;
-        };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); spec_index2va_injective(); };
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view`: every other 4K leaf resolves as before; the target leaf resolves to the
+    /// same entry with the present bit cleared.
+    proof fn unmap_4k_page_user_view_eof_resolve_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
+        target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pei_valid(target_l1i),
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (target_l4i, target_l3i, target_l2i, target_l1i)
+                    ==> post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+            pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is Some,
+            post.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry {
+                perm: PageEntryPerm { present: false, ..pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i)->0.perm },
+                ..pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i)->0 }),
+    {
+        reveal(WholePageTable::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(WholePageTable::wf_mapping_4k);
+        post.resolve_l2_unchanged(&pre);
+        broadcast use WholePageTable::disjoint_l2_implies_resolve_l2_addr_unique_at, WholePageTable::wf_l2_implies_resolve_l2_target_in_l1_rev_map_at;
     }
 
     /// EOF closure of `unmap_4k_page_user_view`: `tables_reachable_wf`.

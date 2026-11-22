@@ -365,6 +365,8 @@ pub fn iommu_root_table_detach_array(
         final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
         final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
         final(iommu_table_map).spec_index(iommu_table_ptr).view() == (IommuTable { did: None, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure() == old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k(),
         final(iommu_tlb).inv(),
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did matches Some(did) ==> {
             &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
