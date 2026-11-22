@@ -3,6 +3,74 @@ use crate::*;
 use super::*;
 
 verus! {
+/// EOF closure of `publish_staged_container_root`: every container's upper-tree sequence holds containers at their depths.
+proof fn publish_staged_container_root_eof_container_uppertree_seq_positions(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        container_perms_wf(post.ctn_mp),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        forall|c: RwLockContainerPtr, u: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c).view().uppertree_seq.view().contains(u)]
+            post.ctn_mp.dom().contains(c) && post.ctn_mp.spec_index(c).view().uppertree_seq.view().contains(u) ==> {
+                &&& post.ctn_mp.dom().contains(u)
+                &&& post.ctn_mp.spec_index(c).view().uppertree_seq.view().spec_index(post.ctn_mp.spec_index(u).view_rodata().view().depth as int) == u
+                &&& post.ctn_mp.spec_index(u).view_rodata().view().depth == post.ctn_mp.spec_index(c).view().uppertree_seq.view().index_of(u)
+            },
+{
+    assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
+    assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf);
+    seq_push_implies_contains::<RwLockContainerPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>();
+}
+
+/// EOF closure of `publish_staged_container_root`: every container lies in its ancestors' subtrees and extends their upper-tree
+/// sequences.
+proof fn publish_staged_container_root_eof_container_uppertree_seq_prefixes(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        container_perms_wf(post.ctn_mp),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        forall|c: RwLockContainerPtr, u: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c).view().uppertree_seq.view().contains(u)]
+            post.ctn_mp.dom().contains(c) && post.ctn_mp.spec_index(c).view().uppertree_seq.view().contains(u) ==> {
+                &&& post.ctn_mp.spec_index(u).view_ghost().subtree_set.view().contains(c)
+                &&& post.ctn_mp.spec_index(u).view().uppertree_seq.view() =~= post.ctn_mp.spec_index(c).view().uppertree_seq.view().subrange(0, post.ctn_mp.spec_index(u).view_rodata().view().depth as int)
+            },
+{
+    assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
+    assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf);
+    seq_push_implies_contains::<RwLockContainerPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>();
+}
+
 #[verifier::spinoff_prover]
 pub(super) proof fn publish_staged_container_root_eof_container_uppertree_seq_wf(
     pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
@@ -26,12 +94,17 @@ pub(super) proof fn publish_staged_container_root_eof_container_uppertree_seq_wf
     ensures
         container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp),
 {
-    assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
-    assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
-    assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by {
-        reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf);
-        seq_push_implies_contains::<RwLockContainerPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>();
-    };
+    publish_staged_container_root_eof_container_uppertree_seq_positions(
+        pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    publish_staged_container_root_eof_container_uppertree_seq_prefixes(
+        pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    reveal(container_uppertree_seq_wf);
 }
 
 pub(super) proof fn publish_staged_container_root_eof_container_tree_wf(

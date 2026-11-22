@@ -127,6 +127,7 @@ proof fn pci_attach_dma_eof_structure_cache(pre: KernelK, post: KernelK, prc_ptr
     ensures iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
 {
     reveal(pci_attach_dma_eof_transition_framing);
+    assert(pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function)) by (nonlinear_arith) requires pci_bdf_valid(bus, device, function);
     assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); pre.irt.view().wf_context_entry_at(bus, device, function); };
 }
 

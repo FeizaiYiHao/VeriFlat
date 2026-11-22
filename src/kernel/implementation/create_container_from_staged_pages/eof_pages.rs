@@ -392,6 +392,7 @@ pub(super) proof fn publish_staged_container_root_eof_existing_container_page_st
     ensures
         post.pg_arr.spec_index(page_ptr2page_index(ctn_ptr)).view().view().state == pre.pg_arr.spec_index(page_ptr2page_index(ctn_ptr)).view().view().state,
 {
+    hide(Seq::contains);
     publish_staged_container_root_eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, ctn_ptr);
     let container_index = page_ptr2page_index(ctn_ptr);
     assert(page_index2page_ptr(container_index) == ctn_ptr);
@@ -448,7 +449,7 @@ proof fn publish_staged_container_root_eof_as_container_page_outside_moved_2m(
     ensures
         !page_2m_all_ptrs(head_index).contains(page_index2page_ptr(pg_idx)),
 {
-    page_index_valid_imply_page_ptr_valid();
+    hide(Seq::contains); page_index_valid_imply_page_ptr_valid();
     let pg_ptr = page_index2page_ptr(pg_idx);
     if page_2m_all_ptrs(head_index).contains(pg_ptr) {
         page_2m_ptr_prefix_member_bounds(head_index, 512, pg_ptr);
