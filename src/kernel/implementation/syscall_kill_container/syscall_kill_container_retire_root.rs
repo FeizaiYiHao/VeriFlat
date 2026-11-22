@@ -429,6 +429,7 @@ pub(crate) fn kill_container_retire_root_commit(
                 }
             };
             iommu_table_without_did_implies_page_unreferenced_by_iommu_caches(*krnl, it, krnl.it_mp.spec_index(it).view().cr3);
+            iommu_table_without_did_implies_root_named_by_no_context_entry(*krnl, it);
         }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         kill_retire_pages_held_and_owned(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);

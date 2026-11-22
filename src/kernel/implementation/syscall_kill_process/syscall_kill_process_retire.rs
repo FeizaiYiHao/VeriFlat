@@ -628,6 +628,7 @@ pub(crate) fn kill_retire_commit(
                 }
             };
             iommu_table_without_did_implies_page_unreferenced_by_iommu_caches(*krnl, it, krnl.it_mp.spec_index(it).view().cr3);
+            iommu_table_without_did_implies_root_named_by_no_context_entry(*krnl, it);
         }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         kill_retire_pages_held_and_owned(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
@@ -780,6 +781,8 @@ pub(crate) fn kill_retire_remove_tables(
             &&& page_ptr_valid(it.view().cr3)
             &&& it.view().page_closure() =~= set![it.view().cr3]
             &&& iommu_page_unreferenced_by_iommu_caches(old(krnl).iommu_tlb, it.view().cr3)
+            &&& forall|b: usize, d: usize, f: usize| #![trigger old(krnl).irt.view().spec_index_iommu_root(b, d, f)]
+                pci_bdf_valid(b, d, f) ==> old(krnl).irt.view().spec_index_iommu_root(b, d, f) != Some(it.view().cr3)
             &&& typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table->Some_0, TypedLockMode::Write)
             &&& it_lock_perm->Some_0.state() is WriteLock
             &&& it_lock_perm->Some_0.thread_id() == old(lctx).thread_id()

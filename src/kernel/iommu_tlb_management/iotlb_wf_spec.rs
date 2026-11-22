@@ -96,6 +96,22 @@ pub proof fn iommu_table_without_did_implies_page_unreferenced_by_iommu_caches(k
     reveal(IommuTLB::inv); reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf);
 }
 
+/// The root of an IOMMU table without a DID is named by no present context entry: such an entry names the root of a table
+/// with a DID, whose anchor carries it with the same root, and the point form below excludes that root.
+pub proof fn iommu_table_without_did_implies_root_named_by_no_context_entry(k: KernelK, it: RwLockPageTableRoot)
+    requires
+        k.inv(),
+        k.it_mp.dom().contains(it),
+        k.it_mp.spec_index(it).view().did is None,
+    ensures
+        forall|b: usize, d: usize, f: usize| #![trigger k.irt.view().spec_index_iommu_root(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> k.irt.view().spec_index_iommu_root(b, d, f) != Some(k.it_mp.spec_index(it).view().cr3),
+{
+    assert(k.it_mp.spec_index(it).view().page_closure().contains(k.it_mp.spec_index(it).view().cr3)) by { iommu_table_perms_wf_at(k.it_mp, it); reveal(IommuTable::wf_l4); };
+    broadcast use iommu_table_without_did_implies_page_unreferenced_by_iommu_caches_at;
+    reveal(iommu_root_table_process_wf);
+}
+
 /// Point form of `iommu_table_without_did_implies_page_unreferenced_by_iommu_caches` at one DID: its paging-structure caches
 /// name no page of the table, and when its anchor B/D/F carries it, the anchor's root is no such page. A cached context
 /// entry is present with a valid DID whose anchor carries it and has the same root, so both halves trigger on the DID.
