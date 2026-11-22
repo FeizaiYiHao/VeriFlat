@@ -175,6 +175,37 @@ pub proof fn split_2m_commit_eof_implies_allocator_perms_wf(pre: KernelK, post: 
     assert(allocator_perms_wf(post.allc_2m_mp)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_perms_wf); };
 }
 
+/// EOF closure of `split_2m_commit` for the allocator pages: no page enters or leaves an allocator-holding state, and both
+/// allocator maps keep their domains.
+proof fn split_2m_commit_eof_allocator_page_states(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
+    requires
+        pre.inv(),
+        pre.thrd_mp.dom().contains(thread),
+        pre.allc_4k_mp.dom().contains(allocator_4k),
+        pre.allc_2m_mp.dom().contains(allocator_2m),
+        pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
+        pre.allc_2m_mp.spec_index(allocator_2m).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
+        page_index_2m_valid(head),
+        source <= NUM_CPUS,
+        pre.pg_arr.spec_index(head).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(allocator_2m), state:
+            if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }),
+        split_2m_commit_eof_transition_framing(pre, post, thread, allocator_4k, allocator_2m, head, source),
+        post.pg_arr.inv(),
+        post.allc_4k_mp.perms_wf(),
+        post.allc_2m_mp.perms_wf(),
+        post.allc_4k_mp.spec_index(allocator_4k).wf(),
+        post.allc_2m_mp.spec_index(allocator_2m).wf(),
+    ensures
+        post.allc_4k_mp.dom() == pre.allc_4k_mp.dom() && post.allc_2m_mp.dom() == pre.allc_2m_mp.dom(),
+        forall|p_i: PageIndex| #![trigger post.pg_arr.spec_index(p_i)] index_valid(NUM_PAGES, p_i) ==> {
+            &&& (post.pg_arr.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As4KAllocator })
+                == (pre.pg_arr.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As4KAllocator })
+            &&& (post.pg_arr.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As2MAllocator })
+                == (pre.pg_arr.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As2MAllocator })
+        },
+{ reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); }
+
 pub proof fn split_2m_commit_eof_implies_allocator_4k_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
     allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
@@ -197,7 +228,8 @@ pub proof fn split_2m_commit_eof_implies_allocator_4k_pages_wf(pre: KernelK, pos
     ensures
         allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
 {
-    assert(allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_4k_pages_wf); reveal(hugepage_2m_wf); };
+    split_2m_commit_eof_allocator_page_states(pre, post, thread, allocator_4k, allocator_2m, head, source);
+    assert(allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_4k_pages_wf); };
 }
 
 pub proof fn split_2m_commit_eof_implies_allocator_2m_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
@@ -222,7 +254,8 @@ pub proof fn split_2m_commit_eof_implies_allocator_2m_pages_wf(pre: KernelK, pos
     ensures
         allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
 {
-    assert(allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_2m_pages_wf); reveal(hugepage_2m_wf); };
+    split_2m_commit_eof_allocator_page_states(pre, post, thread, allocator_4k, allocator_2m, head, source);
+    assert(allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_2m_pages_wf); };
 }
 
 pub proof fn split_2m_commit_eof_implies_allocator_1g_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,

@@ -213,6 +213,37 @@ pub proof fn split_2m_commit_eof_implies_page_object_owner_wf(pre: KernelK, post
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(page_object_owner_wf); reveal(page_array_wf); reveal(hugepage_2m_wf); };
 }
 
+/// EOF closure of `split_2m_commit` for the object pages: every page is unchanged except the region's pages, which go from the
+/// free 2M head and its merged tails to free 4K pages; the object maps are unchanged.
+proof fn split_2m_commit_eof_object_page_frame(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
+    requires
+        pre.inv(),
+        pre.thrd_mp.dom().contains(thread),
+        pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
+        pre.thrd_mp.spec_index(thread).view().quota_2m > 0,
+        pre.allc_4k_mp.dom().contains(allocator_4k),
+        pre.allc_2m_mp.dom().contains(allocator_2m),
+        pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
+        pre.allc_2m_mp.spec_index(allocator_2m).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
+        page_index_2m_valid(head),
+        source <= NUM_CPUS,
+        pre.pg_arr.spec_index(head).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(allocator_2m), state:
+            if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }),
+        split_2m_commit_eof_transition_framing(pre, post, thread, allocator_4k, allocator_2m, head, source),
+        post.pg_arr.inv(),
+        post.thrd_mp.perms_wf(),
+        post.allc_4k_mp.perms_wf(),
+        post.allc_2m_mp.perms_wf(),
+        post.allc_4k_mp.spec_index(allocator_4k).wf(),
+        post.allc_2m_mp.spec_index(allocator_2m).wf(),
+    ensures
+        post.ctn_mp == pre.ctn_mp && post.prc_mp == pre.prc_mp && post.pt_mp == pre.pt_mp && post.pt_lower == pre.pt_lower && post.it_mp == pre.it_mp,
+        post.sched_mp == pre.sched_mp && post.cpu_set_mp == pre.cpu_set_mp && post.pcid_allc_mp == pre.pcid_allc_mp && post.ep_mp == pre.ep_mp,
+        forall|p_i: PageIndex| #![trigger post.pg_arr.spec_index(p_i)] index_valid(NUM_PAGES, p_i) ==> post.pg_arr.spec_index(p_i) == pre.pg_arr.spec_index(p_i)
+            || (post.pg_arr.spec_index(p_i).view().view().state is Free4k && (pre.pg_arr.spec_index(p_i).view().view().state is Free2m || pre.pg_arr.spec_index(p_i).view().view().state is Merged2m)),
+{ reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); }
+
 pub proof fn split_2m_commit_eof_implies_object_page_invariants(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
     allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize)
     requires
@@ -252,20 +283,21 @@ pub proof fn split_2m_commit_eof_implies_object_page_invariants(pre: KernelK, po
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
         page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
-    assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(container_pages_wf); };
-    assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(process_pages_wf); };
-    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(pagetable_pages_wf); reveal(page_array_wf); };
-    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(iommu_table_pages_wf); reveal(page_array_wf); };
+    split_2m_commit_eof_object_page_frame(pre, post, thread, allocator_4k, allocator_2m, head, source);
+    assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_pages_wf); };
+    assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { reveal(process_pages_wf); };
+    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); reveal(page_array_wf); };
+    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); reveal(page_array_wf); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(thread_pages_wf); };
-    assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(scheduler_pages_wf); };
-    assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(cpu_set_pages_wf); };
-    assert(pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(pcid_allocator_pages_wf); };
+    assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
+    assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
+    assert(pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr)) by { reveal(pcid_allocator_pages_wf); };
     assert(thread_staged_4k_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(thread_staged_4k_pages_wf); };
     assert(thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(thread_staged_2m_pages_wf); };
     assert(thread_staged_1g_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(thread_staged_1g_pages_wf); };
-    assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(endpoint_pages_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(process_emptied_tables_wf); };
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(process_object_pages_owner_wf); };
+    assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); };
     split_2m_commit_eof_implies_page_object_owner_wf(pre, post, thread, allocator_4k, allocator_2m, head, source);
 }
 

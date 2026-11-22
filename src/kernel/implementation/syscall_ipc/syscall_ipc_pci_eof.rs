@@ -140,7 +140,8 @@ proof fn ipc_pci_detach_eof_iotlb(
         && pci_bdf_did(pci_bdf_of_did(t.did->Some_0).0, pci_bdf_of_did(t.did->Some_0).1, pci_bdf_of_did(t.did->Some_0).2) == t.did->Some_0) by (nonlinear_arith)
         requires vtd_domain_id_valid(t.did->Some_0);
     if let Some(a) = anchor {
-        assert(pci_bdf_of_did(pci_bdf_did(a.0, a.1, a.2)) == a && vtd_domain_id_valid(pci_bdf_did(a.0, a.1, a.2))) by (nonlinear_arith) requires pci_bdf_valid(a.0, a.1, a.2);
+        assert(pci_bdf_of_did(pci_bdf_did(a.0, a.1, a.2)) == a) by (nonlinear_arith) requires pci_bdf_valid(a.0, a.1, a.2);
+        assert(vtd_domain_id_valid(pci_bdf_did(a.0, a.1, a.2))) by (nonlinear_arith) requires pci_bdf_valid(a.0, a.1, a.2);
     }
     assert({
         &&& post.it_mp.spec_index(table).view().page_closure() == t.page_closure()

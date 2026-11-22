@@ -203,6 +203,66 @@ proof fn install_staged_4k_page_table_page_eof_page_mappings_1g(
     reveal(pagetable_lower_wf); reveal(mapped_1g_page_pagetable_wf);
 }
 
+/// The table roots and their pages agree after the new table page is installed.
+proof fn install_staged_4k_page_table_page_eof_table_roots(
+    pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    pagetable_ptr: RwLockPageTableRoot,
+)
+    requires
+        pagetable_pages_wf(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.thrd_mp.dom().contains(quota_thrd_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
+        pre.pt_mp.dom().contains(pagetable_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr,
+        post.subsystems_inv(),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
+    ensures
+        pagetable_root_page_forward_wf(post.pt_mp, post.pg_arr),
+        pagetable_root_page_backward_wf(post.pt_mp, post.pg_arr),
+{
+    reveal(install_staged_4k_page_table_page_eof_transition_framing);
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    page_ptr_roundtrip(); page_ptr2page_index_injective();
+    reveal(pagetable_pages_wf);
+}
+
+/// The new table page joins the table's page closure as a page-table page; every other closure page keeps its state.
+proof fn install_staged_4k_page_table_page_eof_table_closures(
+    pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    pagetable_ptr: RwLockPageTableRoot,
+)
+    requires
+        pagetable_pages_wf(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.thrd_mp.dom().contains(quota_thrd_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
+        pre.pt_mp.dom().contains(pagetable_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr,
+        post.subsystems_inv(),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
+    ensures
+        pagetable_closure_page_forward_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        pagetable_closure_page_backward_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(install_staged_4k_page_table_page_eof_transition_framing);
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    page_ptr_roundtrip(); page_ptr2page_index_injective();
+    reveal(pagetable_pages_wf);
+}
+
 /// The new table page joins the table's page closure as a page-table page.
 proof fn install_staged_4k_page_table_page_eof_pagetable_pages_wf(
     pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
@@ -225,9 +285,47 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages_wf(
         post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
     ensures pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
+    install_staged_4k_page_table_page_eof_table_roots(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
+    install_staged_4k_page_table_page_eof_table_closures(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
+    reveal(pagetable_pages_wf);
+}
+
+/// EOF closure of `install_staged_4k_page_table_page`: the process, emptied-table and owner leaves.
+proof fn install_staged_4k_page_table_page_eof_process_tables(
+    pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    pagetable_ptr: RwLockPageTableRoot,
+)
+    requires
+        pre.inv(),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.thrd_mp.dom().contains(quota_thrd_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
+        pre.pt_mp.dom().contains(pagetable_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr,
+        post.subsystems_inv(),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
+    ensures
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
+        container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
+        process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
+{
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
-    reveal(pagetable_pages_wf);
+    page_ptr_roundtrip(); page_ptr2page_index_injective();
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_pagetable_fields_eq(post.prc_mp, pre.pt_mp, post.pt_mp); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
+        assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
+        reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
+    };
+    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(process_pagetable_wf); reveal(pagetable_pages_wf); };
 }
 
 proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
@@ -257,18 +355,12 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
+    install_staged_4k_page_table_page_eof_process_tables(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     install_staged_4k_page_table_page_eof_page_mappings_4k(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
     install_staged_4k_page_table_page_eof_page_mappings_2m(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
     install_staged_4k_page_table_page_eof_page_mappings_1g(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_pagetable_fields_eq(post.prc_mp, pre.pt_mp, post.pt_mp); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
-        reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
-    };
-    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(process_pagetable_wf); reveal(pagetable_pages_wf); };
     install_staged_4k_page_table_page_eof_pagetable_pages_wf(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
 }
 

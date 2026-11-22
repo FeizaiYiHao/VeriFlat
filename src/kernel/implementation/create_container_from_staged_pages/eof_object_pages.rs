@@ -163,6 +163,93 @@ pub(super) proof fn publish_staged_container_root_eof_object_pages_scheduler_cpu
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); reveal(cpu_set_pages_wf); };
 }
 
+/// EOF closure of `publish_staged_container_root`: every PCID-allocator page holds an allocator.
+proof fn publish_staged_container_root_eof_object_pages_pcid_allocator_pages(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        container_owned_pages_wf(post.ctn_mp, post.pg_arr),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        page_ptr_valid(thread_page),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        forall|p_i: PageIndex| #![trigger post.pg_arr.spec_index(p_i).view().view().state] index_valid(NUM_PAGES, p_i)
+            && (post.pg_arr.spec_index(p_i).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator })
+            ==> post.pcid_allc_mp.dom().contains(page_index2page_ptr(p_i)),
+{
+    hide(Seq::contains);
+    reveal(publish_staged_container_root_eof_transition_framing);
+    broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); reveal(pcid_allocator_pages_wf);
+}
+
+/// EOF closure of `publish_staged_container_root`: every PCID allocator sits on a PCID-allocator page.
+proof fn publish_staged_container_root_eof_object_pages_pcid_allocator_allocators(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        container_owned_pages_wf(post.ctn_mp, post.pg_arr),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        page_ptr_valid(thread_page),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        forall|pa: RwLockPcidAllocatorPtr| #![trigger post.pcid_allc_mp.dom().contains(pa)] post.pcid_allc_mp.dom().contains(pa)
+            ==> page_ptr_valid(pa) && (post.pg_arr.spec_index(page_ptr2page_index(pa)).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }),
+{
+    hide(Seq::contains);
+    reveal(publish_staged_container_root_eof_transition_framing);
+    broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); reveal(pcid_allocator_pages_wf);
+}
+
 pub(super) proof fn publish_staged_container_root_eof_object_pages_pcid_allocator(
     pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -197,12 +284,17 @@ pub(super) proof fn publish_staged_container_root_eof_object_pages_pcid_allocato
         ),
     ensures pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr),
 {
-    hide(Seq::contains);
-    reveal(publish_staged_container_root_eof_transition_framing);
-    assert(pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); reveal(pcid_allocator_pages_wf);
-    };
+    publish_staged_container_root_eof_object_pages_pcid_allocator_pages(
+        pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    publish_staged_container_root_eof_object_pages_pcid_allocator_allocators(
+        pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    reveal(pcid_allocator_pages_wf);
 }
 
 pub(super) proof fn publish_staged_container_root_eof_object_pages_container_process_pagetable(
