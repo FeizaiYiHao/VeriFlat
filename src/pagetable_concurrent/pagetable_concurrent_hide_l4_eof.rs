@@ -47,6 +47,18 @@ impl WholePageTable {
         assert(post.page_closure() =~= pre.page_closure() && (pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows())) by { reveal(WholePageTable::hide_l4_entry_eof_transition_framing); };
     }
 
+    /// EOF closure of `hide_l4_entry` for the root entries: every other root entry is unchanged and the target becomes the hidden
+    /// placeholder of the same L3 page.
+    proof fn hide_l4_entry_eof_l4_entries(pre: Self, post: Self, target_l4i: L4Index)
+        requires
+            Self::hide_l4_entry_eof_transition_framing(pre, post, target_l4i),
+        ensures
+            post.higher.cr3 == pre.higher.cr3,
+            forall|i: L4Index| #![trigger post.higher.l4_entry(i)] pei_valid(i) && i != target_l4i ==> post.higher.l4_entry(i) == pre.higher.l4_entry(i),
+            post.higher.l4_entry(target_l4i) == (PageEntry { addr: pre.higher.l4_entry(target_l4i).addr,
+                perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
+    { reveal(WholePageTable::hide_l4_entry_eof_transition_framing); }
+
     /// EOF closure of `hide_l4_entry`: the big-lock invariant; the placeholder still links the same L3 page.
     proof fn hide_l4_entry_eof_higher_inv(pre: Self, post: Self, target_l4i: L4Index)
         requires
@@ -58,6 +70,7 @@ impl WholePageTable {
             post.higher.inv(),
     {
         Self::hide_l4_entry_eof_wf_mapping_1g(pre, post, target_l4i);
+        Self::hide_l4_entry_eof_l4_entries(pre, post, target_l4i);
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
         assert(post.higher.va_addr_valid());
         assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };

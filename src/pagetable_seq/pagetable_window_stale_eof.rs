@@ -264,6 +264,16 @@ pub(super) proof fn window_stale_cpus_update_eof_held_windows(pre: KernelK, root
     reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf);
 }
 
+/// EOF closure of `KernelK::replace_window_stale_cpus` for the table's lower half: every field but the stale-CPU map is unchanged.
+proof fn window_stale_cpus_update_eof_lower_fields(pre: WholePageTable, post: WholePageTable)
+    requires
+        post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),
+    ensures
+        post.lower.l2_perms == pre.lower.l2_perms && post.lower.l1_rev_map == pre.lower.l1_rev_map,
+        post.lower.mapping_4k == pre.lower.mapping_4k && post.lower.mapping_2m == pre.lower.mapping_2m,
+        post.lower.pagetable_window_locks == pre.lower.pagetable_window_locks,
+{}
+
 /// EOF closure of `KernelK::replace_window_stale_cpus` for the table itself: no table invariant reads the stale-CPU map.
 proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable, post: WholePageTable)
     requires
@@ -273,6 +283,7 @@ proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable, post: WholeP
     ensures
         post.wf(),
 {
+    window_stale_cpus_update_eof_lower_fields(pre, post);
     assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
     assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
