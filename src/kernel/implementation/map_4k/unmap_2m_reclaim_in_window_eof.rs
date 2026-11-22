@@ -508,6 +508,8 @@ proof fn remove_last_2m_mapping_to_allocator_in_window_eof_free_2m_pages(
             &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m == allc_ptr
         }),
         post.subsystems_inv(),
+        forall|a: RwLockPageAllocatorPtr, c: CpuId| #![trigger post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c)] #![trigger pre.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c)]
+            pre.allc_2m_mp.dom().contains(a) && a != allc_ptr ==> post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view() == pre.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view(),
     ensures
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         allocator_free_page_ptrs_wf(post.allc_2m_mp),

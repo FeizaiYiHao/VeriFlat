@@ -17,6 +17,7 @@ pub open spec fn lock_window_eof_transition_framing(pre: WholePageTable<PT_TYPE>
     &&& forall|j: L2Index| #![trigger post.lower.l2_page(p).entry_lock(j)] j != l2i ==> post.lower.l2_page(p).entry_lock(j) == pre.lower.l2_page(p).entry_lock(j)
     &&& post.lower.l2_entry(p, l2i) == pre.lower.l2_entry(p, l2i)
     &&& post.lower.l2_page(p).entry_lock(l2i).l1() == pre.lower.l2_page(p).entry_lock(l2i).l1()
+    &&& forall|q: PageMapPtr, j: L2Index| #![trigger post.lower.l2_page(q).entry_lock(j).l1()] post.lower.l2_page(q).entry_lock(j).l1() == pre.lower.l2_page(q).entry_lock(j).l1()
     &&& pre.lower.l2_owner(p, l2i) is None
     &&& post.lower.l2_owner(p, l2i) == (RwLockState::Write { thread_id, lock_id: lock_token })
     &&& post.lower.pagetable_window_locks == pre.lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked { writer: thread_id })
@@ -39,6 +40,7 @@ pub open spec fn unlock_window_eof_transition_framing(pre: WholePageTable<PT_TYP
     &&& forall|j: L2Index| #![trigger post.lower.l2_page(p).entry_lock(j)] j != l2i ==> post.lower.l2_page(p).entry_lock(j) == pre.lower.l2_page(p).entry_lock(j)
     &&& post.lower.l2_entry(p, l2i) == pre.lower.l2_entry(p, l2i)
     &&& post.lower.l2_page(p).entry_lock(l2i).l1() == pre.lower.l2_page(p).entry_lock(l2i).l1()
+    &&& forall|q: PageMapPtr, j: L2Index| #![trigger post.lower.l2_page(q).entry_lock(j).l1()] post.lower.l2_page(q).entry_lock(j).l1() == pre.lower.l2_page(q).entry_lock(j).l1()
     &&& post.lower.l2_owner(p, l2i) is None
     &&& post.lower.pagetable_window_locks == pre.lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::Unlocked)
     &&& post.lower.l1_rev_map == pre.lower.l1_rev_map

@@ -16,6 +16,9 @@ pub(super) open spec fn remove_held_1g_mapping_without_free_eof_transition_frami
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+        pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher
+            == (PageTableHigher { l3_tables: post.pt_mp.spec_index(r).view().higher.l3_tables, mapping_1g: post.pt_mp.spec_index(r).view().higher.mapping_1g, ..pre.pt_mp.spec_index(r).view().higher })
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
     &&& post.pt_mp.spec_index(pagetable).view().lower_backup.view() == pre.pt_mp.spec_index(pagetable).view().lower_backup.view()

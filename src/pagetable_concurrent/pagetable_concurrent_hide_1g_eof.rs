@@ -169,7 +169,7 @@ impl WholePageTable<PT_TYPE> {
         assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
         assert(post.wf_window_locks()) by {
             reveal(WholePageTable::wf_window_locks); reveal(WholePageTable::tables_reachable_wf);
-            broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip;
+            broadcast use spec_va_2m_valid_index_roundtrip;
         };
     }
 
@@ -406,7 +406,7 @@ impl WholePageTable<PT_TYPE> {
         assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
         assert(post.wf_window_locks()) by {
             reveal(WholePageTable::wf_window_locks); reveal(WholePageTable::tables_reachable_wf);
-            broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip;
+            broadcast use spec_va_2m_valid_index_roundtrip;
         };
     }
 

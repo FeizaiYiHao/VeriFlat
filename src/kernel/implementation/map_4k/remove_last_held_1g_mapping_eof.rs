@@ -236,6 +236,8 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_free_1g_pages(
             &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr
         }),
         post.subsystems_inv(),
+        forall|a: RwLockPageAllocatorPtr, c: CpuId| #![trigger post.allc_1g_mp.spec_index(a).cpu_caches.spec_index(c)] #![trigger pre.allc_1g_mp.spec_index(a).cpu_caches.spec_index(c)]
+            pre.allc_1g_mp.dom().contains(a) && a != allc_ptr ==> post.allc_1g_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view() == pre.allc_1g_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view(),
     ensures
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         allocator_free_page_ptrs_wf(post.allc_1g_mp),

@@ -108,11 +108,8 @@ pub open spec fn va_range_2m_windows(range: VaRange4K) -> ISet<WindowVa> {
 }
 
 impl PageTableHigher<PT_TYPE> {
-    /// A CPU table has a PCID; an IOMMU table has none.
-    pub open spec fn pcid_wf(&self) -> bool {
-        &&& PT_TYPE == PT_TYPE ==> self.pcid is Some
-        &&& PT_TYPE == IOMMU_TYPE ==> self.pcid is None
-    }
+    /// A CPU table has a PCID.
+    pub open spec fn pcid_wf(&self) -> bool { self.pcid is Some }
 
     /// A CPU table has no VT-d domain id; an IOMMU table may carry one valid id.
     pub open spec fn did_wf(&self) -> bool {
@@ -121,9 +118,7 @@ impl PageTableHigher<PT_TYPE> {
     }
 
     pub open spec fn pcid_value(&self) -> Pcid
-        recommends
-            PT_TYPE == PT_TYPE,
-            self.pcid is Some,
+        recommends self.pcid is Some,
     {
         self.pcid.unwrap()
     }
@@ -347,7 +342,6 @@ impl PageTableHigher<PT_TYPE> {
     /// kernel_entries equals the root's kernel L4 entries `[0, kernel_l4_end)`; an IOMMU table has none.
     #[verifier::opaque]
     pub open spec fn kernel_entries_wf(&self) -> bool {
-        &&& PT_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
         &&& pei_valid(self.kernel_l4_end)
         &&& self.kernel_entries.view().len() =~= self.kernel_l4_end as nat
         &&& forall|i: L4Index|
@@ -385,10 +379,7 @@ impl LockMajorTrait for PageTableBigLocked<PT_TYPE> {
     open spec fn lock_major_2(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 0x233 }
 
-    open spec fn lock_major_default(&self) -> LockMajorId {
-        if PT_TYPE == PT_TYPE { PAGE_TABLE_LOCK_MAJOR }
-        else { IOMMU_TABLE_LOCK_MAJOR }
-    }
+    open spec fn lock_major_default(&self) -> LockMajorId { PAGE_TABLE_LOCK_MAJOR }
 
     open spec fn lock_major_1_predicate(&self) -> bool { false }
     open spec fn lock_major_2_predicate(&self) -> bool { false }
@@ -443,7 +434,7 @@ impl WholePageTable<PT_TYPE> {
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,
-            did: if PT_TYPE == PT_TYPE { None } else { self.did() },
+            did: None,
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),

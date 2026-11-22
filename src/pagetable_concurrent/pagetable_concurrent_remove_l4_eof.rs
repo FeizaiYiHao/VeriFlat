@@ -187,7 +187,7 @@ impl WholePageTable<PT_TYPE> {
         reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
         assert(post.wf_window_locks()) by {
             reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::disjoint_l4); reveal(WholePageTable::tables_reachable_wf);
-            broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
+            broadcast use spec_va_2m_valid_index_roundtrip, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
         };
     }
 

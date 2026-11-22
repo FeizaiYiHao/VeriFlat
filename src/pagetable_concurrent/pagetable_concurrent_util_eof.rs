@@ -24,7 +24,6 @@ impl PageTableHigher<PT_TYPE> {
             self.pcid_wf(),
             self.did_wf(),
             self.pci.wf(),
-            PT_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0,
         ensures
             self.inv(),
     {

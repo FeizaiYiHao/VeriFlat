@@ -85,7 +85,6 @@ impl PageTableHigher<PT_TYPE> {
         target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_perm): Tracked<PagePerm4k>, lo: L2Index, hi: L2Index, Ghost(root): Ghost<RwLockPageTableRoot>,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<Map<L2Index, LockPerm>>)
         requires
-            PT_TYPE == PT_TYPE,
             (WholePageTable { higher: *old(self), lower: *old(lower) }).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             KERNEL_MEM_END_L4INDEX <= target_l4i,

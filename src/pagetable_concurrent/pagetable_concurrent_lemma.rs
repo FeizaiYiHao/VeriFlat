@@ -78,11 +78,6 @@ impl PageTableHigher<PT_TYPE> {
         ensures pei_valid(self.kernel_l4_end)
     { reveal(PageTableHigher::kernel_entries_wf); }
 
-    pub proof fn kernel_entries_wf_iommu_l4_end_at(&self)
-        requires self.kernel_entries_wf()
-        ensures PT_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
-    { reveal(PageTableHigher::kernel_entries_wf); }
-
     pub proof fn kernel_entries_wf_len_at(&self)
         requires self.kernel_entries_wf()
         ensures

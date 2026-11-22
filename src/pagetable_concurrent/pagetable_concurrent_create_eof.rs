@@ -458,7 +458,6 @@ impl WholePageTable<PT_TYPE> {
     /// EOF closure of `create_entry_l3`: every page-table invariant leaf.
     pub(super) proof fn create_entry_l3_eof(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
-            PT_TYPE == PT_TYPE,
             KERNEL_MEM_END_L4INDEX <= target_l4i,
             pei_valid(hi),
             pre.wf(),
@@ -827,7 +826,6 @@ impl WholePageTable<PT_TYPE> {
     /// reverse index back to the page, which ends the window/slot trigger chain of `wf_window_locks`.
     proof fn create_entry_l3_eof_wf_window_locks_va(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
-            PT_TYPE == PT_TYPE,
             KERNEL_MEM_END_L4INDEX <= target_l4i,
             pei_valid(hi),
             pre.wf(),
@@ -855,13 +853,12 @@ impl WholePageTable<PT_TYPE> {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::tables_reachable_wf);
         spec_index2va_injective();
-        broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip, spec_index2va_2m_valid;
+        broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
     }
 
     /// EOF closure of `create_entry_l3`: the L2-slot half of `wf_window_locks`.
     proof fn create_entry_l3_eof_wf_window_locks_slot(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
-            PT_TYPE == PT_TYPE,
             KERNEL_MEM_END_L4INDEX <= target_l4i,
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),

@@ -7,20 +7,12 @@ use super::pagemap_util_t::*;
 use super::entry::*;
 use super::pagemap::*;
 
-/// Mapping keys are CPU virtual addresses for ordinary page tables and IOVAs
-/// for VT-d second-level tables.  In particular, an IOMMU mapping may use L4
-/// index zero; only its page-size alignment is constrained by the IOVA model.
-pub open spec fn page_table_key_4k_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool {
-    if TABLE_TYPE == PT_TYPE { va_4k_valid(addr) } else { iova_4k_valid(addr) }
-}
+/// Mapping keys are CPU user virtual addresses.
+pub open spec fn page_table_key_4k_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool { va_4k_valid(addr) }
 
-pub open spec fn page_table_key_2m_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool {
-    if TABLE_TYPE == PT_TYPE { va_2m_valid(addr) } else { iova_2m_valid(addr) }
-}
+pub open spec fn page_table_key_2m_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool { va_2m_valid(addr) }
 
-pub open spec fn page_table_key_1g_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool {
-    if TABLE_TYPE == PT_TYPE { va_1g_valid(addr) } else { iova_1g_valid(addr) }
-}
+pub open spec fn page_table_key_1g_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool { va_1g_valid(addr) }
 
 /// mapping_xx is the abstract mappings of each page size.
 /// if an entry exists in mapping_xx.dom(), the entry is visible to the kernel at least.

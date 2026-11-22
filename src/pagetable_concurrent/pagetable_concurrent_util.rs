@@ -17,9 +17,7 @@ impl PageTableHigher<PT_TYPE> {
                 #![trigger kernel_entries_ghost.view().spec_index(i as int)]
                 #![trigger page_map_perm.value().spec_index(i)]
                 0 <= i < mem_end_l4_index ==> kernel_entries_ghost.view().spec_index(i as int) == page_map_perm.value().spec_index(i),
-            PT_TYPE == PT_TYPE ==> pcid is Some,
-            PT_TYPE == IOMMU_TYPE ==> pcid is None,
-            PT_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
+            pcid is Some,
         ensures
             ret.inv(),
             ret.cr3 == page_map_ptr,
