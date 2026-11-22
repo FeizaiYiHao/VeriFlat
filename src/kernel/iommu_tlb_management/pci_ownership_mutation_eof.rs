@@ -368,10 +368,9 @@ proof fn update_pci_entry_eof_pci_functions(pre: KernelK, post: KernelK, root: R
         forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
             pre.pt_mp.dom().contains(r) && r != root ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher,
         forall|r: RwLockPageTableRoot, f: PciBdf| #![trigger post.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f)]
-            pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f) == if r == root
-                && f == pci_entry_update_bdf(pre.pt_mp.spec_index(root).view().higher.pci, index, update) { update is Claim } else {
-                pre.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f)
-            },
+            pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f)
+                == if r == root && f == pci_entry_update_bdf(pre.pt_mp.spec_index(root).view().higher.pci, index, update) { update is Claim }
+                else { pre.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f) },
 { reveal(update_pci_entry_eof_transition_framing); }
 
 /// EOF closure of `KernelK::update_pci_entry` for the root-table invariants: a claimed function was unowned, hence detached, and
