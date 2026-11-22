@@ -288,6 +288,7 @@ pub(crate) proof fn kill_retire_table_page_eof(
 )
     requires
         pre.inv(),
+        iommu ==> pre.it_mp.spec_index(table).view().did is None,
         kill_retire_table_page_eof_transition_framing(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr),
         page_ptr_valid(pg_ptr),
         index_valid(NUM_CPUS, cpu_id),
@@ -342,6 +343,7 @@ pub(crate) proof fn kill_retire_table_page_eof(
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {

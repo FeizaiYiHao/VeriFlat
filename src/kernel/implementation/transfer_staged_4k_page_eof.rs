@@ -161,7 +161,7 @@ proof fn staged_4k_page_container_transfer_eof_page_object_owner(
     ensures page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid(); page_array_wf_at(pre.pg_arr, page_ptr2page_index(pg_ptr)); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf);
+    reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf);
 }
 
 /// The transferred page leaves the parent's owned pages for the child's and names the child as its owner.

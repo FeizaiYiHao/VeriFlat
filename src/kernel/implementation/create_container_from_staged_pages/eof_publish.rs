@@ -235,7 +235,10 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_page).view().uppertree_seq.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view_ghost().subtree_set.view().is_empty()
     &&& post.pt_mp.dom() =~= pre.pt_mp.dom().insert(pagetable_page)
-    &&& forall|ptr: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(ptr)] pre.pt_mp.dom().contains(ptr) ==> post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(ptr)] pre.pt_mp.dom().contains(ptr) ==> {
+        &&& post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
+        &&& post.pt_mp.spec_index(ptr).view().higher == pre.pt_mp.spec_index(ptr).view().higher
+    }
     &&& !post.pt_mp.spec_index(pagetable_page).being_killed()
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.proc_ptr == process_page
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.pcid is Some

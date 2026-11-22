@@ -163,7 +163,7 @@ pub(super) fn thread_exit_reclaim_unown(
                 proof {
                     // The DID's anchor is a function of the array, so nothing may stay cached for that DID.
                     if let Some(did) = locked_k.it_mp.spec_index(it).view().did {
-                        assert(krnl.iommu_tlb.spec_index(did) == (SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })) by {
+                        assert(krnl.iommu_tlb.spec_index(did) == (SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) && krnl.iommu_tlb.structure_cache(did).is_empty()) by {
                             iommu_root_table_process_wf_table_at(locked_k.irt.view(), locked_k.prc_mp, locked_k.it_mp, it);
                             assert(pci_bdf_valid(pci_bdf_of_did(did).0, pci_bdf_of_did(did).1, pci_bdf_of_did(did).2)) by (nonlinear_arith) requires vtd_domain_id_valid(did);
                             pci_function_ownership_wf_function_at(locked_k.irt.view(), locked_k.prc_mp, locked_k.pt_mp, pci_bdf_of_did(did).0, pci_bdf_of_did(did).1, pci_bdf_of_did(did).2);

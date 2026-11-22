@@ -76,12 +76,15 @@ pub fn iommu_root_table_detach_owned(
         old(irt).view().spec_index_iommu_did(bus, device, function) matches Some(did) ==> {
             &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
             &&& iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).spec_index(did))
+            &&& final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches().insert(did, final(iommu_tlb).structure_cache(did))
+            &&& iommu_structure_cache_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).structure_cache(did))
             &&& Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
             &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
                 ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
         },
-        old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache(),
+        old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache()
+            && final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches(),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
@@ -150,6 +153,8 @@ fn iommu_root_table_migrate_did(
         final(iommu_tlb).inv(),
         final(iommu_tlb).view() == old(iommu_tlb).view().insert(old_did, final(iommu_tlb).spec_index(old_did)),
         iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, old_did, final(iommu_tlb).spec_index(old_did)),
+        final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches().insert(old_did, final(iommu_tlb).structure_cache(old_did)),
+        iommu_structure_cache_within_may_cache(KernelK { irt: *final(irt), ..k }, old_did, final(iommu_tlb).structure_cache(old_did)),
         Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
             == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
         forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == old_did
@@ -169,6 +174,7 @@ fn iommu_root_table_migrate_did(
             irt.view().owners() == old(irt).view().owners(),
             iommu_tlb.inv(),
             iommu_tlb.view() =~= old(iommu_tlb).view().insert(old_did, iommu_tlb.spec_index(old_did)),
+            iommu_tlb.structure_caches() =~= old(iommu_tlb).structure_caches().insert(old_did, iommu_tlb.structure_cache(old_did)),
             Map::new(iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| iommu_tlb.context_cache()[bdf].1 != old_did), |bdf: PciBdf| iommu_tlb.context_cache()[bdf])
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
             pci.wf(),
@@ -233,12 +239,15 @@ pub fn iommu_root_table_detach(
         old(irt).view().spec_index_iommu_did(bus, device, function) matches Some(did) ==> {
             &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
             &&& iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).spec_index(did))
+            &&& final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches().insert(did, final(iommu_tlb).structure_cache(did))
+            &&& iommu_structure_cache_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).structure_cache(did))
             &&& Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
             &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
                 ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
         },
-        old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache(),
+        old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache()
+            && final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches(),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     let table = irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm));
@@ -360,6 +369,8 @@ pub fn iommu_root_table_detach_array(
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did matches Some(did) ==> {
             &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
             &&& iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).spec_index(did))
+            &&& final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches().insert(did, final(iommu_tlb).structure_cache(did))
+            &&& iommu_structure_cache_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).structure_cache(did))
             &&& Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
             &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did

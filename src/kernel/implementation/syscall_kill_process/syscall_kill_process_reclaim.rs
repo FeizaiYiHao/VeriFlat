@@ -454,7 +454,7 @@ pub(crate) fn kill_reclaim_unown_functions(
                     Tracked(&irt_perm), Tracked(&perm));
                 proof {
                     assert(locked.it_mp.spec_index(it).view().did matches Some(d) ==> krnl.iommu_tlb.spec_index(d).tlb_4k() =~= Map::empty() && krnl.iommu_tlb.spec_index(d).tlb_2m() =~= Map::empty()
-                        && krnl.iommu_tlb.spec_index(d).tlb_1g() =~= Map::empty()) by {
+                        && krnl.iommu_tlb.spec_index(d).tlb_1g() =~= Map::empty() && krnl.iommu_tlb.structure_cache(d).is_empty()) by {
                         iommu_root_table_process_wf_table_at(locked.irt.view(), locked.prc_mp, locked.it_mp, it);
                         if let Some(d) = locked.it_mp.spec_index(it).view().did {
                             let anchor = pci_bdf_of_did(d);

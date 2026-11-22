@@ -189,7 +189,7 @@ pub struct Thread {
     pub ipc_payload: IPCPayLoad,
 
     pub error_code: Option<RetValueType>,  //this will only be set when it comes out of endpoint and goes to scheduler.
-    /// The saved user registers; the permission is parked here exactly while the thread is not RUNNING.
+    /// The saved user registers; the permission is parked here whenever the thread is not RUNNING.
     pub trap_frame: TrapFrameSlot,
 
     pub upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,

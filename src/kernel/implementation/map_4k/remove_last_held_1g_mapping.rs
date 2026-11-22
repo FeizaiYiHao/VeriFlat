@@ -118,7 +118,7 @@ pub fn remove_last_held_1g_mapping_to_allocator(
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
-    assert(krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX) by { kernel_inv_implies_container_allocator_1g_quota_bounded(krnl, owner); };
+    assert(krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX) by { allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(krnl.allc_1g_mp, allc_ptr); };
     assert(krnl.allc_1g_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_1g_mp.spec_index(allc_ptr).total_free_pages.view()) by {
         kernel_inv_implies_thread_pending_1g_quota_bounded(krnl, thrd_ptr, owner, depth);
     };

@@ -343,21 +343,6 @@ pub proof fn allocator_free_1g_pages_wf_global_at(
         },
 { reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); }
 
-/// A page in allocator `allc_ptr`'s 1G CPU `cpu_id` cache is free in that cache and shares the allocator's container.
-pub proof fn allocator_free_1g_pages_wf_cache_at(
-    allc_1g_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>, pg_arr: PageLockedArray, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, pg_ptr: PagePtr,
-)
-    requires
-        allocator_free_1g_pages_wf(allc_1g_mp, pg_arr),
-        allc_1g_mp.dom().contains(allc_ptr),
-        index_valid(NUM_CPUS, cpu_id),
-    ensures
-        allc_1g_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr) ==> {
-            &&& pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == PageState::Free1g { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }
-            &&& pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == allc_1g_mp.spec_index(allc_ptr).owning_container
-        },
-{ reveal(allocator_free_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf); }
-
 /// No CPU cache of a 1G allocator holds a page: 1G pages are allocated from and freed to the global pool only.
 #[verifier::opaque]
 pub open spec fn allocator_1g_cpu_caches_empty_wf(allc_1g_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>) -> bool {

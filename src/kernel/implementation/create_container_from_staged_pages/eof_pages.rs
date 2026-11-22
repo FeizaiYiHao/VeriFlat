@@ -448,7 +448,7 @@ proof fn publish_staged_container_root_eof_as_container_page_outside_moved_2m(
     ensures
         !page_2m_all_ptrs(head_index).contains(page_index2page_ptr(pg_idx)),
 {
-    reveal(publish_staged_container_root_eof_transition_framing); page_index_valid_imply_page_ptr_valid();
+    page_index_valid_imply_page_ptr_valid();
     let pg_ptr = page_index2page_ptr(pg_idx);
     if page_2m_all_ptrs(head_index).contains(pg_ptr) {
         page_2m_ptr_prefix_member_bounds(head_index, 512, pg_ptr);
@@ -458,6 +458,8 @@ proof fn publish_staged_container_root_eof_as_container_page_outside_moved_2m(
                 allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
                 allocator_quota_4k, process_quota_4k, head_index, pg_idx,
             );
+        } else {
+            reveal(publish_staged_container_root_eof_transition_framing);
         }
     }
 }

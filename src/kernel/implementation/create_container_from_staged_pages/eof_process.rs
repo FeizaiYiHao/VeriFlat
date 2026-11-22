@@ -345,11 +345,13 @@ pub(super) proof fn publish_staged_container_root_eof_iommu_invariants(
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
 }
 
 pub(super) broadcast proof fn publish_staged_container_root_eof_container_page_owner_forward(

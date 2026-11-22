@@ -119,10 +119,10 @@ pub proof fn kernel_k_cpu_tlb_filled_implies_u_step(pre: &KernelK, post: &Kernel
 }
 
 /// An IOTLB fill under the kernel invariant is the matching user IOTLB fill in the projection.
-pub proof fn kernel_k_iommu_tlb_filled_implies_u_step(pre: &KernelK, post: &KernelK, did: VtdDomainId, added: SingleTLB)
+pub proof fn kernel_k_iommu_tlb_filled_implies_u_step(pre: &KernelK, post: &KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache)
     requires
         pre.inv(),
-        kernel_k_iommu_tlb_filled(*pre, *post, did, added),
+        kernel_k_iommu_tlb_filled(*pre, *post, did, added, added_cache),
     ensures kernel_u_iommu_tlb_filled_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), did, added),
 {
     reveal(kernel_u_iommu_tlb_filled_step); reveal(kernel_k_to_kernel_u);

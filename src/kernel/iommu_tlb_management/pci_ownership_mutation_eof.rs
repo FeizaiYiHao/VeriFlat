@@ -360,6 +360,19 @@ pub(super) proof fn update_pci_entry_eof_released_function_detached(pre: KernelK
     assert(pre.irt.view().spec_index_iommu_root(f.0, f.1, f.2) is None) by { reveal(iommu_root_table_process_wf); };
 }
 
+/// The PCI function arrays of `KernelK::update_pci_entry`: every other table keeps its big-lock payload, and table `root` holds a
+/// function exactly when it held it before, except the updated one, which it holds after a `Claim` and not after a `Release`.
+proof fn update_pci_entry_eof_pci_functions(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
+    requires update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+    ensures
+        forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+            pre.pt_mp.dom().contains(r) && r != root ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher,
+        forall|r: RwLockPageTableRoot, f: PciBdf| #![trigger post.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f)]
+            pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f)
+                == if r == root && f == pci_entry_update_bdf(pre.pt_mp.spec_index(root).view().higher.pci, index, update) { update is Claim }
+                else { pre.pt_mp.spec_index(r).view().higher.pci.view().dom().contains(f) },
+{ reveal(update_pci_entry_eof_transition_framing); }
+
 /// EOF closure of `KernelK::update_pci_entry` for the root-table invariants: a claimed function was unowned, hence detached, and
 /// a released one is detached, so no context entry or DID anchor changes its owner; the owner and the array of the updated
 /// function move together.
@@ -398,9 +411,21 @@ proof fn update_pci_entry_eof_root_table(pre: KernelK, post: KernelK, root: RwLo
         },
     }
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); reveal(process_pagetable_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by {
+        update_pci_entry_eof_pci_functions(pre, post, root, index, update); reveal(pci_function_ownership_wf); reveal(process_pagetable_wf);
+    };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); };
 }
+
+/// EOF closure of `KernelK::update_pci_entry` for the IOMMU paging-structure caches: no context entry, DID, IOMMU table, or
+/// cache moves.
+proof fn update_pci_entry_eof_structure_cache(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
+    requires
+        pre.inv(),
+        update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+        update_pci_entry_eof_owner_update(pre, post, root, index, update),
+    ensures iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
+{ reveal(update_pci_entry_eof_transition_framing); reveal(update_pci_entry_eof_owner_update); reveal(iommu_structure_cache_wf); }
 
 /// EOF closure of `KernelK::update_pci_entry`: every kernel invariant holds after the update.
 pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
@@ -434,6 +459,7 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
 {
     update_pci_entry_eof_page_tables(pre, post, root, index, update);
     update_pci_entry_eof_root_table(pre, post, root, index, update);
+    update_pci_entry_eof_structure_cache(pre, post, root, index, update);
     reveal(update_pci_entry_eof_transition_framing);
     reveal(update_pci_entry_eof_owner_update);
     process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);

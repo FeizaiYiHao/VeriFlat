@@ -19,6 +19,11 @@ pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_fram
     &&& new_it.view().page_closure() == old_it.view().page_closure()
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().did == old_it.view().did
+    &&& forall|i: L4Index| #![trigger new_it.view().spec_resolve_mapping_l4(i)] pei_valid(i) && old_it.view().spec_resolve_mapping_l4(i) is Some ==> new_it.view().spec_resolve_mapping_l4(i) == old_it.view().spec_resolve_mapping_l4(i)
+    &&& forall|i: L4Index, j: L3Index| #![trigger new_it.view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old_it.view().spec_resolve_mapping_l3(i, j) is Some
+        ==> new_it.view().spec_resolve_mapping_l3(i, j) == old_it.view().spec_resolve_mapping_l3(i, j)
+    &&& forall|i: L4Index, j: L3Index, k: L2Index| #![trigger new_it.view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+        && old_it.view().spec_resolve_mapping_l2(i, j, k) is Some ==> new_it.view().spec_resolve_mapping_l2(i, j, k) == old_it.view().spec_resolve_mapping_l2(i, j, k)
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& new_page.is_init()
@@ -116,6 +121,7 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp) && iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by {
         reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(iommu_table_tlb_entries_present);
     };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
     if was_present {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &KernelK { it_mp: pre.it_mp, ..post })) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view());

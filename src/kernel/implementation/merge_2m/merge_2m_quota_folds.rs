@@ -28,6 +28,22 @@ pub proof fn allocator_free_page_ptrs_wf_implies_free_count_fold_bounded<const S
     };
 }
 
+pub proof fn container_process_allocator_quota_4k_wf_at(
+    containers: ContainerLockedMap, processes: ProcessLockedMap, threads: ThreadLockedMap,
+    allocators: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, container: RwLockContainerPtr,
+)
+    requires
+        container_process_allocator_quota_4k_wf(containers, processes, threads, allocators),
+        containers.dom().contains(container),
+    ensures
+        process_effective_quota_4k_fold_sum(containers.spec_index(container).view_ghost().owned_processes.view(), processes)
+            + thread_effective_quota_4k_fold_sum(containers.spec_index(container).view_ghost().owned_threads.view(), threads)
+            + thread_direct_pending_4k_fold_sum(containers.spec_index(container).view_ghost().owned_threads.view(), threads)
+            + thread_indirect_pending_4k_fold_sum_at_depth(containers.spec_index(container).view_ghost().owned_indirect_threads.view(), threads, containers.spec_index(container).view_rodata().view().depth as int)
+            + allocators.spec_index(containers.spec_index(container).view_rodata().view().allocator_ptr_4k).quota.view().view()
+            == allocators.spec_index(containers.spec_index(container).view_rodata().view().allocator_ptr_4k).total_free_pages.view(),
+{ reveal(container_process_allocator_quota_4k_wf); }
+
 pub proof fn container_process_allocator_quota_2m_wf_at(
     containers: ContainerLockedMap, processes: ProcessLockedMap, threads: ThreadLockedMap,
     allocators: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, container: RwLockContainerPtr,

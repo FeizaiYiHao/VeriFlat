@@ -60,11 +60,14 @@ proof fn kill_unown_detach_eof_iotlb(pre: KernelK, post: KernelK, pagetable: RwL
         pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().iommu_table == Some(iommu_table),
-    ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+    ensures
+        iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
 {
     broadcast use IommuRootTable::wf_context_entry_at;
     reveal(kill_unown_detach_eof_transition_framing);
     reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf); reveal(IommuTLB::inv);
+    reveal(iommu_structure_cache_wf);
     if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
         assert(post.iommu_tlb.context_cache() =~= Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf]));
     }

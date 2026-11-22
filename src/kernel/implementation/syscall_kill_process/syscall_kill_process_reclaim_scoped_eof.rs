@@ -535,6 +535,7 @@ pub(crate) proof fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof(
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp) && iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by {
         reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(iommu_table_tlb_entries_present);
     };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
     assert(post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
@@ -860,6 +861,7 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
 )
     requires
         pre.inv(),
+        iommu ==> pre.it_mp.spec_index(table).view().did is None,
         kill_retire_table_page_scoped_eof_transition_framing(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr),
         page_ptr_valid(pg_ptr),
         index_valid(NUM_CPUS, cpu_id),
@@ -910,6 +912,7 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { kill_retire_table_page_scoped_eof_iotlb(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { kill_retire_table_page_scoped_eof_pci_ownership(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { kill_retire_table_page_scoped_eof_cpu_tlb(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };

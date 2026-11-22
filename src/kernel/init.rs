@@ -665,6 +665,7 @@ pub open spec fn boot_kernel_state(
     &&& forall|did: VtdDomainId|
         #![trigger krnl.iommu_tlb.spec_index(did)]
         vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
+    &&& forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.structure_cache(did)] vtd_domain_id_valid(did) ==> krnl.iommu_tlb.structure_cache(did).is_empty()
     &&& krnl.iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty()
     // IOMMU root table.
     &&& krnl.irt.inv()
@@ -1040,6 +1041,7 @@ pub fn finish_init_from_boot(
         forall|cpu_id: CpuId, pcid: Pcid| #![trigger cpu_tlb.structure_cache((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> cpu_tlb.structure_cache((cpu_id, pcid)).is_empty(),
         iommu_tlb.inv(),
         forall|did: VtdDomainId| #![trigger iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> iommu_tlb.spec_index(did).is_empty(),
+        forall|did: VtdDomainId| #![trigger iommu_tlb.structure_cache(did)] vtd_domain_id_valid(did) ==> iommu_tlb.structure_cache(did).is_empty(),
         iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty(),
         forall|pg_ptr: PagePtr| #![trigger owned_pages.view().contains(pg_ptr)] owned_pages.view().contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         container_page_perm.is_init(),

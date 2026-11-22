@@ -19,6 +19,11 @@ pub(super) open spec fn clear_iommu_4k_mapping_present_eof_transition_framing(pr
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& new_it.view().did == old_it.view().did
+    &&& forall|i: L4Index| #![trigger new_it.view().spec_resolve_mapping_l4(i)] pei_valid(i) && old_it.view().spec_resolve_mapping_l4(i) is Some ==> new_it.view().spec_resolve_mapping_l4(i) == old_it.view().spec_resolve_mapping_l4(i)
+    &&& forall|i: L4Index, j: L3Index| #![trigger new_it.view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old_it.view().spec_resolve_mapping_l3(i, j) is Some
+        ==> new_it.view().spec_resolve_mapping_l3(i, j) == old_it.view().spec_resolve_mapping_l3(i, j)
+    &&& forall|i: L4Index, j: L3Index, k: L2Index| #![trigger new_it.view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+        && old_it.view().spec_resolve_mapping_l2(i, j, k) is Some ==> new_it.view().spec_resolve_mapping_l2(i, j, k) == old_it.view().spec_resolve_mapping_l2(i, j, k)
 }
 
 pub(super) proof fn clear_iommu_4k_mapping_present_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr)
@@ -47,6 +52,7 @@ pub(super) proof fn clear_iommu_4k_mapping_present_eof(pre: KernelK, post: Kerne
     };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
     assert(pre.it_mp.spec_index(iommu_table).view().did is None ==> iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by { reveal(iommu_table_tlb_entries_present); };
 }
 }
