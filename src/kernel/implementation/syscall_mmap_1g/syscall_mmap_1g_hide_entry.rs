@@ -106,6 +106,7 @@ pub(super) fn mmap_1g_hide_l3_entry(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
 {
+    hide(PageTableLower::hidden_l1_tables_in_locked_windows);
     proof {
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc);

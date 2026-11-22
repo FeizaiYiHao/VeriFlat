@@ -128,6 +128,22 @@ proof fn kill_container_move_free_page_4k_eof_process_management(
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf); };
 }
 
+/// EOF closure of `kill_container_move_free_page_4k` for the per-CPU caches and pools: no allocator's caches change, and only
+/// the two allocators' global pools do.
+proof fn kill_container_move_free_page_4k_eof_cpu_caches(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    pg_ptr: PagePtr, node: usize,
+)
+    requires
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
+    ensures
+        post.allc_4k_mp.dom() == pre.allc_4k_mp.dom(),
+        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a).cpu_caches] pre.allc_4k_mp.dom().contains(a)
+            ==> post.allc_4k_mp.spec_index(a).cpu_caches == pre.allc_4k_mp.spec_index(a).cpu_caches,
+        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a).global_pool] pre.allc_4k_mp.dom().contains(a) && a != src_allocator && a != dst_allocator
+            ==> post.allc_4k_mp.spec_index(a).global_pool == pre.allc_4k_mp.spec_index(a).global_pool,
+{ reveal(kill_container_move_free_page_4k_eof_transition_framing); }
+
 proof fn kill_container_move_free_page_4k_eof_free_page_ptrs(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
     pg_ptr: PagePtr, node: usize,
@@ -144,6 +160,7 @@ proof fn kill_container_move_free_page_4k_eof_free_page_ptrs(
     ensures
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
 {
+    kill_container_move_free_page_4k_eof_cpu_caches(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
     seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, pg_ptr);
     reveal(allocator_free_page_ptrs_wf);
