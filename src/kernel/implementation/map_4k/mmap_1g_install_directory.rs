@@ -326,7 +326,7 @@ verus! {
                 },
     {
         let pg_idx = page_ptr2page_index(pg_ptr);
-        assert(page_table_key_2m_valid(spec_index2va((l4i, 0usize, 0usize, 0usize)))) by { spec_index2va_2m_valid(l4i, 0usize, 0usize); };
+        assert(va_2m_valid(spec_index2va((l4i, 0usize, 0usize, 0usize)))) by { spec_index2va_2m_valid(l4i, 0usize, 0usize); };
         let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         let _ = install_staged_4k_page_table_page(krnl, MissingPageTableLevel::L4, pg_ptr, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr, (l4i, 0usize, 0usize), 0usize, 0usize, true,
             Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None));

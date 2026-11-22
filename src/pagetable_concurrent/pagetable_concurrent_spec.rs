@@ -74,7 +74,7 @@ pub ghost struct WindowVa { pub va: VAddr }
 
 impl WindowVa {
     /// A 2M-aligned user address.
-    pub open spec fn wf(&self) -> bool { page_table_key_2m_valid(self.va) }
+    pub open spec fn wf(&self) -> bool { va_2m_valid(self.va) }
     pub open spec fn l4i(&self) -> L4Index { spec_v2l4index(self.va) }
     pub open spec fn l3i(&self) -> L3Index { spec_v2l3index(self.va) }
     pub open spec fn l2i(&self) -> L2Index { spec_v2l2index(self.va) }
@@ -103,7 +103,7 @@ pub open spec fn window_obj_id_of(root: RwLockPageTableRoot, w: WindowVa) -> Ker
 pub open spec fn va_range_2m_windows(range: VaRange4K) -> ISet<WindowVa> {
     let first = spec_va2index(range.start);
     let last = spec_va2index(range.view().spec_index(range.len - 1));
-    ISet::new(|w: WindowVa| page_table_key_2m_valid(w.va) && spec_l4_index_path_le((first.0, first.1, first.2, 0), spec_va2index(w.va)) && spec_l4_index_path_le(spec_va2index(w.va), (last.0, last.1, last.2, 0)))
+    ISet::new(|w: WindowVa| va_2m_valid(w.va) && spec_l4_index_path_le((first.0, first.1, first.2, 0), spec_va2index(w.va)) && spec_l4_index_path_le(spec_va2index(w.va), (last.0, last.1, last.2, 0)))
 }
 
 impl PageTableHigher {
@@ -312,7 +312,7 @@ impl PageTableHigher {
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
             self.mapping_1g.view().dom().contains(va)
-                ==> page_table_key_1g_valid(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr) && !self.mapping_1g.view().spec_index(va).is_io
+                ==> va_1g_valid(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr) && !self.mapping_1g.view().spec_index(va).is_io
     }
 
     /// mapping_1g holds exactly the resolved 1G leaves, with their frame, write, execute_disable and present bits.
@@ -789,12 +789,12 @@ impl WholePageTable {
             #![trigger self.lower.mapping_4k.dom().contains(va), page_ptr_valid(self.lower.mapping_4k.spec_index(va).addr)]
             #![trigger self.lower.mapping_4k.dom().contains(va)]
             #![trigger page_ptr_valid(self.lower.mapping_4k.spec_index(va).addr)]
-            self.lower.mapping_4k.dom().contains(va) ==> page_table_key_4k_valid(va) && mapping_4k_target_valid(self.lower.mapping_4k.spec_index(va).addr, self.lower.mapping_4k.spec_index(va).is_io)
+            self.lower.mapping_4k.dom().contains(va) ==> va_4k_valid(va) && mapping_4k_target_valid(self.lower.mapping_4k.spec_index(va).addr, self.lower.mapping_4k.spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.lower.mapping_2m.dom().contains(va)]
             #![trigger self.lower.mapping_2m.dom().contains(va), page_ptr_2m_valid(self.lower.mapping_2m.spec_index(va).addr)]
             #![trigger self.lower.mapping_2m.dom().contains(va)]
-            self.lower.mapping_2m.dom().contains(va) ==> page_table_key_2m_valid(va) && mapping_2m_target_valid(self.lower.mapping_2m.spec_index(va).addr, self.lower.mapping_2m.spec_index(va).is_io)
+            self.lower.mapping_2m.dom().contains(va) ==> va_2m_valid(va) && mapping_2m_target_valid(self.lower.mapping_2m.spec_index(va).addr, self.lower.mapping_2m.spec_index(va).is_io)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.
@@ -841,7 +841,7 @@ impl WholePageTable {
         &&& forall|w: WindowVa|
             #![trigger self.lower.pagetable_window_locks.dom().contains(w)]
             self.lower.pagetable_window_locks.dom().contains(w) ==> {
-                &&& page_table_key_2m_valid(w.va)
+                &&& va_2m_valid(w.va)
                 &&& self.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {

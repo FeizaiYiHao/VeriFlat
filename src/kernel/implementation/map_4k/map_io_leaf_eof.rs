@@ -36,6 +36,12 @@ pub(super) open spec fn install_io_4k_mapping_eof_transition_framing(pre: Kernel
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
     &&& post == (KernelK { pt_mp: post.pt_mp, ..mid })
     &&& post.pt_mp.unchanged_except(&mid.pt_mp, pagetable)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> {
+        &&& post.pt_mp.spec_index(r).view().higher.cr3 == pre.pt_mp.spec_index(r).view().higher.cr3
+        &&& post.pt_mp.spec_index(r).view().higher.pcid == pre.pt_mp.spec_index(r).view().higher.pcid
+        &&& post.pt_mp.spec_index(r).view().higher.proc_ptr == pre.pt_mp.spec_index(r).view().higher.proc_ptr
+        &&& post.pt_mp.spec_index(r).view().higher.pci.view().dom() == pre.pt_mp.spec_index(r).view().higher.pci.view().dom()
+    }
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == mid.pt_mp.spec_index(pagetable).locking_thread()
@@ -224,6 +230,12 @@ pub(super) open spec fn install_io_2m_mapping_eof_transition_framing(pre: Kernel
     &&& mid_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io == entry.is_io
     &&& post == (KernelK { pt_mp: post.pt_mp, ..mid })
     &&& post.pt_mp.unchanged_except(&mid.pt_mp, pagetable)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> {
+        &&& post.pt_mp.spec_index(r).view().higher.cr3 == pre.pt_mp.spec_index(r).view().higher.cr3
+        &&& post.pt_mp.spec_index(r).view().higher.pcid == pre.pt_mp.spec_index(r).view().higher.pcid
+        &&& post.pt_mp.spec_index(r).view().higher.proc_ptr == pre.pt_mp.spec_index(r).view().higher.proc_ptr
+        &&& post.pt_mp.spec_index(r).view().higher.pci.view().dom() == pre.pt_mp.spec_index(r).view().higher.pci.view().dom()
+    }
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == mid.pt_mp.spec_index(pagetable).locking_thread()

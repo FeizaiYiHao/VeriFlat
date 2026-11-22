@@ -14,7 +14,7 @@ impl PageTableHigher {
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
-            page_table_key_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
+            va_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
             (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(l4i, l3i),
             !(WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, old(lctx).thread_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -44,7 +44,7 @@ impl PageTableHigher {
                     (WholePageTable { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4, l3, l2, t) ==
                     if l4 == l4i && l3 == l3i && l2 == l2i { t == final(lctx).thread_id() } else { (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4, l3, l2, t) },
             forall|w: WindowVa| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w)]
-                page_table_key_2m_valid(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                va_2m_valid(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                     && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w) == (WholePageTable { higher: *self, lower: *old(lower) }).window_view(w),
     {
         let ghost pre = WholePageTable { higher: *self, lower: *lower };
@@ -103,7 +103,7 @@ impl PageTableHigher {
                 self.kernel_l4_end <= l4 && pei_valid(l4) && pei_valid(l3) && pei_valid(l2) ==>
                     (WholePageTable { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4, l3, l2, t) == (!(l4 == l4i && l3 == l3i && l2 == l2i) && (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4, l3, l2, t)),
             forall|w: WindowVa| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w)]
-                page_table_key_2m_valid(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                va_2m_valid(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                     && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w) == (WholePageTable { higher: *self, lower: *old(lower) }).window_view(w),
     {
         let ghost pre = WholePageTable { higher: *self, lower: *lower };

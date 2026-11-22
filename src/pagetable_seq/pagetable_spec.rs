@@ -6,13 +6,6 @@ use super::pagemap_util_t::*;
 use super::entry::*;
 use super::pagemap::*;
 
-/// Mapping keys are CPU user virtual addresses.
-pub open spec fn page_table_key_4k_valid(addr: usize) -> bool { va_4k_valid(addr) }
-
-pub open spec fn page_table_key_2m_valid(addr: usize) -> bool { va_2m_valid(addr) }
-
-pub open spec fn page_table_key_1g_valid(addr: usize) -> bool { va_1g_valid(addr) }
-
 /// mapping_xx is the abstract mappings of each page size.
 /// if an entry exists in mapping_xx.dom(), the entry is visible to the kernel at least.
 /// if the entry has present flag set, it's visible to the page table walk.
@@ -507,17 +500,17 @@ impl PageTable {
             #![trigger self.mapping_4k.view().dom().contains(va), page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
             #![trigger self.mapping_4k.view().dom().contains(va)]
             #![trigger page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
-            self.mapping_4k.view().dom().contains(va) ==> page_table_key_4k_valid(va) && mapping_4k_target_valid(self.mapping_4k.view().spec_index(va).addr, self.mapping_4k.view().spec_index(va).is_io)
+            self.mapping_4k.view().dom().contains(va) ==> va_4k_valid(va) && mapping_4k_target_valid(self.mapping_4k.view().spec_index(va).addr, self.mapping_4k.view().spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.mapping_2m.view().dom().contains(va)]
             #![trigger self.mapping_2m.view().dom().contains(va), page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)]
             #![trigger self.mapping_2m.view().dom().contains(va)]
-            self.mapping_2m.view().dom().contains(va) ==> page_table_key_2m_valid(va) && mapping_2m_target_valid(self.mapping_2m.view().spec_index(va).addr, self.mapping_2m.view().spec_index(va).is_io)
+            self.mapping_2m.view().dom().contains(va) ==> va_2m_valid(va) && mapping_2m_target_valid(self.mapping_2m.view().spec_index(va).addr, self.mapping_2m.view().spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
+            self.mapping_1g.view().dom().contains(va) ==> va_1g_valid(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.

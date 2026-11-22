@@ -56,7 +56,7 @@ pub(super) proof fn lock_window_eof(pre: WholePageTable, post: WholePageTable, l
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
         pei_valid(l3i),
         pei_valid(l2i),
-        page_table_key_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
+        va_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
         pre.window_exists(l4i, l3i),
         lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
     ensures
@@ -84,7 +84,7 @@ proof fn lock_window_eof_window_locks(pre: WholePageTable, post: WholePageTable,
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
         pei_valid(l3i),
         pei_valid(l2i),
-        page_table_key_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
+        va_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
         pre.window_exists(l4i, l3i),
         lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
     ensures
@@ -425,7 +425,7 @@ pub(super) proof fn lock_window_eof_window_views(pre: WholePageTable, post: Whol
             pre.kernel_l4_end() <= l4 && pei_valid(l4) && pei_valid(l3) && pei_valid(l2)
                 ==> post.window_locked_by_thread(l4, l3, l2, t) == if l4 == l4i && l3 == l3i && l2 == l2i { t == thread_id } else { pre.window_locked_by_thread(l4, l3, l2, t) },
         forall|w: WindowVa| #![trigger post.window_view(w)]
-            page_table_key_2m_valid(w.va) && pre.kernel_l4_end() <= spec_v2l4index(w.va) && pre.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+            va_2m_valid(w.va) && pre.kernel_l4_end() <= spec_v2l4index(w.va) && pre.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> post.window_view(w) == pre.window_view(w),
 {
     broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
@@ -445,7 +445,7 @@ pub(super) proof fn unlock_window_eof_window_views(pre: WholePageTable, post: Wh
             pre.kernel_l4_end() <= l4 && pei_valid(l4) && pei_valid(l3) && pei_valid(l2)
                 ==> post.window_locked_by_thread(l4, l3, l2, t) == (!(l4 == l4i && l3 == l3i && l2 == l2i) && pre.window_locked_by_thread(l4, l3, l2, t)),
         forall|w: WindowVa| #![trigger post.window_view(w)]
-            page_table_key_2m_valid(w.va) && pre.kernel_l4_end() <= spec_v2l4index(w.va) && pre.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+            va_2m_valid(w.va) && pre.kernel_l4_end() <= spec_v2l4index(w.va) && pre.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> post.window_view(w) == pre.window_view(w),
 {
     broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;

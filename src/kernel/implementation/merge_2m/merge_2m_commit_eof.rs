@@ -19,6 +19,38 @@ pub proof fn merge_2m_exchange_thread_quotas_eof_implies_thread_inv(pre: Thread,
         post.inv(),
 {}
 
+/// EOF closure of `merge_2m_commit`: `hugepage_2m_wf`.
+pub proof fn merge_2m_commit_eof_implies_hugepage_2m_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
+    allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate)
+    requires
+        pre.inv(),
+        pre.thrd_mp.dom().contains(thread),
+        pre.thrd_mp.spec_index(thread).view().temp_alloc_clean(),
+        pre.thrd_mp.spec_index(thread).view().quota_4k >= 512,
+        pre.allc_4k_mp.dom().contains(allocator_4k),
+        pre.allc_2m_mp.dom().contains(allocator_2m),
+        pre.allc_4k_mp.spec_index(allocator_4k).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
+        pre.allc_2m_mp.spec_index(allocator_2m).owning_container == pre.thrd_mp.spec_index(thread).view().owning_container,
+        candidate.wf(),
+        candidate.sources.len() == 512,
+        page_index_2m_valid(candidate.head),
+        forall|index: PageIndex| #![trigger pre.pg_arr.spec_index(index)] candidate.head <= index < candidate.head + 512 ==> {
+            let source = candidate.sources.view().spec_index(index as int - candidate.head as int) as usize;
+            &&& index_valid(NUM_PAGES, index)
+            &&& pre.pg_arr.spec_index(index).view().view().state == PageState::Free4k { allocator_ptr: Ghost(allocator_4k), state:
+                if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }
+        },
+        merge_2m_commit_eof_transition_framing(pre, post, thread, allocator_4k, allocator_2m, candidate),
+        post.pg_arr.inv(),
+        post.thrd_mp.perms_wf(),
+        post.allc_4k_mp.perms_wf(),
+        post.allc_2m_mp.perms_wf(),
+        post.allc_4k_mp.spec_index(allocator_4k).wf(),
+        post.allc_2m_mp.spec_index(allocator_2m).wf(),
+    ensures
+        hugepage_2m_wf(post.pg_arr),
+{ reveal(hugepage_2m_wf); }
+
 pub proof fn merge_2m_commit_eof_implies_container_owned_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
     allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: Merge2mCandidate)
     requires

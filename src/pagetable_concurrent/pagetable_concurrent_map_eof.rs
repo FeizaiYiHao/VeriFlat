@@ -40,7 +40,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
-            page_table_key_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            va_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.lower.l1_rev_map.dom().contains(target_l1_p),
@@ -72,7 +72,7 @@ impl WholePageTable {
         target_entry: MapEntry)
         requires
             pre.va_addr_valid(),
-            page_table_key_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            va_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             mapping_4k_target_valid(target_entry.addr, target_entry.is_io),
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures

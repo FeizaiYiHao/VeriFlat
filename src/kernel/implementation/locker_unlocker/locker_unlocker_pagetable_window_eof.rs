@@ -46,7 +46,7 @@ pub(super) open spec fn lock_pagetable_window_eof_transition_framing(pre: Kernel
             == if l4 == l4i && l3 == l3i && l2 == l2i { t == thread_id } else { before.window_locked_by_thread(l4, l3, l2, t) }
     &&& forall|w: WindowVa|
         #![trigger after.window_view(w)]
-        page_table_key_2m_valid(w.va) && before.kernel_l4_end() <= spec_v2l4index(w.va) && before.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+        va_2m_valid(w.va) && before.kernel_l4_end() <= spec_v2l4index(w.va) && before.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
             && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> after.window_view(w) == before.window_view(w)
 }
 
@@ -91,7 +91,7 @@ pub(super) open spec fn unlock_pagetable_window_eof_transition_framing(pre: Kern
             == (!(l4 == l4i && l3 == l3i && l2 == l2i) && before.window_locked_by_thread(l4, l3, l2, t))
     &&& forall|w: WindowVa|
         #![trigger after.window_view(w)]
-        page_table_key_2m_valid(w.va) && before.kernel_l4_end() <= spec_v2l4index(w.va) && before.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+        va_2m_valid(w.va) && before.kernel_l4_end() <= spec_v2l4index(w.va) && before.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
             && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> after.window_view(w) == before.window_view(w)
 }
 
@@ -187,7 +187,7 @@ pub(super) proof fn lock_pagetable_window_eof(pre: KernelK, post: KernelK, root:
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2),
         forall|w: WindowVa|
             #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w)]
-            page_table_key_2m_valid(w.va) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+            va_2m_valid(w.va) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                 && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != spec_index2va((l4i, l3i, l2i, 0))
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(w),
 {
@@ -305,7 +305,7 @@ pub(super) proof fn unlock_pagetable_window_eof(pre: KernelK, post: KernelK, roo
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2),
         forall|w: WindowVa|
             #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w)]
-            page_table_key_2m_valid(w.va) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+            va_2m_valid(w.va) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                 && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != spec_index2va((l4i, l3i, l2i, 0))
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(w),
 {

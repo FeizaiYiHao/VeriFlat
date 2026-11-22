@@ -149,12 +149,14 @@ metadata:
 
 ## Shared page-table machinery
 
-- CPU (`pt_mp`) and IOMMU (`it_mp`) tables are both `PageTable<TABLE_TYPE>` in
-  `PageTableLockedMapOf<TABLE_TYPE>`. Their page states are
-  `Allocated4k{AsPageTableRoot{table_type}}` and
-  `Allocated4k{PageTable{pagetable_root, table_type}}`, so `pagetable_pages_wf`,
-  `pagetables_inv`, `kernel_pagetable_nonlock_fields_unchanged`, and
-  `pagetable_map_user_view` are generic over the table type.
+- CPU tables (`pt_mp: PageTableLockedMap`, payload `PageTableBigLocked` plus
+  the window half in `pt_lower`) and IOMMU tables (`it_mp: IommuTableLockedMap`,
+  payload `IommuTable`) are separate, non-generic types; the CPU table types
+  carry no table-type parameter and no `did` (only `IommuTable` has one). The
+  page states `Allocated4k{AsPageTableRoot{table_type}}` and
+  `Allocated4k{PageTable{pagetable_root, table_type}}` keep the `PT_TYPE` /
+  `IOMMU_TYPE` tag to tell the two kinds of table page apart; `pagetables_inv`
+  is generic over the payload type.
 - `syscall_iommu_map_4k` maps pages already mapped in the caller's CPU page
   table into its IOMMU table. `syscall_iommu_unmap_4k` hides leaves with
   `clear_iommu_4k_mapping_present` under `wlock_iommu_table`, empties the

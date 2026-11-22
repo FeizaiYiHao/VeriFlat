@@ -207,7 +207,7 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.wf_mapping_2m_at(indices.0, indices.1, indices.2);
         let (l4i, l3i, l2i) = (indices.0, indices.1, indices.2);
-        assert(page_table_key_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
+        assert(va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
     let Tracked(window_perm) = krnl.lock_pagetable_window::<true>(pagetable, indices.0, indices.1, indices.2, Tracked(&pagetable_perm), Tracked(&mut *lctx));

@@ -146,7 +146,7 @@ pub(super) proof fn lock_pagetable_range_windows_eol_step(pre: KernelK, mid: Ker
         whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks[window_va] is Unlocked,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).page_closure() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).page_closure(),
         forall|w: WindowVa| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w)]
-            page_table_key_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+            va_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                 && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != window_va.va
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w) == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_view(w),
         big.state() is ReadLock ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_leaves_present(window_va),
@@ -411,7 +411,7 @@ pub(super) proof fn lock_pagetable_range_existing_windows_eol_step(pre: KernelK,
             &&& whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks[window_va] is Unlocked
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).page_closure() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).page_closure()
             &&& forall|w: WindowVa| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w)]
-                page_table_key_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+                va_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                     && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != window_va.va
                     ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w) == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_view(w)
             &&& big.state() is ReadLock ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_leaves_present(window_va)
@@ -661,7 +661,7 @@ pub(super) proof fn unlock_pagetable_range_windows_eol_step(pre: KernelK, mid: K
             ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
         typed_lock_maps_removed(mid_lctx, post_lctx, KernelObjId::PageTableWindow(root, window_va)),
         forall|w: WindowVa| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w)]
-            page_table_key_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+            va_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                 && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != window_va.va
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w) == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_view(w),
     ensures
@@ -886,7 +886,7 @@ pub(super) proof fn unlock_pagetable_range_existing_windows_eol_step(pre: Kernel
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows()
             &&& typed_lock_maps_removed(mid_lctx, post_lctx, KernelObjId::PageTableWindow(root, window_va))
             &&& forall|w: WindowVa| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w)]
-                page_table_key_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
+                va_2m_valid(w.va) && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).kernel_l4_end() <= spec_v2l4index(w.va)
                     && whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)) && w.va != window_va.va
                     ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_view(w) == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).window_view(w)
         },

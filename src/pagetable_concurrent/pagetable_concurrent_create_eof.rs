@@ -363,7 +363,7 @@ impl WholePageTable {
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
             forall|w: WindowVa| #![trigger post.lower.pagetable_window_locks.dom().contains(w)] post.lower.pagetable_window_locks.dom().contains(w) ==> {
-                &&& page_table_key_2m_valid(w.va)
+                &&& va_2m_valid(w.va)
                 &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
@@ -840,7 +840,7 @@ impl WholePageTable {
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             forall|w: WindowVa| #![trigger post.lower.pagetable_window_locks.dom().contains(w)] post.lower.pagetable_window_locks.dom().contains(w) ==> {
-                &&& page_table_key_2m_valid(w.va)
+                &&& va_2m_valid(w.va)
                 &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
@@ -893,7 +893,7 @@ impl WholePageTable {
     proof fn create_entry_l3_eof_wf_window_locks(post: Self)
         requires
             forall|w: WindowVa| #![trigger post.lower.pagetable_window_locks.dom().contains(w)] post.lower.pagetable_window_locks.dom().contains(w) ==> {
-                &&& page_table_key_2m_valid(w.va)
+                &&& va_2m_valid(w.va)
                 &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
