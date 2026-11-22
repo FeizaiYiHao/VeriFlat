@@ -41,7 +41,9 @@ pub use kernel::implementation::merge_2m::merge_2m_scanner_spec::{merge_2m_sourc
 pub use kernel::implementation::split_2m::{split_2m_commit::split_2m_commit,
     split_2m_locking::{freeze_split_2m_sources, thaw_split_2m_sources}, split_2m_sources::split_2m_select_source};
 #[cfg(verus_keep_ghost)]
-use kernel::implementation::split_2m::split_2m_entry_points::{thread_quota_2m_implies_allocator_free_count_positive, thread_quota_4k_implies_split_quota_capacity};
+use kernel::implementation::merge_2m::{merge_2m_quota_folds::{allocator_free_page_ptrs_wf_implies_free_count_fold_bounded, container_process_allocator_quota_4k_wf_at, container_process_allocator_quota_2m_wf_at},
+    merge_2m_entry_points::{container_allocator_4k_forward_wf_at, container_allocator_2m_forward_wf_at},
+    merge_2m_entry_folds::{container_thread_and_perms_wf_implies_4k_fold_sum_ge_thread_quota, container_thread_and_perms_wf_implies_2m_fold_sum_ge_thread_quota}};
 pub use kernel::implementation::free_4k_page::*;
 pub use kernel::implementation::free_2m_page::drain_2m_cache_batch;
 pub use kernel::implementation::reclaim_dangling_thread::*;
@@ -63,8 +65,6 @@ pub use kernel::implementation::map_4k::share_mapping_4k_child_structure::build_
 pub use kernel::implementation::map_4k::mmap_4k_build_structure_spec::*;
 pub use kernel::implementation::map_4k::mmap_1g_install_directory::*;
 pub use kernel::implementation::map_4k::mmap_1g_install_directory_spec::*;
-#[cfg(verus_keep_ghost)]
-use kernel::implementation::allocate_free_1g_page::allocate_free_1g_page_lemmas::kernel_inv_implies_container_allocator_1g_quota_bounded;
 pub use kernel::implementation::map_4k::map_iommu_4k_spec::*;
 pub use kernel::implementation::map_4k::map_iommu_4k::map_shared_page_into_iommu_4k;
 pub use kernel::implementation::map_4k::map_iommu_4k_directory::install_staged_4k_iommu_table_page;

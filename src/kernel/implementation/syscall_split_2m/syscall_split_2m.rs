@@ -75,7 +75,12 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         let mut m = 0usize;
         proof {
             container_allocator_wf_at(steps.snapshot_k().ctn_mp, steps.snapshot_k().allc_4k_mp, steps.snapshot_k().allc_2m_mp, steps.snapshot_k().allc_1g_mp, ctn_ptr);
-            thread_quota_4k_implies_split_quota_capacity(&steps.snapshot_k(), thrd_ptr, alloc_ptr_4k);
+            let snap = steps.snapshot_k();
+            allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(snap.allc_4k_mp, alloc_ptr_4k);
+            container_thread_wf_thread_at(snap.ctn_mp, snap.thrd_mp, thrd_ptr);
+            container_allocator_4k_forward_wf_at(snap.ctn_mp, snap.allc_4k_mp, snap.allc_2m_mp, snap.allc_1g_mp, alloc_ptr_4k);
+            container_process_allocator_quota_4k_wf_at(snap.ctn_mp, snap.prc_mp, snap.thrd_mp, snap.allc_4k_mp, ctn_ptr);
+            container_thread_and_perms_wf_implies_4k_fold_sum_ge_thread_quota(snap.ctn_mp, snap.prc_mp, snap.thrd_mp, ctn_ptr, thrd_ptr);
             split_2m_empty_trace_implies_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n, RetValueType::SuccessUsize { value: 0 });
         }
         while m < n
@@ -214,7 +219,12 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             decreases n - m,
         {
             proof { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); }
-            proof { thread_quota_2m_implies_allocator_free_count_positive(&*krnl, thrd_ptr, alloc_ptr_2m); }
+            proof {
+                container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
+                container_allocator_2m_forward_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, alloc_ptr_2m);
+                container_process_allocator_quota_2m_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.allc_2m_mp, krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container);
+                container_thread_and_perms_wf_implies_2m_fold_sum_ge_thread_quota(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container, thrd_ptr);
+            }
             let head = split_2m_select_source(krnl, alloc_ptr_2m, &mut source, Tracked(&*lctx), Tracked(&source_locks.cache), Tracked(&source_locks.pool2m));
             let Tracked(page_locks) = merge_2m_lock_block(krnl, head, Tracked(&mut *lctx));
             split_2m_commit(krnl, thrd_ptr, alloc_ptr_4k, alloc_ptr_2m, head, source, Tracked(&*lctx),
