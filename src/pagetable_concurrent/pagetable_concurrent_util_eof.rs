@@ -3,7 +3,7 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 
-impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
+impl PageTableHigher<PT_TYPE> {
     /// EOF closure of `new`: a table that owns only its root page satisfies the big-lock invariant.
     pub(super) proof fn new_eof_inv(&self, page_map_perm: PointsTo<PageMap>)
         requires
@@ -24,7 +24,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             self.pcid_wf(),
             self.did_wf(),
             self.pci.wf(),
-            TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0,
+            PT_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0,
         ensures
             self.inv(),
     {

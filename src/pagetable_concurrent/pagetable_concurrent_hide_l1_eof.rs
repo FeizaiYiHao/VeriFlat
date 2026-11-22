@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Operation-state summary of `hide_l1_page`: entry `target_l2i` of the L2 page `target_l2_p` now publishes the L1 page
     /// `target_l1_p` with every permission bit clear and keeps owning it; every other field is unchanged.
     #[verifier::opaque]

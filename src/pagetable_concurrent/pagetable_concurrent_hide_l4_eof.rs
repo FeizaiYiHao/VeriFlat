@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Operation-state summary of `hide_l4_entry`: root entry `target_l4i` is now a placeholder for the same L3 page, and every 4K,
     /// 2M and 1G mapping and every window under it leaves its map; every other field is unchanged.
     #[verifier::opaque]

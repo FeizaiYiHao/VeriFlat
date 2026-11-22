@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Operation-state summary of `clear_held_2m_leaf`: the held 2M leaf entry `target_l2i` of the L2 page under `(target_l4i, target_l3i)`
     /// is published cleared; it owned no L1 page and keeps its lock, and every other field is unchanged.
     #[verifier::opaque]

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// EOF closure of `create_entry_l4`: no user window changes its holder, since the new L3 page is empty and every other walk
     /// is unchanged.
     pub(super) proof fn create_entry_l4_eof_window_locks_unchanged(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)

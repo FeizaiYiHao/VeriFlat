@@ -3,7 +3,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// No 4K leaf resolves in the inclusive L1 interval under one fixed L4/L3/L2 path.
     pub open spec fn spec_resolve_4k_l1_range_empty(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, start_l1i: L1Index, end_l1i: L1Index) -> bool {
         forall|l1i: L1Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)] start_l1i <= l1i <= end_l1i ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None
@@ -243,8 +243,8 @@ impl WholePageTable<PT_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
-    pub fn mapping_4k_va_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start_va: VAddr, end_va: VAddr) -> (ret: bool)
+impl PageTableHigher<PT_TYPE> {
+    pub fn mapping_4k_va_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, start_va: VAddr, end_va: VAddr) -> (ret: bool)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             va_4k_valid(start_va),
@@ -272,7 +272,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         ret
     }
 
-    fn resolve_4k_l1_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
+    fn resolve_4k_l1_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
         start_l1i: L1Index, end_l1i: L1Index) -> (ret: bool)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -310,7 +310,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         true
     }
 
-    fn resolve_4k_l2_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index),
+    fn resolve_4k_l2_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index),
         end: (L2Index, L1Index)) -> (ret: bool)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -356,7 +356,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         true
     }
 
-    fn resolve_4k_l3_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index),
+    fn resolve_4k_l3_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index),
         end: (L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -404,7 +404,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         true
     }
 
-    fn resolve_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
+    fn resolve_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= start.0,
@@ -456,7 +456,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// Check whether the abstract 4K mapping is empty between two inclusive page-table index boundaries. Missing
     /// directory levels and huge-page entries skip their complete 4K subtrees.
-    pub fn mapping_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
+    pub fn mapping_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= start.0,
@@ -478,7 +478,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// The first 4K leaf under one fixed L4/L3/L2 path at or after `start_l1i`; `start_l1i == 512` scans nothing.
-    fn next_resolved_4k_l1_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
+    fn next_resolved_4k_l1_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
         start_l1i: L1Index) -> (ret: Option<L1Index>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -521,7 +521,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// The first 4K leaf under one fixed L4/L3 path at or after `start` in (L2, L1) order.
-    fn next_resolved_4k_l2_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index)) -> (ret: Option<(L2Index, L1Index)>)
+    fn next_resolved_4k_l2_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index)) -> (ret: Option<(L2Index, L1Index)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
@@ -568,7 +568,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// The first 4K leaf under one fixed L4 path at or after `start` in (L3, L2, L1) order.
-    fn next_resolved_4k_l3_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index))
+    fn next_resolved_4k_l3_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index))
         -> (ret: Option<(L3Index, L2Index, L1Index)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -620,7 +620,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// The first 4K leaf at or after `cursor` in (L4, L3, L2, L1) order.
-    fn next_resolved_4k_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
+    fn next_resolved_4k_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= cursor.0,
@@ -675,7 +675,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// The first 4K mapping at or after `cursor` in (L4, L3, L2, L1) order. `cursor.3 == 512` names the slot just
     /// past `(cursor.0, cursor.1, cursor.2, 511)`, so a caller steps past a found leaf `f` with
     /// `(f.0, f.1, f.2, f.3 + 1)`. Missing directory levels and huge-page entries skip their complete 4K subtrees.
-    pub fn next_mapped_4k_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
+    pub fn next_mapped_4k_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= cursor.0,

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Operation-state summary of `unmap_4k_page_user_view`: entry `target_l1i` of the L1 map `target_l1_p` loses its
     /// present bit and the 4K mapping of its address is kept with `present` cleared; every other field is unchanged.
     #[verifier::opaque]

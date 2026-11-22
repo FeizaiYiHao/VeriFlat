@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Operation-state summary of `hide_l3_entry`: entry `target_l3i` of the L3 page `target_l3_p` is a placeholder for the same L2 page and the 512 windows under it leave the window lock map; every other field is unchanged.
     #[verifier::opaque]
     pub open spec fn hide_l3_entry_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr) -> bool {

@@ -3,7 +3,7 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 
-impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
+impl PageTableHigher<PT_TYPE> {
     pub fn new(pcid: Option<Pcid>, kernel_entries_ghost: Ghost<Seq<PageEntry>>, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, mem_end_l4_index: usize, proc_ptr: RwLockProcessPtr) -> (ret: Self)
         requires
             pei_valid(mem_end_l4_index),
@@ -17,9 +17,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 #![trigger kernel_entries_ghost.view().spec_index(i as int)]
                 #![trigger page_map_perm.value().spec_index(i)]
                 0 <= i < mem_end_l4_index ==> kernel_entries_ghost.view().spec_index(i as int) == page_map_perm.value().spec_index(i),
-            TABLE_TYPE == PT_TYPE ==> pcid is Some,
-            TABLE_TYPE == IOMMU_TYPE ==> pcid is None,
-            TABLE_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
+            PT_TYPE == PT_TYPE ==> pcid is Some,
+            PT_TYPE == IOMMU_TYPE ==> pcid is None,
+            PT_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
         ensures
             ret.inv(),
             ret.cr3 == page_map_ptr,
@@ -99,7 +99,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         if l3_entry.perm.ps && l3_entry.perm.kernel_present { Some(l3_entry) } else { None }
     }
 
-    pub fn get_entry_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
+    pub fn get_entry_l2(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -121,7 +121,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         if l2_entry.perm.present && !l2_entry.perm.ps { Some(l2_entry) } else { None }
     }
 
-    pub fn get_entry_2m_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
+    pub fn get_entry_2m_l2(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -143,7 +143,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         if l2_entry.perm.kernel_present && l2_entry.perm.ps { Some(l2_entry) } else { None }
     }
 
-    pub fn get_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
+    pub fn get_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         l3_entry: &PageEntry, l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -238,7 +238,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the held L3 entry `l3_entry`. It is a held 2M leaf when kernel-present
     /// and huge. The entry is unlocked and no hidden L1 page sits outside a locked window, so it holds an L1 page exactly when present
     /// and not huge.
-    pub fn get_l2_entry_word(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry)
+    pub fn get_l2_entry_word(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry)
         -> (ret: PageEntry)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -267,7 +267,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the held L3 entry `l3_entry` while this thread holds the entry's
     /// window lock; the acquire-load decodes past the lock bit. A kernel-present, non-present, non-huge word is the hidden-L1 marker:
     /// the entry hides the L1 page at the word's address.
-    pub fn get_l2_entry_word_write_held(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn get_l2_entry_word_write_held(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         l3_entry: &PageEntry) -> (ret: PageEntry)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -297,7 +297,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// Kernel-present 4K leaf `(target_l4i, target_l3i, target_l2i, target_l1i)` of the L1 page that the held L2 entry `l2_entry` holds,
     /// linked or hidden.
-    pub fn get_held_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
+    pub fn get_held_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         l3_entry: &PageEntry, l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -327,7 +327,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
+impl PageTableLower<PT_TYPE> {
     /// The window half of a table without L2 pages: every map is empty.
     pub open spec fn spec_empty() -> Self {
         PageTableLower {
@@ -337,7 +337,7 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
     }
 
     /// The window half of a table that owns only its root page.
-    pub proof fn tracked_empty(higher: PageTableHigher<TABLE_TYPE>) -> (tracked ret: Self)
+    pub proof fn tracked_empty(higher: PageTableHigher<PT_TYPE>) -> (tracked ret: Self)
         requires
             higher.inv(),
             higher.l3_tables.view().dom() == Set::<PageMapPtr>::empty(),

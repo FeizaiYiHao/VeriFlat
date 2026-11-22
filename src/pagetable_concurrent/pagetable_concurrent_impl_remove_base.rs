@@ -3,12 +3,12 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 
-impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
+impl PageTableHigher<PT_TYPE> {
     /// First half of 4K unmap under the window lock: make future page walks miss while retaining the kernel mapping
     /// record that backs any stale TLB entry. A caller must flush those entries before invoking `unmap_4k_page_kernel`.
     /// `RAM_ONLY` callers clear a RAM leaf only; the written entry then encodes no IO bits, so the clear compiles to
     /// one read-modify-write of the entry.
-    pub fn unmap_4k_page_user_view<const RAM_ONLY: bool>(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn unmap_4k_page_user_view<const RAM_ONLY: bool>(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l1i: L1Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -85,7 +85,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// Final half of 4K unmap under the window lock: remove the kernel mapping only after its user present bit is
     /// already clear. Kernel-level callers must additionally establish that no stale TLB entry remains.
-    pub fn unmap_4k_page_kernel(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn unmap_4k_page_kernel(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l1i: L1Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -158,7 +158,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// backs any stale TLB entry stays. The entry is the window's spin lock word; the published word keeps the lock bit.
     /// A caller must flush those entries before invoking `unmap_2m_page_kernel`. `RAM_ONLY` callers clear a RAM leaf only; the
     /// written entry then encodes no IO bits.
-    pub fn unmap_2m_page_user_view<const RAM_ONLY: bool>(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+    pub fn unmap_2m_page_user_view<const RAM_ONLY: bool>(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -231,7 +231,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Final half of 2M unmap under the window lock: clear L2 entry `target_l2i` of the L2 page `target_l2_p`, whose 2M leaf's
     /// user present bit is already clear, keeping the lock bit of the published word. Kernel-level callers must additionally
     /// establish that no stale TLB entry remains.
-    pub fn unmap_2m_page_kernel(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+    pub fn unmap_2m_page_kernel(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -301,7 +301,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// L1 page stays in the window lock, its reverse index, and the page closure. The entry is the window's spin lock word, so
     /// this thread must hold that window lock; the published word keeps the lock bit. A caller must flush the cached L2 entries
     /// before `unlink_hidden_l1_page` takes the page out.
-    pub fn hide_l1_page(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+    pub fn hide_l1_page(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         target_l1_p: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -381,7 +381,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// cleared, dropping the hidden-L1 marker `hide_l1_page` published, then move the page out; it leaves its reverse index and the
     /// page closure. The caller holds that window lock under `window_perm`, so the published word keeps the lock bit, and no CPU is
     /// still listed as caching the window's entries.
-    pub fn unlink_hidden_l1_page(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn unlink_hidden_l1_page(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PointsTo<PageMap>>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -458,7 +458,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// resolves, and return it: publish the entry cleared, then move the page out; it leaves its reverse index and the page closure.
     /// No thread holds the entry's window lock, so the published word keeps the lock bit clear; the caller holds the table's big lock
     /// in write mode, and no CPU is still listed as caching the window's entries.
-    pub fn unlink_unresolvable_l1_page(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn unlink_unresolvable_l1_page(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PointsTo<PageMap>>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -534,7 +534,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// resolves: the L1 page that the held L2 entry owns publishes the leaf cleared and stays in place, so no mapping changes. No path to
     /// the leaf resolves, so the entry's window lock is free; the caller holds the table's big lock in write mode, which every window lock
     /// follows, and the L1 token moves through the unlocked slot.
-    pub fn clear_held_4k_leaf(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn clear_held_4k_leaf(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l1i: L1Index, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -615,7 +615,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// the held L2 entry is published cleared and stays in its L2 page, so no mapping changes. No path to the leaf resolves, so the
     /// entry's window lock is free; the caller holds the table's big lock in write mode, which every window lock follows. A 2M leaf
     /// owns no L1 page, so no L1 token moves.
-    pub fn clear_held_2m_leaf(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn clear_held_2m_leaf(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -688,7 +688,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// Unlink the L1 page of window `(target_l4i, target_l3i, target_l2i)` and return it. The cleared L2 entry is the window's
     /// spin lock word, so this thread must hold that window lock; the published word keeps the lock bit.
-    pub fn remove_l2_entry(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn remove_l2_entry(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
         requires
@@ -767,7 +767,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// Unlink the L2 page, which owns no L1 page and has no resolving 2M leaf, under the held L3 entry `(target_l4i, target_l3i)`
     /// and return it as an ordinary 4K page. No window of that page may be locked.
-    pub fn remove_l3_entry(&mut self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr,
+    pub fn remove_l3_entry(&mut self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr,
         target_l2_p: PageMapPtr, cpu_tlb: &CpuTLB, cpu_arr: &CpuLockedArray, needflush: &PcidNeedFlushArray, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PagePerm4k>))
         requires
             (WholePageTable { higher: *old(self), lower: *old(lower) }).wf(),
@@ -869,7 +869,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// Unlink the L3 page under the held user root entry `target_l4i`, present or a placeholder, and return it. The window half
     /// is untouched: no L2 page hangs under that entry.
-    pub fn remove_l4_entry(&mut self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3_p: PageMapPtr,
+    pub fn remove_l4_entry(&mut self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3_p: PageMapPtr,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
         requires
             (WholePageTable { higher: *old(self), lower: *lower }).wf(),
@@ -944,7 +944,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Hide the user root entry `target_l4i`: publish it as a placeholder, every permission bit clear but `kernel_present`, with the
     /// L3 address kept. Page walks stop there, so every 4K, 2M and 1G mapping and every window under `target_l4i` disappears, while
     /// the table keeps holding every table page below it. No window under the entry may be locked.
-    pub fn hide_l4_entry(&mut self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn hide_l4_entry(&mut self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *old(self), lower: *old(lower) }).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -1041,7 +1041,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Hide the 1G leaf `(target_l4i, target_l3i)` under the present root entry `target_l4i`: clear its user present bit while keeping
     /// `kernel_present`, so future page walks miss and the kernel mapping record that backs any stale TLB entry stays. Writes only the
     /// big-lock payload, so the caller holds the big lock in write mode; it must flush before `clear_held_1g_leaf`.
-    pub fn hide_1g_leaf(&mut self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn hide_1g_leaf(&mut self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *old(self), lower: *lower }).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -1138,7 +1138,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Clear the held 1G leaf `(target_l4i, target_l3i)`, which no longer resolves or is hidden, and return it: its L3 entry is published
     /// empty, and a hidden leaf under a present root entry leaves `mapping_1g`. Writes only the big-lock payload, so the caller holds
     /// the big lock in write mode.
-    pub fn clear_held_1g_leaf(&mut self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn clear_held_1g_leaf(&mut self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, Tracked(lctx): Tracked<&mut LocalContext>)
         -> (ret: PageEntry)
         requires
             (WholePageTable { higher: *old(self), lower: *lower }).wf(),
@@ -1229,7 +1229,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// permission bit clear but `kernel_present`, with the L2 address kept. Page walks stop there, so its 512 windows leave the window lock
     /// map, while the table keeps holding the L2 page and every L1 page below it. No window under the entry is locked and no 4K or 2M leaf
     /// under it resolves, so no mapping changes.
-    pub fn hide_l3_entry(&mut self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn hide_l3_entry(&mut self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *old(self), lower: *old(lower) }).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),

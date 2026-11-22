@@ -14,7 +14,7 @@ pub proof fn in_range_implies_set_range_map_contains_image<B>(lo: usize, hi: usi
     Set::range(lo, hi).lemma_map_contains(f, f(i));
 }
 
-impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
+impl PageTableHigher<PT_TYPE> {
     pub proof fn wf_l4_cr3_at(&self)
         requires
             self.wf_l4(),
@@ -80,7 +80,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     pub proof fn kernel_entries_wf_iommu_l4_end_at(&self)
         requires self.kernel_entries_wf()
-        ensures TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
+        ensures PT_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
     { reveal(PageTableHigher::kernel_entries_wf); }
 
     pub proof fn kernel_entries_wf_len_at(&self)
@@ -165,7 +165,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     pub proof fn l3_links_l2_wf_at(&self, p: PageMapPtr, l3i: L3Index)
         requires
             self.l3_links_l2_wf(),
@@ -286,7 +286,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.wf_window_locks(),
             self.lower.pagetable_window_locks.dom().contains(w),
         ensures
-            page_table_key_2m_valid::<TABLE_TYPE>(w.va),
+            page_table_key_2m_valid::<PT_TYPE>(w.va),
             self.kernel_l4_end() <= spec_v2l4index(w.va),
             self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)),
             self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {

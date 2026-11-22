@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Operation-state summary of `map_1g_page`: entry `target_l3i` of the L3 page `target_l3_p` now holds the present 1G leaf of
     /// `target_entry`, which joins `mapping_1g`; the window half and every other field are unchanged.
     #[verifier::opaque]
@@ -33,7 +33,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_held_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_1g_valid(target_entry.addr),
-            page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
+            page_table_key_1g_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
             !target_entry.is_io,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
@@ -57,7 +57,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_held_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_1g_valid(target_entry.addr),
-            page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
+            page_table_key_1g_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
             !target_entry.is_io,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
@@ -90,7 +90,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_held_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_1g_valid(target_entry.addr),
-            page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
+            page_table_key_1g_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
         ensures

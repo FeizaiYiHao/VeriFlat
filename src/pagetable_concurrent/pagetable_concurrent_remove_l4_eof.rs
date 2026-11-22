@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Operation-state summary of `remove_l4_entry`: the root map's entry `target_l4i` is cleared and the L3 page
     /// `target_l3_p` leaves the L3 pages and their reverse index; the window half and every other field are unchanged.
     #[verifier::opaque]
@@ -56,6 +56,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pre.spec_held_l4(target_l4i) is Some,
             pre.spec_held_l4(target_l4i)->0.addr == target_l3_p,
+            pre.higher.l4_entry(target_l4i).addr == target_l3_p,
             forall|i: L3Index| #![trigger pre.spec_resolve_mapping_1g_l3(target_l4i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_1g_l3(target_l4i, i) is None,
             Self::remove_l4_entry_eof_transition_framing(pre, post, target_l4i, target_l3_p),
         ensures

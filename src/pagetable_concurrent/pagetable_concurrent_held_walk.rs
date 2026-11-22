@@ -11,10 +11,10 @@ pub enum HeldLeaf {
     L1g,
 }
 
-impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
+impl PageTableHigher<PT_TYPE> {
     /// The first held 4K leaf of the L1 page that the held L2 entry `l2_entry` holds, at or after `start_l1i`; `start_l1i == 512`
     /// scans nothing.
-    fn next_held_4k_l1_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
+    fn next_held_4k_l1_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
         start_l1i: L1Index) -> (ret: Option<(L1Index, PageEntry)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -57,7 +57,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// The first held 4K or 2M leaf under the held L3 entry `l3_entry` at or after `start` in (L2, L1) order; a 2M leaf sits at L1
     /// index 0. No entry of the L2 page is locked.
-    fn next_held_leaf_l2_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index))
+    fn next_held_leaf_l2_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index))
         -> (ret: Option<((L2Index, L1Index), HeldLeaf, PageEntry)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -117,7 +117,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// The first held 4K, 2M or 1G leaf under the held root entry `l4_entry` at or after `start` in (L3, L2, L1) order; a 1G leaf sits at
     /// L2 and L1 index 0.
-    fn next_held_leaf_l3_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index))
+    fn next_held_leaf_l3_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index))
         -> (ret: Option<((L3Index, L2Index, L1Index), HeldLeaf, PageEntry)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -190,7 +190,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// steps past a found 4K leaf `f` with `(f.0, f.1, f.2, f.3 + 1)`, past a found 2M leaf with `(f.0, f.1, f.2, 512)` and past a found
     /// 1G leaf with `(f.0, f.1, 511, 512)`. The walk follows the held chain, placeholders included, and skips every absent subtree whole.
     /// No window is locked and no hidden L1 page sits outside a locked window, so each L2 word tells whether it holds an L1 page.
-    pub fn next_held_leaf_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index))
+    pub fn next_held_leaf_from(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index))
         -> (ret: Option<((L4Index, L3Index, L2Index, L1Index), HeldLeaf, PageEntry)>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
