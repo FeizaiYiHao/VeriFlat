@@ -116,7 +116,6 @@ proof fn install_staged_4k_page_table_page_eof_subsystems_inv(
     ensures post.subsystems_inv(),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
     assert(pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
