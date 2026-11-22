@@ -37,7 +37,13 @@ impl IommuTable {
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
             post.wf(),
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
     {
+        Self::create_entry_l4_eof_resolved_paths_kept(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_wf_l4(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_wf_l3(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_wf_l2(pre, post, target_l4i, page_map_ptr);
@@ -51,6 +57,25 @@ impl IommuTable {
         Self::create_entry_l4_eof_table_pages_wf(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_tables_reachable_wf(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, page_map_ptr);
+    }
+
+    /// EOF closure of `create_entry_l4`: every directory path that resolved before resolves to the same entry after.
+    proof fn create_entry_l4_eof_resolved_paths_kept(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l4i),
+            pre.spec_resolve_mapping_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+        ensures
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
+    {
+        reveal(IommuTable::create_entry_l4_eof_transition_framing); reveal(IommuTable::wf_l4);
     }
 
     /// EOF closure of `create_entry_l4`: `wf_l4`.
@@ -298,7 +323,13 @@ impl IommuTable {
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
         ensures
             post.wf(),
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
     {
+        Self::create_entry_l3_eof_resolved_paths_kept(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_wf_l4(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
@@ -312,6 +343,28 @@ impl IommuTable {
         Self::create_entry_l3_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         Self::create_entry_l3_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
+    }
+
+    /// EOF closure of `create_entry_l3`: every directory path that resolved before resolves to the same entry after.
+    proof fn create_entry_l3_eof_resolved_paths_kept(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+        ensures
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
+    {
+        reveal(IommuTable::create_entry_l3_eof_transition_framing); reveal(IommuTable::wf_l4); reveal(IommuTable::wf_l3);
     }
 
     /// EOF closure of `create_entry_l3`: `wf_l4`.
@@ -599,7 +652,13 @@ impl IommuTable {
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
         ensures
             post.wf(),
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
     {
+        Self::create_entry_l2_eof_resolved_paths_kept(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_wf_l4(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
@@ -613,6 +672,29 @@ impl IommuTable {
         Self::create_entry_l2_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
         Self::create_entry_l2_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
+    }
+
+    /// EOF closure of `create_entry_l2`: every directory path that resolved before resolves to the same entry after.
+    proof fn create_entry_l2_eof_resolved_paths_kept(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
+        ensures
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
+    {
+        reveal(IommuTable::create_entry_l2_eof_transition_framing); reveal(IommuTable::wf_l4); reveal(IommuTable::wf_l3);
     }
 
     /// EOF closure of `create_entry_l2`: `wf_l4`.

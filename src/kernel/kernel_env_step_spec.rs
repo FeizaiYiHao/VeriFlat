@@ -39,6 +39,32 @@ pub open spec fn iommu_tlb_within_may_cache(k: KernelK, did: VtdDomainId, tlb: S
     }
 }
 
+/// Every directory entry `cache` keeps is a present non-leaf entry of `table` whose path resolves, naming the table page it
+/// links.
+pub open spec fn single_structure_cache_subset_of_present_iommu_table(cache: PagingStructureCache, table: IommuTable) -> bool {
+    &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)]
+        cache.pml4e.dom().contains(i) ==> pei_valid(i) && table.spec_resolve_mapping_l4(i) is Some && table.spec_resolve_mapping_l4(i)->0.addr == cache.pml4e[i]
+    &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)]
+        cache.pdpte.dom().contains(key) ==> pei_valid(key.0) && pei_valid(key.1) && table.spec_resolve_mapping_l3(key.0, key.1) is Some
+            && table.spec_resolve_mapping_l3(key.0, key.1)->0.addr == cache.pdpte[key]
+    &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)]
+        cache.pde.dom().contains(key) ==> pei_valid(key.0) && pei_valid(key.1) && pei_valid(key.2) && table.spec_resolve_mapping_l2(key.0, key.1, key.2) is Some
+            && table.spec_resolve_mapping_l2(key.0, key.1, key.2)->0.addr == cache.pde[key]
+}
+
+/// What the paging-structure caches may hold for domain `did` in state `k`: present non-leaf entries of the IOMMU table
+/// attached at the DID's anchor B/D/F when the anchor carries `did`, nothing otherwise.
+pub open spec fn iommu_structure_cache_within_may_cache(k: KernelK, did: VtdDomainId, cache: PagingStructureCache) -> bool {
+    let anchor = pci_bdf_of_did(did);
+    let root_table = k.irt.view();
+    if root_table.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did) {
+        let iommu_table = k.it_mp.spec_index(k.prc_mp.spec_index(root_table.spec_index_owner(anchor.0, anchor.1, anchor.2)->Some_0).view().iommu_table->Some_0);
+        single_structure_cache_subset_of_present_iommu_table(cache, iommu_table.view())
+    } else {
+        cache.is_empty()
+    }
+}
+
 /// The context entry of `bdf` is present with exactly root `entry.0` and domain `entry.1`.
 pub open spec fn iommu_context_cache_entry_present(k: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId)) -> bool {
     &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
@@ -185,12 +211,16 @@ pub open spec fn kernel_k_cpu_tlb_filled(pre: KernelK, post: KernelK, cpu_id: Cp
         (c, p) != (cpu_id, pcid) ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)) && post.cpu_tlb.structure_cache((c, p)) == pre.cpu_tlb.structure_cache((c, p))
 }
 
-/// The IOTLB caches `added` for domain `did`; nothing else changes.
-pub open spec fn kernel_k_iommu_tlb_filled(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB) -> bool {
+/// The IOTLB caches translations `added` and paging-structure entries `added_cache` for domain `did`; nothing else changes.
+pub open spec fn kernel_k_iommu_tlb_filled(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache) -> bool {
+    let cache = pre.iommu_tlb.structure_cache(did);
     &&& vtd_domain_id_valid(did)
     &&& iommu_tlb_within_may_cache(pre, did, added)
+    &&& iommu_structure_cache_within_may_cache(pre, did, added_cache)
     &&& post == (KernelK { iommu_tlb: post.iommu_tlb, ..pre })
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, single_tlb_union(pre.iommu_tlb.spec_index(did), added))
+    &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches().insert(did, PagingStructureCache {
+        pml4e: cache.pml4e.union_prefer_right(added_cache.pml4e), pdpte: cache.pdpte.union_prefer_right(added_cache.pdpte), pde: cache.pde.union_prefer_right(added_cache.pde) })
     &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] #![trigger pre.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
     &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
 }
@@ -201,6 +231,7 @@ pub open spec fn kernel_k_iommu_context_cache_filled(pre: KernelK, post: KernelK
     &&& post == (KernelK { iommu_tlb: post.iommu_tlb, ..pre })
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] #![trigger pre.iommu_tlb.spec_index(x)] post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
+    &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches()
     &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache().insert(bdf, entry)
 }
 
@@ -312,10 +343,10 @@ pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, 
     };
 }
 
-pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB)
+pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache)
     requires
         pre.inv(),
-        kernel_k_iommu_tlb_filled(pre, post, did, added),
+        kernel_k_iommu_tlb_filled(pre, post, did, added, added_cache),
     ensures
         post.inv(),
         forall|it: RwLockPageTableRoot| #![trigger iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, it)]
@@ -323,11 +354,15 @@ pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK
 {
     let anchor = pci_bdf_of_did(did);
     let filled = single_tlb_union(pre.iommu_tlb.spec_index(did), added);
+    let cache = post.iommu_tlb.structure_cache(did);
     if pre.irt.view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) != Some(did) {
         assert(filled.tlb_4k =~= pre.iommu_tlb.spec_index(did).tlb_4k);
         assert(filled.tlb_2m =~= pre.iommu_tlb.spec_index(did).tlb_2m);
         assert(filled.tlb_1g =~= pre.iommu_tlb.spec_index(did).tlb_1g);
+        assert(cache.pml4e.dom() =~= pre.iommu_tlb.structure_cache(did).pml4e.dom() && cache.pdpte.dom() =~= pre.iommu_tlb.structure_cache(did).pdpte.dom()
+            && cache.pde.dom() =~= pre.iommu_tlb.structure_cache(did).pde.dom());
     }
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); };
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
@@ -343,6 +378,7 @@ pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, pos
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); pre.irt.view().wf_context_entry_at(bdf.0, bdf.1, bdf.2); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
 }
 
 pub proof fn kernel_k_trap_enter_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers)
@@ -504,14 +540,15 @@ pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: Kerne
 
 /// An IOTLB fill stays within the step-boundary framing of a thread between its sections: the domain of a write-held
 /// IOMMU table gains only present leaves of that table.
-pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, lctx: LocalContext)
+pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache,
+    lctx: LocalContext)
     requires
         pre.inv(),
-        kernel_k_iommu_tlb_filled(pre, post, did, added),
+        kernel_k_iommu_tlb_filled(pre, post, did, added, added_cache),
         typed_lock_maps_aligned(&pre, &lctx),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added);
+    kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added, added_cache);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);

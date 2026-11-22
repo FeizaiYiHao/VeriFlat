@@ -790,6 +790,7 @@ pub(crate) fn kill_retire_table_page_to_cache(
             &&& table_perm.lock_id() == old(krnl).it_mp.spec_index(table).locking_thread()->Write_lock_id
             &&& old(krnl).it_mp.spec_index(table).view().structure_scan_wf(scan)
         },
+        iommu ==> old(krnl).prc_mp.spec_index(target).view().iommu_table == Some(table),
         old(krnl).prc_mp.dom().contains(target),
         old(krnl).prc_mp.spec_index(target).view().zombie,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pg_ptr), TypedLockMode::Write),
@@ -871,7 +872,15 @@ pub(crate) fn kill_retire_table_page_to_cache(
         };
         process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
         if iommu {
-            iommu_table_page_implies_unreferenced_by_structure_caches(*krnl, table, pg_ptr);
+            assert(krnl.it_mp.spec_index(table).view().did is None) by {
+                process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
+                iommu_root_table_process_wf_table_at(krnl.irt.view(), krnl.prc_mp, krnl.it_mp, table);
+                if let Some(d) = krnl.it_mp.spec_index(table).view().did {
+                    let anchor = pci_bdf_of_did(d);
+                    pci_function_ownership_wf_function_at(krnl.irt.view(), krnl.prc_mp, krnl.pt_mp, anchor.0, anchor.1, anchor.2);
+                }
+            };
+            iommu_table_without_did_implies_page_unreferenced_by_iommu_caches(*krnl, table, pg_ptr);
         } else {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), table);
             held_table_page_under_unresolvable_path_with_empty_table_record_implies_unreferenced_by_structure_caches(*krnl, table, pg_ptr);
@@ -880,7 +889,7 @@ pub(crate) fn kill_retire_table_page_to_cache(
     let depth = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_perm)).container_depth;
     let Tracked(page_4k_perm) = if iommu {
         let Tracked(page_map_perm) = iommu_table_map_remove_table_page(&mut krnl.it_mp, table, scan, Tracked(&mut *lctx), Tracked(table_perm));
-        iommu_page_map_to_page_perm(pg_ptr, Tracked(page_map_perm), &krnl.cpu_tlb, &krnl.cpu_arr, &krnl.pcid_needflush)
+        iommu_page_map_to_page_perm(pg_ptr, Tracked(page_map_perm), &krnl.iommu_tlb)
     } else if let StructureScan::L1 { l4i, l3i, l2i, l2_p, l1_p } = scan {
         let Tracked(page_map_perm) = pagetable_map_unlink_unresolvable_l1_page(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), table, l4i, l3i, l2i, l2_p, l1_p, &krnl.pg_arr,
             Tracked(&mut *lctx), Tracked(table_perm));

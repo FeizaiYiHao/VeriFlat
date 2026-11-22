@@ -33,7 +33,13 @@ impl IommuTable {
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf(),
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
     {
+        Self::unmap_4k_page_kernel_eof_resolved_paths_kept(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_wf_l4(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
@@ -47,6 +53,28 @@ impl IommuTable {
         Self::unmap_4k_page_kernel_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_va_addr_valid_and_did_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+    }
+
+    /// EOF closure of `unmap_4k_page_kernel`: every directory path that resolved before resolves to the same entry after.
+    proof fn unmap_4k_page_kernel_eof_resolved_paths_kept(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pei_valid(target_l1i),
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            forall|i: L4Index| #![trigger post.spec_resolve_mapping_l4(i)] pei_valid(i) && pre.spec_resolve_mapping_l4(i) is Some ==> post.spec_resolve_mapping_l4(i) == pre.spec_resolve_mapping_l4(i),
+            forall|i: L4Index, j: L3Index| #![trigger post.spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && pre.spec_resolve_mapping_l3(i, j) is Some
+                ==> post.spec_resolve_mapping_l3(i, j) == pre.spec_resolve_mapping_l3(i, j),
+            forall|i: L4Index, j: L3Index, k: L2Index| #![trigger post.spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+                && pre.spec_resolve_mapping_l2(i, j, k) is Some ==> post.spec_resolve_mapping_l2(i, j, k) == pre.spec_resolve_mapping_l2(i, j, k),
+    {
+        reveal(IommuTable::unmap_4k_page_kernel_eof_transition_framing);
     }
 
     /// EOF closure of `unmap_4k_page_kernel`: `wf_l4`.

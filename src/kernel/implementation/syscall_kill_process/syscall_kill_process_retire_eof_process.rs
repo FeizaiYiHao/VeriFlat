@@ -144,6 +144,7 @@ pub(crate) proof fn kill_retire_eof_iommu(
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
 {
     reveal(kill_retire_eof_transition_framing);
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by {
@@ -152,6 +153,7 @@ pub(crate) proof fn kill_retire_eof_iommu(
     };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(pci_function_ownership_wf); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, target); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
 }
 
 /// A CPU/PCID association that the TLB, structure-cache and dirty-map invariants constrain belongs to neither the retired

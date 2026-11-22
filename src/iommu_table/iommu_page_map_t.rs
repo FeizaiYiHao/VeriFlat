@@ -66,20 +66,22 @@ pub fn iommu_page_perm_to_page_map(pg_ptr: PagePtr, Tracked(page_perm): Tracked<
     (pg_ptr, Tracked::assume_new())
 }
 
-/// TCB: an IOMMU table page that its table no longer links and that no usable paging-structure cache names is an
-/// ordinary 4K page again; its bytes stay as they are.
+/// TCB: an IOMMU table page that its table no longer links is an ordinary 4K page again; its bytes stay as they are.
+/// Assumed: the remapping hardware reaches a table page only through the table's links or through its own caches, and its
+/// caches are exactly what `IommuTLB` models. The paging-structure caches are emptied per domain by the domain-selective
+/// IOTLB invalidation (VT-d 5.20, 6.5.1.2) and with `CAP.CM = 0` hold only entries of successful walks (6.2.5.5), so a
+/// page that `iommu_page_unreferenced_by_iommu_caches` clears is reached by no cached walk and the unit no longer reads it.
 #[verifier::external_body]
-pub fn iommu_page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, cpu_tlb: &CpuTLB, cpu_arr: &CpuLockedArray,
-    needflush: &PcidNeedFlushArray) -> (ret: Tracked<PagePerm4k>)
+pub fn iommu_page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, iommu_tlb: &IommuTLB) -> (ret: Tracked<PagePerm4k>)
     requires
         page_map_perm.is_init(),
         page_map_perm.addr() == page_map_ptr,
-        table_page_unreferenced_by_structure_caches(*cpu_tlb, *cpu_arr, *needflush, page_map_ptr),
+        iommu_page_unreferenced_by_iommu_caches(*iommu_tlb, page_map_ptr),
     ensures
         ret.view().is_init(),
         ret.view().addr() == page_map_ptr,
 {
-    let _ = (page_map_ptr, cpu_tlb, cpu_arr, needflush);
+    let _ = (page_map_ptr, iommu_tlb);
     Tracked::assume_new()
 }
 } // verus!

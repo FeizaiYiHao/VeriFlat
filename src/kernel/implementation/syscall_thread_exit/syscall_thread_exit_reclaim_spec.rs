@@ -56,6 +56,8 @@ pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_fram
     &&& post.it_mp.spec_index(iommu_table).view().proc_ptr == table.view().proc_ptr
     &&& table.view().did matches Some(did) ==> {
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, empty_tlb)
+        &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches().insert(did, post.iommu_tlb.structure_cache(did))
+        &&& post.iommu_tlb.structure_cache(did).is_empty()
         &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
             == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
         &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did

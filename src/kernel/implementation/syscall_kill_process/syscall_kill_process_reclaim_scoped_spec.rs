@@ -178,6 +178,12 @@ pub(crate) open spec fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transitio
     &&& new_table.view().cr3 == old_table.view().cr3
     &&& new_table.view().proc_ptr == old_table.view().proc_ptr
     &&& new_table.view().did == old_table.view().did
+    &&& forall|i: L4Index| #![trigger new_table.view().spec_resolve_mapping_l4(i)]
+        pei_valid(i) && old_table.view().spec_resolve_mapping_l4(i) is Some ==> new_table.view().spec_resolve_mapping_l4(i) == old_table.view().spec_resolve_mapping_l4(i)
+    &&& forall|i: L4Index, j: L3Index| #![trigger new_table.view().spec_resolve_mapping_l3(i, j)] pei_valid(i) && pei_valid(j) && old_table.view().spec_resolve_mapping_l3(i, j) is Some
+        ==> new_table.view().spec_resolve_mapping_l3(i, j) == old_table.view().spec_resolve_mapping_l3(i, j)
+    &&& forall|i: L4Index, j: L3Index, k: L2Index| #![trigger new_table.view().spec_resolve_mapping_l2(i, j, k)] pei_valid(i) && pei_valid(j) && pei_valid(k)
+        && old_table.view().spec_resolve_mapping_l2(i, j, k) is Some ==> new_table.view().spec_resolve_mapping_l2(i, j, k) == old_table.view().spec_resolve_mapping_l2(i, j, k)
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {

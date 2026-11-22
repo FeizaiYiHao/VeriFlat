@@ -47,11 +47,14 @@ pub fn retype_pagetable_rwlock_to_4k_page_perms(
 /// object and the root table's page as raw memory.
 ///
 /// This is the inverse of `retype_page_to_iommu_table_and_insert` plus the root table it owned, under the same
-/// conditions as `retype_pagetable_rwlock_to_4k_page_perms`.
+/// conditions as `retype_pagetable_rwlock_to_4k_page_perms`. Assumed, as for `iommu_page_map_to_page_perm`: the remapping
+/// hardware reaches the root table only through a context entry, cached or present in the root table `irt`, and through
+/// its paging-structure caches (VT-d 5.20, 6.5.1.2 and 6.2.5.5). The requires state both halves: no IOMMU cache names the
+/// root, and no present context entry of `irt` has it as its root.
 #[verifier::external_body]
 pub fn retype_iommu_table_rwlock_to_4k_page_perms(
     iommu_table_ptr: RwLockPageTableRoot, Tracked(iommu_table_perm): Tracked<LockObjPerm<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
-    Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
+    Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, iommu_tlb: &IommuTLB, Ghost(irt): Ghost<IommuRootTable>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires
         iommu_table_perm.is_init(),
@@ -64,6 +67,9 @@ pub fn retype_iommu_table_rwlock_to_4k_page_perms(
         lock_perm.thread_id() == old(lctx).thread_id(),
         typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
         old(lctx).kernel_view_locking_state() is Release,
+        iommu_page_unreferenced_by_iommu_caches(*iommu_tlb, iommu_table_perm.value().view().cr3),
+        forall|b: usize, d: usize, f: usize| #![trigger irt.spec_index_iommu_root(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> irt.spec_index_iommu_root(b, d, f) != Some(iommu_table_perm.value().view().cr3),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -74,6 +80,7 @@ pub fn retype_iommu_table_rwlock_to_4k_page_perms(
         ret.1.view().is_init(),
         ret.1.view().addr() == iommu_table_perm.value().view().cr3,
 {
+    let _ = iommu_tlb;
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
@@ -87,6 +94,7 @@ impl KernelK {
             !old(self).pt_mp.dom().contains(pg_ptr),
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
+            page_ptr_valid(pg_ptr),
             (WholePageTable { higher, lower }).wf(),
             (WholePageTable { higher, lower }).is_empty(),
             old(self).pt_mp.typed_lock_map_aligned(old(lctx).pagetable_lock_map(), old(lctx).thread_id()),
@@ -153,6 +161,7 @@ impl KernelK {
             !old(self).it_mp.dom().contains(pg_ptr),
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
+            page_ptr_valid(pg_ptr),
             iommu_table_value.inv(),
             old(self).it_mp.typed_lock_map_aligned(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -288,6 +297,9 @@ impl KernelK {
             typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
+            iommu_page_unreferenced_by_iommu_caches(old(self).iommu_tlb, old(self).it_mp.spec_index(iommu_table_ptr).view().cr3),
+            forall|b: usize, d: usize, f: usize| #![trigger old(self).irt.view().spec_index_iommu_root(b, d, f)]
+                pci_bdf_valid(b, d, f) ==> old(self).irt.view().spec_index_iommu_root(b, d, f) != Some(old(self).it_mp.spec_index(iommu_table_ptr).view().cr3),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -307,7 +319,7 @@ impl KernelK {
     {
         proof { self.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr); }
         let Tracked(iommu_table_perm) = self.it_mp.remove_with_perm(iommu_table_ptr);
-        let ret = retype_iommu_table_rwlock_to_4k_page_perms(iommu_table_ptr, Tracked(iommu_table_perm), Tracked(lock_perm), Tracked(&mut *lctx));
+        let ret = retype_iommu_table_rwlock_to_4k_page_perms(iommu_table_ptr, Tracked(iommu_table_perm), Tracked(lock_perm), Tracked(&mut *lctx), &self.iommu_tlb, Ghost(self.irt.view()));
         proof {
             remove_iommu_table_and_reclaim_4k_page_perms_eof(old(self).it_mp, self.it_mp, iommu_table_ptr);
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

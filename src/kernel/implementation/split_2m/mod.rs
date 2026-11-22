@@ -7,4 +7,3 @@ pub mod split_2m_commit_spec;
 mod split_2m_commit_eof;
 mod split_2m_commit_eof_allocator;
 pub mod split_2m_thread_quotas;
-pub mod split_2m_entry_points;

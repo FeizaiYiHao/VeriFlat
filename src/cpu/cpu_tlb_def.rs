@@ -6,8 +6,8 @@ use super::cpu_cr3_pcid::CpuCr3Pcid;
 mod cpu_tlb_flush;
 
 verus! {
-/// Cached translations, shared by the CPU TLBs and the IOTLB. Only the IOTLB folds its paging-structure caches in; a CPU
-/// keeps them in `PagingStructureCache`. A 2M translation the hardware splits into 4K TLB entries is represented by its
+/// Cached translations, shared by the CPU TLBs and the IOTLB; both keep their paging-structure caches apart, in
+/// `PagingStructureCache`. A 2M translation the hardware splits into 4K TLB entries is represented by its
 /// `tlb_2m` entry keyed by the 2M base: a PCID- or domain-wide invalidation drops every split entry, and an INVPCID
 /// individual-address invalidation of any address inside a large page drops every entry of that page (Intel SDM), so
 /// the split is not observable.
@@ -58,7 +58,8 @@ impl SingleTLB {
     }
 }
 
-/// K only, never projected into U: the user-half directory entries the page walker of one `(cpu, pcid)` remembers.
+/// K only, never projected into U: the user-half directory entries the page walker of one `(cpu, pcid)`, or the remapping
+/// units for one IOMMU domain, remember.
 /// `pml4e` maps VA bits 47:39 to an L3 page, `pdpte` bits 47:30 to an L2 page, and `pde` bits 47:21, one 2M window, to
 /// an L1 page.
 pub ghost struct PagingStructureCache {

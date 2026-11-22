@@ -25,6 +25,8 @@ pub fn flush_iommu_tlb_for_table(krnl: &mut KernelK, iommu_table: RwLockPageTabl
         old(krnl).it_mp.spec_index(iommu_table).view().did matches Some(did) ==> {
             &&& final(krnl).iommu_tlb.view() == old(krnl).iommu_tlb.view().insert(did, final(krnl).iommu_tlb.spec_index(did))
             &&& iommu_tlb_within_may_cache(*final(krnl), did, final(krnl).iommu_tlb.spec_index(did))
+            &&& final(krnl).iommu_tlb.structure_caches() == old(krnl).iommu_tlb.structure_caches().insert(did, final(krnl).iommu_tlb.structure_cache(did))
+            &&& iommu_structure_cache_within_may_cache(*final(krnl), did, final(krnl).iommu_tlb.structure_cache(did))
         },
         old(krnl).it_mp.spec_index(iommu_table).view().did is None ==> final(krnl).iommu_tlb == old(krnl).iommu_tlb,
         iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),

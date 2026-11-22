@@ -447,8 +447,30 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
+        Self::remove_l3_entry_eof_resolve_4k_unchanged(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
+        reveal(WholePageTable::remove_l3_entry_eof_transition_framing); reveal(WholePageTable::wf_mapping_4k);
+    }
+
+    /// EOF closure of `remove_l3_entry`: every 4K leaf resolves as before; the unlinked L2 page resolved none and every
+    /// other path reads unchanged tables.
+    proof fn remove_l3_entry_eof_resolve_4k_unchanged(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_held_l4(target_l4i) is Some,
+            pre.spec_held_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_held_l3(target_l4i, target_l3i) is Some,
+            pre.spec_held_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_l2(target_l4i, target_l3i, i) is None,
+            Self::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
+                    ==> post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+    {
         reveal(WholePageTable::remove_l3_entry_eof_transition_framing);
-        reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
+        broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
     }
 
     /// EOF closure of `remove_l3_entry` for `wf_mapping_2m`.

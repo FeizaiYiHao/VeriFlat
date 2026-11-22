@@ -98,13 +98,36 @@ proof fn pci_attach_dma_eof_iotlb(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
         pre.irt.view().spec_index_iommu_root(bus, device, function) is None,
         process_iommu_table_wf(post.prc_mp, post.it_mp),
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
-    ensures
-        iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+    ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(pci_attach_dma_eof_transition_framing);
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
         reveal(iommu_tlb_wf); reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); pre.irt.view().wf_context_entry_at(bus, device, function);
     };
+}
+
+/// The IOMMU paging-structure caches after the attach: the entry takes the table's DID, which the table keeps or adopts from the
+/// function's candidate domain, whose cache is empty while that candidate was unanchored.
+proof fn pci_attach_dma_eof_structure_cache(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, table: RwLockPageTableRoot, bus: usize, device: usize, function: usize)
+    requires
+        pre.inv(),
+        post.irt.inv(),
+        pci_bdf_valid(bus, device, function),
+        pre.it_mp.dom().contains(table),
+        iommu_table_perms_wf(post.it_mp),
+        pci_attach_dma_eof_transition_framing(pre, post, table, bus, device, function),
+        pre.it_mp.spec_index(table).locking_thread() is Write,
+        pre.it_mp.spec_index(table).view().leaves_present(),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(table),
+        pre.irt.view().spec_index_owner(bus, device, function) == Some(prc_ptr),
+        pre.irt.view().spec_index_iommu_root(bus, device, function) is None,
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
+        iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
+    ensures iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
+{
+    reveal(pci_attach_dma_eof_transition_framing);
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); pre.irt.view().wf_context_entry_at(bus, device, function); };
 }
 
 /// Attaching a function owned by the live process `prc_ptr` to its write-held IOMMU table `table` keeps every
@@ -154,6 +177,7 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
     pci_attach_dma_eof_process_tables(pre, post, prc_ptr, table, bus, device, function);
     pci_attach_dma_eof_pages(pre, post, prc_ptr, table, bus, device, function);
     pci_attach_dma_eof_iotlb(pre, post, prc_ptr, table, bus, device, function);
+    pci_attach_dma_eof_structure_cache(pre, post, prc_ptr, table, bus, device, function);
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }

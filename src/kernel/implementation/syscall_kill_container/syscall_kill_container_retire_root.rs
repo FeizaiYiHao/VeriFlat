@@ -419,6 +419,18 @@ pub(crate) fn kill_container_retire_root_commit(
         process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target);
         pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
         if let Some(it) = iommu_table { iommu_table_pages_wf_root_page_at(krnl.it_mp, krnl.pg_arr, it); }
+        if let Some(it) = iommu_table {
+            assert(krnl.it_mp.spec_index(it).view().did is None) by {
+                process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
+                process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target); iommu_root_table_process_wf_table_at(krnl.irt.view(), krnl.prc_mp, krnl.it_mp, it);
+                if let Some(d) = krnl.it_mp.spec_index(it).view().did {
+                    let anchor = pci_bdf_of_did(d);
+                    pci_function_ownership_wf_function_at(krnl.irt.view(), krnl.prc_mp, krnl.pt_mp, anchor.0, anchor.1, anchor.2);
+                }
+            };
+            iommu_table_without_did_implies_page_unreferenced_by_iommu_caches(*krnl, it, krnl.it_mp.spec_index(it).view().cr3);
+            iommu_table_without_did_implies_root_named_by_no_context_entry(*krnl, it);
+        }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         kill_retire_pages_held_and_owned(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
     }

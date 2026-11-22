@@ -8,7 +8,7 @@ use super::split_2m_commit_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::split_2m_commit_eof::*;
 #[cfg(verus_keep_ghost)]
-use super::split_2m_entry_points::*;
+use super::super::merge_2m::{merge_2m_quota_folds::*, merge_2m_entry_points::*, merge_2m_entry_folds::*};
 
 verus! {
 pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
@@ -108,7 +108,10 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
         allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator_2m);
         page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, head);
         thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thread);
-        thread_quota_4k_implies_split_quota_capacity(krnl, thread, allocator_4k);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thread); allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(krnl.allc_4k_mp, allocator_4k);
+        container_allocator_4k_forward_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, allocator_4k);
+        container_process_allocator_quota_4k_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.allc_4k_mp, krnl.thrd_mp.spec_index(thread).view().owning_container);
+        container_thread_and_perms_wf_implies_4k_fold_sum_ge_thread_quota(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.thrd_mp.spec_index(thread).view().owning_container, thread);
         allocator_free_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, head);
     }
     let owner = krnl.pg_arr.borrow_typed(head, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_perms.tracked_borrow(head))).owning_container;
@@ -325,7 +328,10 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
             reveal(split_2m_commit_eof_transition_framing);
         };
         split_2m_commit_eof_implies_kernel_inv(*old(krnl), *krnl, thread, allocator_4k, allocator_2m, head, source, lctx);
-        thread_quota_4k_implies_split_quota_capacity(krnl, thread, allocator_4k);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thread); allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(krnl.allc_4k_mp, allocator_4k);
+        container_allocator_4k_forward_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, allocator_4k);
+        container_process_allocator_quota_4k_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.allc_4k_mp, krnl.thrd_mp.spec_index(thread).view().owning_container);
+        container_thread_and_perms_wf_implies_4k_fold_sum_ge_thread_quota(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.thrd_mp.spec_index(thread).view().owning_container, thread);
     }
 }
 }

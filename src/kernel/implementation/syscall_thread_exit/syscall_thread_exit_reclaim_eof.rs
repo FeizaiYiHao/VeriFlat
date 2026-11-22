@@ -180,6 +180,10 @@ pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post:
         broadcast use IommuRootTable::wf_context_entry_at;
         reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(IommuTLB::inv); reveal(pci_function_ownership_wf); reveal(process_pagetable_wf);
     };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by {
+        broadcast use IommuRootTable::wf_context_entry_at;
+        reveal(iommu_structure_cache_wf); reveal(iommu_root_table_process_wf);
+    };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 } // verus!

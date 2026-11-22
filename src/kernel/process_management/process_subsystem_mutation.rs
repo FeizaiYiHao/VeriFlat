@@ -940,6 +940,7 @@ pub fn process_subsystem_create_scheduled_thread(
         thread_value.proc_pagetable_ptr == old(prc_mp).spec_index(prc_ptr).view().pagetable,
         page_perm.is_init(),
         page_perm.addr() == pg_ptr,
+        page_ptr_valid(pg_ptr),
         old(prc_mp).typed_lock_map_aligned(old(lctx).process_lock_map(), old(lctx).thread_id()),
         old(thrd_mp).typed_lock_map_aligned(old(lctx).thread_lock_map(), old(lctx).thread_id()),
         old(sched_mp).typed_shard_lock_map_aligned(old(lctx).scheduler_lock_map(), old(lctx).thread_id()),
@@ -1157,6 +1158,7 @@ pub fn cpu_set_map_insert_new_4k(cpu_set_mp: &mut CpuSetLockedMap, cpu_set_ptr: 
         cpu_set_value.inv(),
         page_perm.is_init(),
         page_perm.addr() == cpu_set_ptr,
+        page_ptr_valid(cpu_set_ptr),
     ensures
         final(cpu_set_mp).perms_wf(),
         cpu_set_perms_wf(*old(cpu_set_mp)) ==> cpu_set_perms_wf(*final(cpu_set_mp)),
@@ -1273,6 +1275,7 @@ pub fn endpoint_map_insert_new_4k(ep_mp: &mut EndpointLockedMap, ep_ptr: RwLockE
         endpoint_value.inv(),
         page_perm.is_init(),
         page_perm.addr() == ep_ptr,
+        page_ptr_valid(ep_ptr),
     ensures
         final(ep_mp).perms_wf(),
         endpoint_perms_wf(*old(ep_mp)) ==> endpoint_perms_wf(*final(ep_mp)),
