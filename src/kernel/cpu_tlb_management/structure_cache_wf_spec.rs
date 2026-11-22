@@ -316,45 +316,4 @@ verus! {
             reveal(WholePageTable::table_pages_wf); reveal(WholePageTable::disjoint_l2);
         }
     }
-
-    /// A page of an IOMMU table is named by no usable paging-structure cache: a cached entry is held by the cache's dirty
-    /// CPU table, whose pages are tagged as CPU-table pages, while the pages of an IOMMU table are tagged as IOMMU-table
-    /// pages.
-    pub proof fn iommu_table_page_implies_unreferenced_by_structure_caches(k: KernelK, iommu_table: RwLockPageTableRoot, page: PageMapPtr)
-        requires
-            k.inv(),
-            k.it_mp.dom().contains(iommu_table),
-            k.it_mp.spec_index(iommu_table).view().page_closure().contains(page),
-        ensures table_page_unreferenced_by_structure_caches(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, page),
-    { broadcast use iommu_table_page_implies_unreferenced_by_structure_cache_at; }
-
-    /// Point form of `iommu_table_page_implies_unreferenced_by_structure_caches` at one `(cpu_id, pcid)`.
-    broadcast proof fn iommu_table_page_implies_unreferenced_by_structure_cache_at(k: KernelK, iommu_table: RwLockPageTableRoot, page: PageMapPtr, cpu_id: CpuId, pcid: Pcid)
-        requires
-            k.inv(),
-            k.it_mp.dom().contains(iommu_table),
-            k.it_mp.spec_index(iommu_table).view().page_closure().contains(page),
-        ensures
-            #![trigger k.cpu_tlb.structure_cache((cpu_id, pcid)), k.it_mp.spec_index(iommu_table).view().page_closure().contains(page)]
-            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
-            && (!k.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || k.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
-                let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
-                &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
-                &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
-                &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
-            },
-    {
-        let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
-        let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
-        let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
-        structure_cache_wf_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
-        if !cache.is_empty() && k.pt_mp.dom().contains(dirty_ptr) {
-            pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), dirty_ptr);
-            assert(!dirty_table.page_closure().contains(page)) by {
-                iommu_table_pages_wf_closure_page_at(k.it_mp, k.pg_arr, iommu_table, page);
-                if dirty_table.page_closure().contains(page) { pagetable_pages_wf_closure_page_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, page); }
-            };
-            reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
-        }
-    }
 }
