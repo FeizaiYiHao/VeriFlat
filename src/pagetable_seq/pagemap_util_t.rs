@@ -75,7 +75,7 @@ pub fn page_map_copy_kernel_entry_range(source_ptr: PageMapPtr, Tracked(source_p
     }
 }
 
-impl PageTable<PT_TYPE> {
+impl PageTable {
     pub fn copy_kernel_entries_to_unpublished_root(&self, target_ptr: PageMapPtr, Tracked(target_perm): Tracked<&mut PointsTo<PageMap>>)
         requires
             self.wf(),

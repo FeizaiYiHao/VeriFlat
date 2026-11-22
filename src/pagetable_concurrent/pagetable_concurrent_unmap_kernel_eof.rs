@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `unmap_4k_page_kernel`: entry `target_l1i` of the L1 map `target_l1_p` is cleared and
     /// the 4K mapping of its address is removed; every other field is unchanged.
     #[verifier::opaque]

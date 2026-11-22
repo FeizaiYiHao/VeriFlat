@@ -16,10 +16,9 @@ use super::l2_page_map::*;
 /// `spec_resolve_mapping_*` stop there, while the table still holds the page below it (`spec_held_*`).
 /// `table_stale_cpus` lists the CPUs that may still cache paging-structure entries of the hidden user half; a
 /// kernel-level invariant governs it.
-pub struct PageTableHigher<const TABLE_TYPE: PTType> {
+pub struct PageTableHigher {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
-    pub did: Option<VtdDomainId>,
     pub kernel_l4_end: usize,
     pub l4_table: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     pub l3_rev_map: Ghost<Map<PageMapPtr, (L4Index)>>,
@@ -34,17 +33,17 @@ pub struct PageTableHigher<const TABLE_TYPE: PTType> {
 }
 
 /// The part of a page table the big lock protects: its upper half and the window-half snapshot.
-pub struct PageTableBigLocked<const TABLE_TYPE: PTType> {
-    pub higher: PageTableHigher<TABLE_TYPE>,
+pub struct PageTableBigLocked {
+    pub higher: PageTableHigher,
     /// Snapshot of the window half maintained only while the big lock is write-held.
-    pub lower_backup: Ghost<PageTableLower<TABLE_TYPE>>,
+    pub lower_backup: Ghost<PageTableLower>,
 }
 
 /// Window half: L2 pages (each entry a 2M-window spin lock that also owns the L1 page it links), the L1 reverse
 /// map, 4K and 2M leaves, the lock mode of every window of an existing L2 page, and for each 2M window
 /// `(L2 page, L2 index)` that still hides cleared leaves from some TLB, the CPUs that have neither flushed nor
 /// skipped it yet.
-pub tracked struct PageTableLower<const TABLE_TYPE: PTType> {
+pub tracked struct PageTableLower {
     pub tracked l2_perms: Map<PageMapPtr, PointsTo<L2PageMap>>,
     pub ghost l1_rev_map: Map<PageMapPtr, (L4Index, L3Index, L2Index)>,
     pub ghost mapping_4k: Map<VAddr, MapEntry>,
@@ -54,9 +53,9 @@ pub tracked struct PageTableLower<const TABLE_TYPE: PTType> {
 }
 
 /// One whole page table: the big-lock payload and its window half.
-pub ghost struct WholePageTable<const TABLE_TYPE: PTType> {
-    pub higher: PageTableHigher<TABLE_TYPE>,
-    pub lower: PageTableLower<TABLE_TYPE>,
+pub ghost struct WholePageTable {
+    pub higher: PageTableHigher,
+    pub lower: PageTableLower,
 }
 
 /// One 2M window as its holder sees it: its L2 page and entry, the entry's lock owner, the L1 page that entry links,
@@ -75,7 +74,7 @@ pub ghost struct WindowVa { pub va: VAddr }
 
 impl WindowVa {
     /// A 2M-aligned user address.
-    pub open spec fn wf(&self) -> bool { page_table_key_2m_valid::<PT_TYPE>(self.va) }
+    pub open spec fn wf(&self) -> bool { va_2m_valid(self.va) }
     pub open spec fn l4i(&self) -> L4Index { spec_v2l4index(self.va) }
     pub open spec fn l3i(&self) -> L3Index { spec_v2l3index(self.va) }
     pub open spec fn l2i(&self) -> L2Index { spec_v2l2index(self.va) }
@@ -104,26 +103,15 @@ pub open spec fn window_obj_id_of(root: RwLockPageTableRoot, w: WindowVa) -> Ker
 pub open spec fn va_range_2m_windows(range: VaRange4K) -> ISet<WindowVa> {
     let first = spec_va2index(range.start);
     let last = spec_va2index(range.view().spec_index(range.len - 1));
-    ISet::new(|w: WindowVa| page_table_key_2m_valid::<PT_TYPE>(w.va) && spec_l4_index_path_le((first.0, first.1, first.2, 0), spec_va2index(w.va)) && spec_l4_index_path_le(spec_va2index(w.va), (last.0, last.1, last.2, 0)))
+    ISet::new(|w: WindowVa| va_2m_valid(w.va) && spec_l4_index_path_le((first.0, first.1, first.2, 0), spec_va2index(w.va)) && spec_l4_index_path_le(spec_va2index(w.va), (last.0, last.1, last.2, 0)))
 }
 
-impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
-    /// A CPU table has a PCID; an IOMMU table has none.
-    pub open spec fn pcid_wf(&self) -> bool {
-        &&& TABLE_TYPE == PT_TYPE ==> self.pcid is Some
-        &&& TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None
-    }
-
-    /// A CPU table has no VT-d domain id; an IOMMU table may carry one valid id.
-    pub open spec fn did_wf(&self) -> bool {
-        &&& TABLE_TYPE == PT_TYPE ==> self.did is None
-        &&& self.did is Some ==> vtd_domain_id_valid(self.did->Some_0)
-    }
+impl PageTableHigher {
+    /// A CPU table has a PCID.
+    pub open spec fn pcid_wf(&self) -> bool { self.pcid is Some }
 
     pub open spec fn pcid_value(&self) -> Pcid
-        recommends
-            TABLE_TYPE == PT_TYPE,
-            self.pcid is Some,
+        recommends self.pcid is Some,
     {
         self.pcid.unwrap()
     }
@@ -324,7 +312,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
             self.mapping_1g.view().dom().contains(va)
-                ==> page_table_key_1g_valid::<TABLE_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr) && !self.mapping_1g.view().spec_index(va).is_io
+                ==> va_1g_valid(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr) && !self.mapping_1g.view().spec_index(va).is_io
     }
 
     /// mapping_1g holds exactly the resolved 1G leaves, with their frame, write, execute_disable and present bits.
@@ -347,7 +335,6 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// kernel_entries equals the root's kernel L4 entries `[0, kernel_l4_end)`; an IOMMU table has none.
     #[verifier::opaque]
     pub open spec fn kernel_entries_wf(&self) -> bool {
-        &&& TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
         &&& pei_valid(self.kernel_l4_end)
         &&& self.kernel_entries.view().len() =~= self.kernel_l4_end as nat
         &&& forall|i: L4Index|
@@ -356,7 +343,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableHigher<TABLE_TYPE> {
+impl LockInvTrait for PageTableHigher {
     /// The L4/L3/1G half of the page-table invariant; `WholePageTable::wf` adds the cross-half and lower-half clauses.
     open spec fn inv(&self) -> bool {
         &&& self.va_addr_valid()
@@ -371,24 +358,20 @@ impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableHigher<TABLE_TYPE> {
         &&& self.tables_reachable_wf()
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
-        &&& self.did_wf()
         &&& self.pci.wf()
     }
 }
 
-impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableBigLocked<TABLE_TYPE> {
+impl LockInvTrait for PageTableBigLocked {
     open spec fn inv(&self) -> bool { self.higher.inv() }
 }
 
-impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTableBigLocked<TABLE_TYPE> {
+impl LockMajorTrait for PageTableBigLocked {
     open spec fn lock_major_1(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_2(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 0x233 }
 
-    open spec fn lock_major_default(&self) -> LockMajorId {
-        if TABLE_TYPE == PT_TYPE { PAGE_TABLE_LOCK_MAJOR }
-        else { IOMMU_TABLE_LOCK_MAJOR }
-    }
+    open spec fn lock_major_default(&self) -> LockMajorId { PAGE_TABLE_LOCK_MAJOR }
 
     open spec fn lock_major_1_predicate(&self) -> bool { false }
     open spec fn lock_major_2_predicate(&self) -> bool { false }
@@ -396,12 +379,12 @@ impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTableBigLocked<TABLE_TYPE>
     open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
-impl<const TABLE_TYPE: PTType> LockOwnerIdTrait for PageTableBigLocked<TABLE_TYPE> {
+impl LockOwnerIdTrait for PageTableBigLocked {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::none() }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::none() }
 }
 
-impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
+impl PageTableLower {
     #[verifier::inline]
     pub open spec fn l2_page(&self, p: PageMapPtr) -> L2PageMap { self.l2_perms.spec_index(p).value() }
 
@@ -431,9 +414,8 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable {
     pub open spec fn cr3(&self) -> PageTableRoot { self.higher.cr3 }
-    pub open spec fn did(&self) -> Option<VtdDomainId> { self.higher.did }
     pub open spec fn kernel_l4_end(&self) -> usize { self.higher.kernel_l4_end }
     pub open spec fn mapping_4k(&self) -> Map<VAddr, MapEntry> { self.lower.mapping_4k }
     pub open spec fn mapping_2m(&self) -> Map<VAddr, MapEntry> { self.lower.mapping_2m }
@@ -443,7 +425,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,
-            did: if TABLE_TYPE == PT_TYPE { None } else { self.did() },
+            did: None,
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
@@ -807,12 +789,12 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             #![trigger self.lower.mapping_4k.dom().contains(va), page_ptr_valid(self.lower.mapping_4k.spec_index(va).addr)]
             #![trigger self.lower.mapping_4k.dom().contains(va)]
             #![trigger page_ptr_valid(self.lower.mapping_4k.spec_index(va).addr)]
-            self.lower.mapping_4k.dom().contains(va) ==> page_table_key_4k_valid::<TABLE_TYPE>(va) && mapping_4k_target_valid(self.lower.mapping_4k.spec_index(va).addr, self.lower.mapping_4k.spec_index(va).is_io)
+            self.lower.mapping_4k.dom().contains(va) ==> va_4k_valid(va) && mapping_4k_target_valid(self.lower.mapping_4k.spec_index(va).addr, self.lower.mapping_4k.spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.lower.mapping_2m.dom().contains(va)]
             #![trigger self.lower.mapping_2m.dom().contains(va), page_ptr_2m_valid(self.lower.mapping_2m.spec_index(va).addr)]
             #![trigger self.lower.mapping_2m.dom().contains(va)]
-            self.lower.mapping_2m.dom().contains(va) ==> page_table_key_2m_valid::<TABLE_TYPE>(va) && mapping_2m_target_valid(self.lower.mapping_2m.spec_index(va).addr, self.lower.mapping_2m.spec_index(va).is_io)
+            self.lower.mapping_2m.dom().contains(va) ==> va_2m_valid(va) && mapping_2m_target_valid(self.lower.mapping_2m.spec_index(va).addr, self.lower.mapping_2m.spec_index(va).is_io)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.
@@ -859,7 +841,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|w: WindowVa|
             #![trigger self.lower.pagetable_window_locks.dom().contains(w)]
             self.lower.pagetable_window_locks.dom().contains(w) ==> {
-                &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
+                &&& va_2m_valid(w.va)
                 &&& self.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
@@ -901,7 +883,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
 }
 
 /// An empty table (`is_empty`) has no held 4K leaf at or above `kernel_l4_end`.
-pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_4k(wpt: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_4k(wpt: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
     requires
         wpt.is_empty(),
         wpt.kernel_l4_end() <= l4i,
@@ -915,7 +897,7 @@ pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_4k(wpt: WholePag
 }
 
 /// An empty table (`is_empty`) has no held 2M leaf at or above `kernel_l4_end`.
-pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_2m(wpt: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_2m(wpt: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         wpt.is_empty(),
         wpt.kernel_l4_end() <= l4i,
@@ -928,7 +910,7 @@ pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_2m(wpt: WholePag
 }
 
 /// An empty table (`is_empty`) has no held 1G leaf at or above `kernel_l4_end`.
-pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_1g(wpt: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index)
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_1g(wpt: WholePageTable, l4i: L4Index, l3i: L3Index)
     requires
         wpt.is_empty(),
         wpt.kernel_l4_end() <= l4i,

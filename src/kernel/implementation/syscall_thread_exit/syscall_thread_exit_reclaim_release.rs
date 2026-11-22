@@ -26,7 +26,7 @@ pub(super) fn thread_exit_reclaim_flush(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
     cr3: PageTableRoot, pcid: Pcid, Ghost(entry_k): Ghost<KernelK>,
-    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>, Ghost(table_lctx): Ghost<LocalContext>,
+    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable>, Ghost(table_lctx): Ghost<LocalContext>,
     Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
@@ -241,7 +241,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
     Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>, Ghost(entry_k): Ghost<KernelK>,
-    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>, Ghost(table_lctx): Ghost<LocalContext>,
+    Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable>, Ghost(table_lctx): Ghost<LocalContext>,
     Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(it_entry): Ghost<TypedHeldLock>, Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
@@ -474,7 +474,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, Ghost(ctn_ptr): Ghost<RwLockContainerPtr>,
     Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>,
     Ghost(entry_k): Ghost<KernelK>, Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>,
-    Ghost(emptied_pt): Ghost<WholePageTable<PT_TYPE>>, iommu_table: RwLockPageTableRoot, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>,
+    Ghost(emptied_pt): Ghost<WholePageTable>, iommu_table: RwLockPageTableRoot, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>,
     Ghost(locked_it): Ghost<LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>, Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>,
     Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>,
     Ghost(pre): Ghost<KernelU>,
@@ -836,7 +836,7 @@ pub(super) fn thread_exit_reclaim_return_quota(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr,
     prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>,
     Ghost(entry_k): Ghost<KernelK>, Ghost(entry_lctx): Ghost<LocalContext>,
-    Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(emptied_pt): Ghost<WholePageTable<PT_TYPE>>, iommu_table: Option<RwLockPageTableRoot>, Ghost(table_lctx): Ghost<LocalContext>,
+    Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(emptied_pt): Ghost<WholePageTable>, iommu_table: Option<RwLockPageTableRoot>, Ghost(table_lctx): Ghost<LocalContext>,
     Ghost(it_entry): Ghost<TypedHeldLock>, Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<LockPerm>, Tracked(iommu_table_lock_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )

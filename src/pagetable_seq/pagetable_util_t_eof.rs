@@ -5,8 +5,8 @@ use crate::*;
 /// EOF closure of `KernelK::retype_page_to_pagetable_and_insert`: the new table is empty and write-held by this thread,
 /// so it has no window, and the page-table invariants and the window alignment carry over.
 pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
-    old_k: KernelK, new_k: KernelK, old_lctx: LocalContext, new_lctx: LocalContext, pg_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>,
-    lower: PageTableLower<PT_TYPE>, lock_perm: LockPerm,
+    old_k: KernelK, new_k: KernelK, old_lctx: LocalContext, new_lctx: LocalContext, pg_ptr: PagePtr, higher: PageTableHigher,
+    lower: PageTableLower, lock_perm: LockPerm,
 )
     requires
         !old_k.pt_mp.dom().contains(pg_ptr),
@@ -65,7 +65,7 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
 
 /// EOF closure of `KernelK::retype_page_to_pagetable_and_insert` for the new table `pg_ptr`: it is empty, so none of its user windows
 /// exists or is locked.
-proof fn retype_page_to_pagetable_and_insert_eof_new_table_windows(new_k: KernelK, pg_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>, lower: PageTableLower<PT_TYPE>)
+proof fn retype_page_to_pagetable_and_insert_eof_new_table_windows(new_k: KernelK, pg_ptr: PagePtr, higher: PageTableHigher, lower: PageTableLower)
     requires
         higher.wf_l4(),
         (WholePageTable { higher, lower }).is_empty(),

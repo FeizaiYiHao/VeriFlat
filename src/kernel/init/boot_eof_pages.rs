@@ -6,7 +6,7 @@ use super::*;
 
 pub(super) proof fn boot_memory_management_inv_eof_container_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -40,7 +40,7 @@ pub(super) proof fn boot_memory_management_inv_eof_container_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_process_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -71,7 +71,7 @@ pub(super) proof fn boot_memory_management_inv_eof_process_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_pagetable_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -102,7 +102,7 @@ pub(super) proof fn boot_memory_management_inv_eof_pagetable_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_thread_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -133,7 +133,7 @@ pub(super) proof fn boot_memory_management_inv_eof_thread_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_scheduler_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -164,7 +164,7 @@ pub(super) proof fn boot_memory_management_inv_eof_scheduler_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_cpu_set_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -195,7 +195,7 @@ pub(super) proof fn boot_memory_management_inv_eof_cpu_set_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_pcid_allocator_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -227,7 +227,7 @@ pub(super) proof fn boot_memory_management_inv_eof_pcid_allocator_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_thread_staged_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -258,7 +258,7 @@ pub(super) proof fn boot_memory_management_inv_eof_thread_staged_pages(
 
 pub(super) proof fn boot_memory_management_inv_eof_endpoint_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,

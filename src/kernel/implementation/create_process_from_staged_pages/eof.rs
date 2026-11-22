@@ -260,6 +260,23 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     }
 }
 
+/// The new table is empty: no user root entry is held, so no L3 entry is held and no window is locked.
+proof fn create_process_from_staged_pages_eof_new_table_empty(post: KernelK, pagetable_pg_ptr: PagePtr)
+    requires
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_pg_ptr).wf(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_pg_ptr).is_empty(),
+    ensures
+        forall|r: RwLockPageTableRoot, l4i: L4Index| #![trigger post.pt_mp.spec_index(r).view().higher.spec_held_l4(l4i)]
+            r == pagetable_pg_ptr && post.pt_mp.spec_index(r).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) ==> post.pt_mp.spec_index(r).view().higher.spec_held_l4(l4i) is None,
+        forall|r: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(r).view().higher.spec_held_l3(l4i, l3i)]
+            r == pagetable_pg_ptr && post.pt_mp.spec_index(r).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i)
+                ==> post.pt_mp.spec_index(r).view().higher.spec_held_l3(l4i, l3i) is None,
+        forall|r: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+            #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+            r == pagetable_pg_ptr && whole_pagetable(post.pt_mp, post.pt_lower.view(), r).kernel_l4_end() <= l4i && pei_valid(l4i)
+                ==> !whole_pagetable(post.pt_mp, post.pt_lower.view(), r).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+{ reveal(PageTableHigher::wf_l4); }
+
 proof fn create_process_from_staged_pages_eof_subsystems_inv(
     pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
     staging_thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
@@ -306,7 +323,10 @@ proof fn create_process_from_staged_pages_eof_subsystems_inv(
     };
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
-    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks); };
+    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by {
+        create_process_from_staged_pages_eof_new_table_empty(post, pagetable_pg_ptr);
+        reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks);
+    };
     assert(pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
     assert(pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
@@ -499,7 +519,10 @@ proof fn create_process_from_staged_pages_eof_page_table_relations(
         assert(post.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().mappings());
         reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
-    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
+    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by {
+        create_process_from_staged_pages_eof_new_table_empty(post, pagetable_pg_ptr);
+        reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf);
+    };
 }
 
 broadcast proof fn create_process_from_staged_pages_eof_thread_staged_pages_4k_backward(

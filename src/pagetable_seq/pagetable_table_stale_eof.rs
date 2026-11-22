@@ -133,7 +133,7 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
 }
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the big-lock payload: no payload invariant reads the table record.
-proof fn table_stale_cpus_update_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+proof fn table_stale_cpus_update_eof_higher_inv(pre: PageTableHigher, post: PageTableHigher)
     requires
         pre.inv(),
         post == (PageTableHigher { table_stale_cpus: post.table_stale_cpus, ..pre }),
@@ -153,7 +153,7 @@ proof fn table_stale_cpus_update_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, p
 }
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for `wf_mapping_4k`: the leaves and mappings are unchanged.
-proof fn table_stale_cpus_update_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn table_stale_cpus_update_eof_wf_mapping_4k(pre: WholePageTable, post: WholePageTable)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
@@ -167,7 +167,7 @@ proof fn table_stale_cpus_update_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>,
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the 4K walks, which do not read the table record: each resolves as
 /// before.
-proof fn table_stale_cpus_update_eof_resolve_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn table_stale_cpus_update_eof_resolve_4k(pre: WholePageTable, post: WholePageTable)
     requires
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
         post.lower == pre.lower,
@@ -177,7 +177,7 @@ proof fn table_stale_cpus_update_eof_resolve_4k(pre: WholePageTable<PT_TYPE>, po
 {}
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for `wf_mapping_2m`: the leaves and mappings are unchanged.
-proof fn table_stale_cpus_update_eof_wf_mapping_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn table_stale_cpus_update_eof_wf_mapping_2m(pre: WholePageTable, post: WholePageTable)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
@@ -190,7 +190,7 @@ proof fn table_stale_cpus_update_eof_wf_mapping_2m(pre: WholePageTable<PT_TYPE>,
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the 2M walks, which do not read the table record: each resolves
 /// as before.
-proof fn table_stale_cpus_update_eof_resolve_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn table_stale_cpus_update_eof_resolve_2m(pre: WholePageTable, post: WholePageTable)
     requires
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
         post.lower == pre.lower,
@@ -200,7 +200,7 @@ proof fn table_stale_cpus_update_eof_resolve_2m(pre: WholePageTable<PT_TYPE>, po
 {}
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the table itself: no table invariant reads the table record.
-proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable, post: WholePageTable)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
@@ -224,7 +224,7 @@ proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post
 }
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for `tables_reachable_wf`: no held table path reads the table record.
-proof fn table_stale_cpus_update_eof_tables_reachable_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn table_stale_cpus_update_eof_tables_reachable_wf(pre: WholePageTable, post: WholePageTable)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),

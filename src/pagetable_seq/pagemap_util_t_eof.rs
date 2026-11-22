@@ -3,7 +3,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl PageTable<PT_TYPE> {
+impl PageTable {
     /// EOF closure of `copy_kernel_entries_to_unpublished_root`: the copied root entries are the recorded kernel entries.
     pub(super) proof fn copy_kernel_entries_to_unpublished_root_eof(&self, target: PageMap)
         requires

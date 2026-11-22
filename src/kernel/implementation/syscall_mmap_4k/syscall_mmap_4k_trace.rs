@@ -8,7 +8,7 @@ verus! {
 /// covers present, since its 2M windows are held with their leaves present and every 1G leaf is present, and `found` names a 4K
 /// leaf in its index interval or, if there is none, some page is covered by a 2M or 1G leaf. Without a checked table, a range
 /// result is only known to be success or in use.
-pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType, cur: Option<WholePageTable<PT_TYPE>>,
+pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType, cur: Option<WholePageTable>,
     found: Option<(L4Index, L3Index, L2Index, L1Index)>)
     requires
         krnl.inv(),

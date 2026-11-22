@@ -17,7 +17,7 @@ verus! {
 /// After every page of `range` was hidden and flushed in the write-held page table `pagetable`: reclaim each page, which records no step, and refund the 1G quota the reclaims left pending on the thread. Steps recorded from `start` stay range steps; only the range's 1G leaves change. `hv`
 /// is the table record before the flush, whose held root and L3 entries resolve; the record differs from it only in its stale-CPU set, and reclaiming 1G leaves keeps every held root and L3 entry.
 pub(super) fn unmap_1g_reclaim_range(
-    krnl: &mut KernelK, range: &VaRange1G, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, Ghost(start): Ghost<int>, Ghost(hv): Ghost<PageTableHigher<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>,
+    krnl: &mut KernelK, range: &VaRange1G, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, Ghost(start): Ghost<int>, Ghost(hv): Ghost<PageTableHigher>, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
 )
     requires

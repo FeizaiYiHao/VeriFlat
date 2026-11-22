@@ -359,7 +359,7 @@ fn thread_exit_reclaim_hide_roots(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, Ghost(cpu_id): Ghost<CpuId>,
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(prc_ptr): Ghost<RwLockProcessPtr>, Ghost(thrd_ptr): Ghost<RwLockThreadPtr>,
     pagetable: RwLockPageTableRoot, Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>, Ghost(entry_k): Ghost<KernelK>, Ghost(entry_lctx): Ghost<LocalContext>,
-    Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>, Ghost(table_lctx): Ghost<LocalContext>, Tracked(cpu_lock_perm): Tracked<&LockPerm>,
+    Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable>, Ghost(table_lctx): Ghost<LocalContext>, Tracked(cpu_lock_perm): Tracked<&LockPerm>,
     Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>,
     Ghost(pre): Ghost<KernelU>,
 )

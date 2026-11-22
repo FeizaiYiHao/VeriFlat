@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// User-visible and physical result of a successful anonymous 1G mmap.
-pub open spec fn mmap_1g_syscall_range_mapped(pagetable: WholePageTable<PT_TYPE>, va: VAddr, len: usize) -> bool {
+pub open spec fn mmap_1g_syscall_range_mapped(pagetable: WholePageTable, va: VAddr, len: usize) -> bool {
     let range = spec_va_range_1g(va, len);
     forall|j: int| #![trigger range.view()[j]] 0 <= j < len ==> {
         let mapped_va = range.view()[j];

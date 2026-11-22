@@ -183,7 +183,7 @@ pub(super) fn map_pci_bar_4k_map_and_finish(
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_2m_at(indices.0, indices.1, indices.2);
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         let (l4i, l3i, l2i) = (indices.0, indices.1, indices.2);
-        assert(page_table_key_2m_valid::<PT_TYPE>(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
+        assert(va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
     }
     let alloc_ptr_4k = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
     let (l4_present, l3_present, l2_present) = {

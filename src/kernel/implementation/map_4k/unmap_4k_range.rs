@@ -13,7 +13,7 @@ verus! {
 /// First phase of `unmap_4k_range`: clear the present bit of each page of `range` in order, recording one step per page,
 /// while every 2M window of the range stays held; the cleared leaves keep their entries otherwise.
 fn clear_4k_range_present(
-    krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(checked_table): Ghost<WholePageTable<PT_TYPE>>,
+    krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(checked_table): Ghost<WholePageTable>,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
     Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
@@ -449,7 +449,7 @@ fn flush_unmap_4k_range_tlbs(
 /// was mapped in `checked_table`, the table as checked before the held windows were last carried over a step boundary, so
 /// each page lies in a held window; inside the held windows only the range's leaves change.
 pub fn unmap_4k_range(
-    krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(checked_table): Ghost<WholePageTable<PT_TYPE>>,
+    krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(checked_table): Ghost<WholePageTable>,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
     Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )

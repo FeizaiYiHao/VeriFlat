@@ -4,7 +4,7 @@ use super::*;
 verus! {
 /// The whole page table rooted at `root`: the part under the big lock (`pt_mp`) and the L2/L1 part under the small
 /// (window) locks (`pt_lower`).
-pub open spec fn whole_pagetable(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, root: RwLockPageTableRoot) -> WholePageTable<PT_TYPE> {
+pub open spec fn whole_pagetable(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, root: RwLockPageTableRoot) -> WholePageTable {
     WholePageTable { higher: pt_mp.spec_index(root).view().higher, lower: pt_lower.spec_index(root) }
 }
 

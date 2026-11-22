@@ -12,7 +12,7 @@ verus! {
 /// leaf step each. Every window keeps its lock state, its stale CPUs and its 4K leaves, and owns no L1 page.
 fn mmap_2m_map_leaf_range(
     krnl: &mut KernelK, va_range: &VaRange2M, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot,
-    Ghost(phase): Ghost<Mmap2mPhase>, Ghost(flushed): Ghost<bool>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
+    Ghost(phase): Ghost<Mmap2mPhase>, Ghost(flushed): Ghost<bool>, Ghost(t4k): Ghost<WholePageTable>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires
@@ -243,7 +243,7 @@ fn mmap_2m_map_leaf_range(
 /// no window of the range owns an L1 page or lists a stale CPU; the caller's cpu and thread are unchanged.
 fn mmap_2m_clear_range_windows(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange2M,
-    thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot, Ghost(phase): Ghost<Mmap2mPhase>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>,
+    thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot, Ghost(phase): Ghost<Mmap2mPhase>, Ghost(t4k): Ghost<WholePageTable>,
     Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
     Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
@@ -398,7 +398,7 @@ fn mmap_2m_clear_range_windows(
 pub(super) fn mmap_2m_map_leaves_and_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange2M,
     thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
-    Ghost(enter_phase): Ghost<Mmap2mPhase>, Ghost(entered): Ghost<Seq<KernelStep>>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(thread_lock_perm): Tracked<LockPerm>,
+    Ghost(enter_phase): Ghost<Mmap2mPhase>, Ghost(entered): Ghost<Seq<KernelStep>>, Ghost(t4k): Ghost<WholePageTable>, Tracked(thread_lock_perm): Tracked<LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(window_perms): Tracked<Map<WindowVa, LockPerm>>,
 )
     requires

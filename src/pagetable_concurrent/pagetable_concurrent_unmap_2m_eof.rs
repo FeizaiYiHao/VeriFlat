@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `unmap_2m_page_user_view`: entry `target_l2i` of the L2 page `target_l2_p` loses its present
     /// bit and the 2M mapping of its address is kept with `present` cleared; the big-lock payload and every other window-half
     /// field are unchanged.
