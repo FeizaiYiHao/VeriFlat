@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `map_4k_page`: entry `target_l1i` of the L1 map `target_l1_p` now maps `target_entry`
     /// and the 4K mapping records it at that address; the big-lock payload and every other window-half field are unchanged.
     #[verifier::opaque]
@@ -40,7 +40,7 @@ impl WholePageTable<PT_TYPE> {
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
-            page_table_key_4k_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            page_table_key_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.lower.l1_rev_map.dom().contains(target_l1_p),
@@ -72,7 +72,7 @@ impl WholePageTable<PT_TYPE> {
         target_entry: MapEntry)
         requires
             pre.va_addr_valid(),
-            page_table_key_4k_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            page_table_key_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             mapping_4k_target_valid(target_entry.addr, target_entry.is_io),
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures

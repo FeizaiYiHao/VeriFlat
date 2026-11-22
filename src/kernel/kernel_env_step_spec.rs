@@ -97,7 +97,7 @@ pub open spec fn cpu_tlb_within_may_cache_u(u: KernelU, cpu_id: CpuId, pcid: Pci
 
 /// `entry` is the translation of the present 4K leaf at `va` of `table`: one entry of
 /// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
-pub open spec fn tlb_4k_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable<PT_TYPE>, va: VAddr) -> bool {
+pub open spec fn tlb_4k_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable, va: VAddr) -> bool {
     let held = table.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
     let leaf = table.spec_resolve_mapping_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
     &&& va_4k_valid(va)
@@ -110,7 +110,7 @@ pub open spec fn tlb_4k_entry_present_in_pagetable(entry: TLBEntry, table: Whole
 
 /// `entry` is the translation of the present 2M leaf at `va` of `table`: one entry of
 /// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
-pub open spec fn tlb_2m_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable<PT_TYPE>, va: VAddr) -> bool {
+pub open spec fn tlb_2m_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable, va: VAddr) -> bool {
     let held = table.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
     let leaf = table.spec_resolve_mapping_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
     &&& va_2m_valid(va)
@@ -123,7 +123,7 @@ pub open spec fn tlb_2m_entry_present_in_pagetable(entry: TLBEntry, table: Whole
 
 /// `entry` is the translation of the present 1G leaf at `va` of `table`: one entry of
 /// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
-pub open spec fn tlb_1g_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable<PT_TYPE>, va: VAddr) -> bool {
+pub open spec fn tlb_1g_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable, va: VAddr) -> bool {
     let held = table.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
     let leaf = table.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
     &&& va_1g_valid(va)
@@ -136,7 +136,7 @@ pub open spec fn tlb_1g_entry_present_in_pagetable(entry: TLBEntry, table: Whole
 
 /// Every translation `tlb` caches is one `old_tlb` caches alike that a per-address flush of `count` pages from `va` does
 /// not drop, or a present leaf of `table`: the TLB of one `(cpu, pcid)` right after such a flush while it runs `table`.
-pub open spec fn single_tlb_va_range_flushed_kept_or_present(old_tlb: SingleTLB, tlb: SingleTLB, table: WholePageTable<PT_TYPE>, va: VAddr, count: usize, stride_2m: bool) -> bool {
+pub open spec fn single_tlb_va_range_flushed_kept_or_present(old_tlb: SingleTLB, tlb: SingleTLB, table: WholePageTable, va: VAddr, count: usize, stride_2m: bool) -> bool {
     &&& forall|x: VAddr| #![trigger tlb.tlb_4k().dom().contains(x)] #![trigger tlb.tlb_4k().spec_index(x)] tlb.tlb_4k().dom().contains(x)
         ==> (!va_range_flush_drops_4k(va, count, stride_2m, x) && old_tlb.tlb_4k().contains_pair(x, tlb.tlb_4k().spec_index(x))) || tlb_4k_entry_present_in_pagetable(tlb.tlb_4k().spec_index(x), table, x)
     &&& forall|x: VAddr| #![trigger tlb.tlb_2m().dom().contains(x)] #![trigger tlb.tlb_2m().spec_index(x)] tlb.tlb_2m().dom().contains(x)

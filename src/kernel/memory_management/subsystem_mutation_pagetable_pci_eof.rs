@@ -29,7 +29,7 @@ pub(super) open spec fn pagetable_map_update_pci_mapping_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for the big-lock payload: only the PCI function array changed, and it stays well
 /// formed.
-proof fn pagetable_map_update_pci_mapping_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+proof fn pagetable_map_update_pci_mapping_eof_higher_inv(pre: PageTableHigher, post: PageTableHigher)
     requires
         pre.inv(),
         post == (PageTableHigher { pci: post.pci, ..pre }),
@@ -51,7 +51,7 @@ proof fn pagetable_map_update_pci_mapping_eof_higher_inv(pre: PageTableHigher<PT
 }
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for `wf_l4`: the root entries read as before.
-proof fn pagetable_map_update_pci_mapping_eof_wf_l4(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+proof fn pagetable_map_update_pci_mapping_eof_wf_l4(pre: PageTableHigher, post: PageTableHigher)
     requires
         pre.inv(),
         post == (PageTableHigher { pci: post.pci, ..pre }),
@@ -64,7 +64,7 @@ proof fn pagetable_map_update_pci_mapping_eof_wf_l4(pre: PageTableHigher<PT_TYPE
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for the root entries and the root and 1G walks, which do not read the PCI
 /// function array: each reads as before.
-proof fn pagetable_map_update_pci_mapping_eof_entries(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+proof fn pagetable_map_update_pci_mapping_eof_entries(pre: PageTableHigher, post: PageTableHigher)
     requires
         post == (PageTableHigher { pci: post.pci, ..pre }),
     ensures
@@ -76,7 +76,7 @@ proof fn pagetable_map_update_pci_mapping_eof_entries(pre: PageTableHigher<PT_TY
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for the table itself: no table invariant other than the payload's reads the PCI
 /// function array.
-proof fn pagetable_map_update_pci_mapping_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn pagetable_map_update_pci_mapping_eof_table_wf(pre: WholePageTable, post: WholePageTable)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
@@ -102,7 +102,7 @@ proof fn pagetable_map_update_pci_mapping_eof_table_wf(pre: WholePageTable<PT_TY
 }
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for `wf_mapping_4k`: the leaves and mappings are unchanged.
-proof fn pagetable_map_update_pci_mapping_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn pagetable_map_update_pci_mapping_eof_wf_mapping_4k(pre: WholePageTable, post: WholePageTable)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
@@ -116,7 +116,7 @@ proof fn pagetable_map_update_pci_mapping_eof_wf_mapping_4k(pre: WholePageTable<
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for the 4K walks, which do not read the PCI function array: each resolves as
 /// before.
-proof fn pagetable_map_update_pci_mapping_eof_resolve_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn pagetable_map_update_pci_mapping_eof_resolve_4k(pre: WholePageTable, post: WholePageTable)
     requires
         post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
         post.lower == pre.lower,
@@ -128,7 +128,7 @@ proof fn pagetable_map_update_pci_mapping_eof_resolve_4k(pre: WholePageTable<PT_
 
 /// EOF closure of `pagetable_map_update_pci_mapping` for the 2M walks, which do not read the PCI function array: each resolves as
 /// before.
-proof fn pagetable_map_update_pci_mapping_eof_resolve_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn pagetable_map_update_pci_mapping_eof_resolve_2m(pre: WholePageTable, post: WholePageTable)
     requires
         post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
         post.lower == pre.lower,

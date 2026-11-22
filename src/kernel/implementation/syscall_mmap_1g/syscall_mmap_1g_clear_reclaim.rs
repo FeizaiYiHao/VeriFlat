@@ -14,7 +14,7 @@ verus! {
 /// the table differs from it only in its stale-CPU set.
 pub(super) fn mmap_1g_reclaim_range(
     krnl: &mut KernelK, range: &VaRange1G, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, Ghost(prc_ptr): Ghost<RwLockProcessPtr>,
-    Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(start): Ghost<int>, Ghost(hc): Ghost<WholePageTable<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>,
+    Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(start): Ghost<int>, Ghost(hc): Ghost<WholePageTable>, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(steps): Tracked<&mut KernelSteps>, pagetable_perm: Tracked<&LockPerm>,
 )
     requires

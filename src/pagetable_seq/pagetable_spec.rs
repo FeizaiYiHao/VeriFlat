@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use core::marker::ConstParamTy;
 verus! {
 use crate::*;
 use vstd::simple_pptr::*;
@@ -8,11 +7,11 @@ use super::entry::*;
 use super::pagemap::*;
 
 /// Mapping keys are CPU user virtual addresses.
-pub open spec fn page_table_key_4k_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool { va_4k_valid(addr) }
+pub open spec fn page_table_key_4k_valid(addr: usize) -> bool { va_4k_valid(addr) }
 
-pub open spec fn page_table_key_2m_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool { va_2m_valid(addr) }
+pub open spec fn page_table_key_2m_valid(addr: usize) -> bool { va_2m_valid(addr) }
 
-pub open spec fn page_table_key_1g_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool { va_1g_valid(addr) }
+pub open spec fn page_table_key_1g_valid(addr: usize) -> bool { va_1g_valid(addr) }
 
 /// mapping_xx is the abstract mappings of each page size.
 /// if an entry exists in mapping_xx.dom(), the entry is visible to the kernel at least.
@@ -25,7 +24,7 @@ pub open spec fn page_table_key_1g_valid<const TABLE_TYPE: PTType>(addr: usize) 
 /// need representation visibility. They are not an executable mutation API;
 /// published writes must use the phase-checked PageTable operations. A future
 /// opaque-view/typestate split is needed before Rust privacy can enforce this.
-pub struct PageTable<const TABLE_TYPE: PTType> {
+pub struct PageTable {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
     pub kernel_l4_end: usize,
@@ -88,7 +87,7 @@ pub open spec fn pagetable_window_locks_after_new_l2_page(m: Map<WindowVa, LockS
         |w: WindowVa| if m.dom().contains(w) { m[w] } else if va_range_2m_windows(locked_range).contains(w) { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked })
 }
 
-impl PageTable<PT_TYPE> {
+impl PageTable {
     pub fn new(pcid: Option<Pcid>, kernel_entries_ghost: Ghost<Seq<PageEntry>>, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, mem_end_l4_index: usize, proc_ptr: RwLockProcessPtr) -> (ret: Self)
         requires
             pei_valid(mem_end_l4_index),
@@ -508,17 +507,17 @@ impl PageTable<PT_TYPE> {
             #![trigger self.mapping_4k.view().dom().contains(va), page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
             #![trigger self.mapping_4k.view().dom().contains(va)]
             #![trigger page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
-            self.mapping_4k.view().dom().contains(va) ==> page_table_key_4k_valid::<PT_TYPE>(va) && mapping_4k_target_valid(self.mapping_4k.view().spec_index(va).addr, self.mapping_4k.view().spec_index(va).is_io)
+            self.mapping_4k.view().dom().contains(va) ==> page_table_key_4k_valid(va) && mapping_4k_target_valid(self.mapping_4k.view().spec_index(va).addr, self.mapping_4k.view().spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.mapping_2m.view().dom().contains(va)]
             #![trigger self.mapping_2m.view().dom().contains(va), page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)]
             #![trigger self.mapping_2m.view().dom().contains(va)]
-            self.mapping_2m.view().dom().contains(va) ==> page_table_key_2m_valid::<PT_TYPE>(va) && mapping_2m_target_valid(self.mapping_2m.view().spec_index(va).addr, self.mapping_2m.view().spec_index(va).is_io)
+            self.mapping_2m.view().dom().contains(va) ==> page_table_key_2m_valid(va) && mapping_2m_target_valid(self.mapping_2m.view().spec_index(va).addr, self.mapping_2m.view().spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<PT_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
+            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.
@@ -643,13 +642,13 @@ impl PageTable<PT_TYPE> {
     }
 }
 
-impl LockInvTrait for PageTable<PT_TYPE> {
+impl LockInvTrait for PageTable {
     /// The page-table invariant `wf`.
     open spec fn inv(&self) -> bool {
         &&& self.wf()
     }
 }
-impl LockMajorTrait for PageTable<PT_TYPE> {
+impl LockMajorTrait for PageTable {
     open spec fn lock_major_1(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_2(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 0x233 }
@@ -664,7 +663,7 @@ impl LockMajorTrait for PageTable<PT_TYPE> {
     open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
-impl LockOwnerIdTrait for PageTable<PT_TYPE> {
+impl LockOwnerIdTrait for PageTable {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::none() }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::none() }
 }

@@ -4,17 +4,17 @@ use crate::*;
 use vstd::simple_pptr::*;
 use super::pagetable_concurrent_lock_eof::*;
 
-impl PageTableHigher<PT_TYPE> {
+impl PageTableHigher {
     /// Take the lock of 2M window `(l4i, l3i, l2i)` of the table whose big lock lives at `root`; the spin lock waits
     /// out any other holder.
-    pub fn lock_window(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, Ghost(root): Ghost<RwLockPageTableRoot>, l4i: L4Index, l3i: L3Index, l2i: L2Index,
+    pub fn lock_window(&self, Tracked(lower): Tracked<&mut PageTableLower>, Ghost(root): Ghost<RwLockPageTableRoot>, l4i: L4Index, l3i: L3Index, l2i: L2Index,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
-            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((l4i, l3i, l2i, 0))),
+            page_table_key_2m_valid(spec_index2va((l4i, l3i, l2i, 0))),
             (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(l4i, l3i),
             !(WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, old(lctx).thread_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -44,7 +44,7 @@ impl PageTableHigher<PT_TYPE> {
                     (WholePageTable { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4, l3, l2, t) ==
                     if l4 == l4i && l3 == l3i && l2 == l2i { t == final(lctx).thread_id() } else { (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4, l3, l2, t) },
             forall|w: WindowVa| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w)]
-                page_table_key_2m_valid::<PT_TYPE>(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                page_table_key_2m_valid(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                     && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w) == (WholePageTable { higher: *self, lower: *old(lower) }).window_view(w),
     {
         let ghost pre = WholePageTable { higher: *self, lower: *lower };
@@ -70,7 +70,7 @@ impl PageTableHigher<PT_TYPE> {
     }
 
     /// Release the lock of 2M window `(l4i, l3i, l2i)` of the table whose big lock lives at `root`.
-    pub fn unlock_window(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, Ghost(root): Ghost<RwLockPageTableRoot>, l4i: L4Index, l3i: L3Index, l2i: L2Index,
+    pub fn unlock_window(&self, Tracked(lower): Tracked<&mut PageTableLower>, Ghost(root): Ghost<RwLockPageTableRoot>, l4i: L4Index, l3i: L3Index, l2i: L2Index,
         Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -103,7 +103,7 @@ impl PageTableHigher<PT_TYPE> {
                 self.kernel_l4_end <= l4 && pei_valid(l4) && pei_valid(l3) && pei_valid(l2) ==>
                     (WholePageTable { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4, l3, l2, t) == (!(l4 == l4i && l3 == l3i && l2 == l2i) && (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4, l3, l2, t)),
             forall|w: WindowVa| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w)]
-                page_table_key_2m_valid::<PT_TYPE>(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                page_table_key_2m_valid(w.va) && self.kernel_l4_end <= spec_v2l4index(w.va) && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                     && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w) == (WholePageTable { higher: *self, lower: *old(lower) }).window_view(w),
     {
         let ghost pre = WholePageTable { higher: *self, lower: *lower };

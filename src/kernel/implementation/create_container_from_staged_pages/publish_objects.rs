@@ -190,8 +190,8 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let (l4_ptr, Tracked(mut l4_perm)) = page_perm_to_page_map(l4_page, Tracked(l4_page_perm));
     default_pt.copy_kernel_entries_to_unpublished_root(l4_ptr, Tracked(&mut l4_perm));
     proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { default_pt.kernel_entries_wf_len_at(); }; }
-    let pagetable_higher = PageTableHigher::<PT_TYPE>::new(Some(root_pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, child_prc_ptr);
-    let tracked pagetable_lower = PageTableLower::<PT_TYPE>::tracked_empty(pagetable_higher);
+    let pagetable_higher = PageTableHigher::new(Some(root_pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, child_prc_ptr);
+    let tracked pagetable_lower = PageTableLower::tracked_empty(pagetable_higher);
     let Tracked(pagetable_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, child_pagetable_ptr, Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE }, Ghost(l4_page_locks), Tracked(&*lctx), Tracked(pagetable_page_lock_perm));
     let ghost pagetable_page_locks = l4_page_locks.insert(pagetable_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pagetable_index), mode: TypedLockMode::Write });
     let Tracked(child_pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(child_pagetable_ptr, pagetable_higher, Tracked(pagetable_lower), Tracked(pagetable_perm), Tracked(&mut *lctx));

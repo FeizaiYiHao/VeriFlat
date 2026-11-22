@@ -94,7 +94,7 @@ pub open spec fn boot_dom0_pagetable_model(
     raw_cr3: PageTableRoot, prc_ptr: RwLockProcessPtr, kernel_l4_end: usize, kernel_entries: Seq<PageEntry>,
     manifest_4k: Map<VAddr, MapEntry>, l4_tables: Map<PageMapPtr, PointsTo<PageMap>>, l3_tables: Map<PageMapPtr, PointsTo<PageMap>>,
     l2_tables: Map<PageMapPtr, PointsTo<PageMap>>, l1_tables: Map<PageMapPtr, PointsTo<PageMap>>, rev_maps: BootRevMaps,
-) -> PageTable<PT_TYPE> {
+) -> PageTable {
     PageTable {
         cr3: raw_cr3, pcid: Some(1), kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.1), l2_tables: Tracked(l2_tables), l1_rev_map: Ghost(rev_maps.2), l1_tables: Tracked(l1_tables),
@@ -269,7 +269,7 @@ pub fn adopt_boot_dom0_pagetable(
     kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, root_container: RwLockContainerPtr, rev_maps: Ghost<BootRevMaps>,
     Tracked(l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l1_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
-) -> (ret: (PageTableHigher<PT_TYPE>, Tracked<PageTableLower<PT_TYPE>>))
+) -> (ret: (PageTableHigher, Tracked<PageTableLower>))
     requires
         page_ptr_valid(pagetable_ptr),
         page_ptr_valid(prc_ptr),
@@ -325,7 +325,7 @@ pub fn adopt_boot_dom0_pagetable(
     (higher, Tracked::assume_new())
 }
 
-pub open spec fn boot_default_pagetable_ready(default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, kernel_l4_end: usize) -> bool {
+pub open spec fn boot_default_pagetable_ready(default_pagetable: ReadOnlyNode<PageTable>, kernel_l4_end: usize) -> bool {
     &&& default_pagetable.view().wf()
     &&& default_pagetable.view().pcid_value() == KERNEL_DEFAULT_PCID
     &&& default_pagetable.view().is_empty()
@@ -617,7 +617,7 @@ proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, 
 /// Operation summary of `finish_init_from_boot`: every field of the kernel object it assembles.
 pub open spec fn boot_kernel_state(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    pg_arr: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    pg_arr: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -975,7 +975,7 @@ pub open spec fn boot_kernel_state(
 
 pub fn finish_init_from_boot(
     layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: &Registers, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray,
-    cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, cpu_array: CpuLockedArray, cpu_tlb: CpuTLB, iommu_tlb: IommuTLB,
+    cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable>, cpu_array: CpuLockedArray, cpu_tlb: CpuTLB, iommu_tlb: IommuTLB,
     free_4k_pool: LinkedList<PagePtr, 233>,
     free_2m_pool: LinkedList<PagePtr, 233>, free_1g_pool: LinkedList<PagePtr, 233>,
     kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, pci_bars: &'static PciBarTable, owned_pages: Ghost<Set<PagePtr>>,
@@ -1194,7 +1194,7 @@ pub fn finish_init_from_boot(
     let cpu_offline_flags = CpuOfflineFlags::new_empty(Ghost(layout.root_container), Ghost(0usize), Ghost(cpu_offline_flags_ptr(layout.root_container)));
     cpu_offline_mp.retype_container_page_tail_and_insert(&ctn_mp, layout.root_container, cpu_offline_flags, Tracked(container_tail_perm), Tracked(&boot_lctx));
 
-    let tracked mut pt_lower = Map::<RwLockPageTableRoot, PageTableLower<PT_TYPE>>::tracked_empty();
+    let tracked mut pt_lower = Map::<RwLockPageTableRoot, PageTableLower>::tracked_empty();
     proof { pt_lower.tracked_insert(layout.cpu_pagetable, cpu_pagetable_lower); }
     let dflt_pt = default_pagetable_cell_init(default_pagetable);
     let krnl = KernelK {

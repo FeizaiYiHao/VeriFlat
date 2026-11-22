@@ -4,7 +4,7 @@ verus! {
 use crate::*;
 
 /// Tables with equal upper half and L2 pages, which own the L1 pages, resolve every L2, 2M, and 4K entry alike.
-pub proof fn resolve_mappings_eq_for_higher_and_lower_tables_eq(old: WholePageTable<PT_TYPE>, new: WholePageTable<PT_TYPE>)
+pub proof fn resolve_mappings_eq_for_higher_and_lower_tables_eq(old: WholePageTable, new: WholePageTable)
     requires
         new.higher == old.higher,
         new.lower.l2_perms == old.lower.l2_perms,
@@ -16,7 +16,7 @@ pub proof fn resolve_mappings_eq_for_higher_and_lower_tables_eq(old: WholePageTa
             new.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == old.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
 {}
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// `scan` names a table page of the held chain that the matching unlink can take out, post-order, or reports that no user
     /// root entry holds an L3 page. The scan runs only over a table whose user root entries no longer resolve.
     pub open spec fn structure_scan_wf(&self, scan: StructureScan) -> bool {
@@ -86,12 +86,12 @@ impl WholePageTable<PT_TYPE> {
     }
 }
 
-impl PageTableHigher<PT_TYPE> {
+impl PageTableHigher {
     /// Find the first table page of the held chain that can be unlinked, post-order in index order: an L1 page, else an L2 page
     /// that holds no L1 page, else an L3 page that holds no L2 page, else report that only the root is left. Every user root entry
     /// no longer resolves, no window is locked, and no hidden L1 page sits outside a locked window, so each L2 word tells whether
     /// it holds an L1 page.
-    pub fn next_structure_page(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>) -> (ret: StructureScan)
+    pub fn next_structure_page(&self, Tracked(lower): Tracked<&PageTableLower>) -> (ret: StructureScan)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             forall|l4i: L4Index| #![trigger self.spec_resolve_mapping_l4(l4i)] self.kernel_l4_end <= l4i && pei_valid(l4i) ==> self.spec_resolve_mapping_l4(l4i) is None,
@@ -126,7 +126,7 @@ impl PageTableHigher<PT_TYPE> {
     /// Unlink the table page that `scan` names and return its memory; every mapping stays. The scan runs over a table whose user
     /// root entries no longer resolve, so no window exists: an L1 page leaves by clearing its unlocked L2 entry, which no CPU still
     /// lists as caching the window; an L2 page is freed whole; an L3 page carries no window lock. `window_perm` is unused.
-    pub fn remove_structure_page(&mut self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, scan: StructureScan, cpu_tlb: &CpuTLB, cpu_arr: &CpuLockedArray,
+    pub fn remove_structure_page(&mut self, Tracked(lower): Tracked<&mut PageTableLower>, scan: StructureScan, cpu_tlb: &CpuTLB, cpu_arr: &CpuLockedArray,
         needflush: &PcidNeedFlushArray, Tracked(_window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PagePerm4k>)
         requires
             (WholePageTable { higher: *old(self), lower: *old(lower) }).wf(),
@@ -196,7 +196,7 @@ impl PageTableHigher<PT_TYPE> {
         }
     }
 
-    fn scan_l3_table(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l4_entry: &PageEntry) -> (ret: StructureScan)
+    fn scan_l3_table(&self, Tracked(lower): Tracked<&PageTableLower>, l4i: L4Index, l4_entry: &PageEntry) -> (ret: StructureScan)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
@@ -232,7 +232,7 @@ impl PageTableHigher<PT_TYPE> {
         StructureScan::L3 { l4i, l3_p: l4_entry.addr }
     }
 
-    fn scan_l2_table(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l4_entry: &PageEntry, l3_entry: &PageEntry) -> (ret: StructureScan)
+    fn scan_l2_table(&self, Tracked(lower): Tracked<&PageTableLower>, l4i: L4Index, l3i: L3Index, l4_entry: &PageEntry, l3_entry: &PageEntry) -> (ret: StructureScan)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),

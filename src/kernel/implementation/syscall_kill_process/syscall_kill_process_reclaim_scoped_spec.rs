@@ -21,6 +21,7 @@ pub(crate) open spec fn kill_reclaim_held_4k_page_scoped_eof_transition_framing(
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable))
     &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r)]
         pre.pt_mp.dom().contains(r) && r != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
@@ -236,6 +237,12 @@ pub(crate) open spec fn kill_retire_table_page_scoped_eof_transition_framing(
     let new_allocator = post.allc_4k_mp.spec_index(allc_ptr);
     let free_state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> {
+        &&& post.pt_mp.spec_index(r).view().higher.cr3 == pre.pt_mp.spec_index(r).view().higher.cr3
+        &&& post.pt_mp.spec_index(r).view().higher.pcid == pre.pt_mp.spec_index(r).view().higher.pcid
+        &&& post.pt_mp.spec_index(r).view().higher.proc_ptr == pre.pt_mp.spec_index(r).view().higher.proc_ptr
+        &&& post.pt_mp.spec_index(r).view().higher.pci == pre.pt_mp.spec_index(r).view().higher.pci
+    }
     &&& if iommu {
         let old_table = pre.it_mp.spec_index(table);
         let new_table = post.it_mp.spec_index(table);

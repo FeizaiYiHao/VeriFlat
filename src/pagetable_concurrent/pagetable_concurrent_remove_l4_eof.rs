@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `remove_l4_entry`: the root map's entry `target_l4i` is cleared and the L3 page
     /// `target_l3_p` leaves the L3 pages and their reverse index; the window half and every other field are unchanged.
     #[verifier::opaque]

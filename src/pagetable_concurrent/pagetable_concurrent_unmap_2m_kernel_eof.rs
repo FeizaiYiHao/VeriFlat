@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `unmap_2m_page_kernel`: entry `target_l2i` of the L2 page `target_l2_p` is cleared and the 2M
     /// mapping of its address is removed; the big-lock payload and every other window-half field are unchanged.
     #[verifier::opaque]

@@ -31,7 +31,7 @@ pub fn pagetable_map_insert_4k(
         pei_valid(indices.1),
         pei_valid(indices.2),
         pei_valid(indices.3),
-        page_table_key_4k_valid::<PT_TYPE>(spec_index2va(indices)),
+        page_table_key_4k_valid(spec_index2va(indices)),
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
             == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
@@ -131,7 +131,7 @@ pub fn pagetable_map_insert_2m(
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).kernel_l4_end() <= indices.0 && pei_valid(indices.0),
         pei_valid(indices.1),
         pei_valid(indices.2),
-        page_table_key_2m_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, indices.2, 0))),
+        page_table_key_2m_valid(spec_index2va((indices.0, indices.1, indices.2, 0))),
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
         whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(whole_pagetable(*pagetable_map, *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
             == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
@@ -230,7 +230,7 @@ pub fn pagetable_map_insert_4k_wlocked(
         pei_valid(indices.1),
         pei_valid(indices.2),
         pei_valid(indices.3),
-        page_table_key_4k_valid::<PT_TYPE>(spec_index2va(indices)),
+        page_table_key_4k_valid(spec_index2va(indices)),
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
             == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
@@ -344,7 +344,7 @@ pub fn pagetable_map_insert_2m_wlocked(
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end() <= indices.0 && pei_valid(indices.0),
         pei_valid(indices.1),
         pei_valid(indices.2),
-        page_table_key_2m_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, indices.2, 0))),
+        page_table_key_2m_valid(spec_index2va((indices.0, indices.1, indices.2, 0))),
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
         whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
             == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
@@ -2832,7 +2832,7 @@ pub fn pagetable_map_insert_1g(
             || !whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0))),
         !whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).page_closure().contains(target_entry.addr),
         page_ptr_1g_valid(target_entry.addr),
-        page_table_key_1g_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, 0, 0))),
+        page_table_key_1g_valid(spec_index2va((indices.0, indices.1, 0, 0))),
         target_entry.present,
         !target_entry.is_io,
     ensures

@@ -16,7 +16,7 @@ use super::pagetable_util_t_eof::*;
 /// object.
 #[verifier::external_body]
 pub fn retype_pagetable_rwlock_to_4k_page_perms(
-    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<LockObjPerm<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>,
+    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<LockObjPerm<PageTableBigLocked, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires
@@ -87,7 +87,7 @@ pub fn retype_iommu_table_rwlock_to_4k_page_perms(
 impl KernelK {
     /// Publish a fresh, empty page table: retype `pg_ptr` into the write-held big lock around `higher`, insert it into
     /// `pt_mp`, and file its window half `lower` under the same root in `pt_lower`.
-    pub fn retype_page_to_pagetable_and_insert(&mut self, pg_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>, Tracked(lower): Tracked<PageTableLower<PT_TYPE>>,
+    pub fn retype_page_to_pagetable_and_insert(&mut self, pg_ptr: PagePtr, higher: PageTableHigher, Tracked(lower): Tracked<PageTableLower>,
         Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).pt_mp.perms_wf(),

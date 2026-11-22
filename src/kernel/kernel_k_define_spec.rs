@@ -5,8 +5,8 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
-pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
-pub type PageTableLowerMap = Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>;
+pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableBigLocked, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
+pub type PageTableLowerMap = Map<RwLockPageTableRoot, PageTableLower>;
 pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>;
 pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE, TokenCells<Page, (), (), NUM_PAGES, NO_KILL_STATE>>;
 pub type CpuLockedArray = LockedArray<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE, TokenCells<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE>>;
@@ -16,7 +16,7 @@ pub type PcidAllocatorLockedMap = LockedMap<RwLockPcidAllocatorPtr, PcidAllocato
 pub type EndpointLockedMap = LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
 pub type PageAllocatorUnLockedMap<const SIZE: usize> = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator<SIZE>>;
 pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
-pub type PageTableRwLock = LockCell<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
+pub type PageTableRwLock = LockCell<PageTableBigLocked, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
 pub type IommuTableRwLock = LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>;
 pub type CpuSetRwLock = LockCell<CpuSet, (), (), CPU_SET_HAS_KILL_STATE, PerCpuReaderSlots>;
 pub type PcidAllocatorRwLock = LockCell<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
@@ -62,7 +62,7 @@ pub struct KernelK{
 
     pub rt_ctn: RwLockContainerPtr, // Never dies
 
-    pub dflt_pt: &'static ReadOnlyNode<PageTable<PT_TYPE>>, // Read only, in its own static cell
+    pub dflt_pt: &'static ReadOnlyNode<PageTable>, // Read only, in its own static cell
 
     pub pci_bars: &'static PciBarTable, // Read only, in the boot glue's static cell
 }

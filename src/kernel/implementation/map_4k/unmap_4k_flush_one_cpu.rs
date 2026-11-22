@@ -391,7 +391,7 @@ fn flush_pcid_and_drop_stale_cpu<const WRITE: bool>(krnl: &mut KernelK, pagetabl
 
 /// A table that differs from `pre` only in its table and window stale-CPU records keeps every cached translation that
 /// `pre` holds present.
-proof fn stale_cpus_only_change_implies_present_tlb_subset_kept(tlb: SingleTLB, pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn stale_cpus_only_change_implies_present_tlb_subset_kept(tlb: SingleTLB, pre: WholePageTable, post: WholePageTable)
     requires
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
         post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),
@@ -400,7 +400,7 @@ proof fn stale_cpus_only_change_implies_present_tlb_subset_kept(tlb: SingleTLB, 
 
 /// A table that differs from `pre` only in its table and window stale-CPU records keeps every paging-structure entry that
 /// `pre` holds present.
-proof fn stale_cpus_only_change_implies_present_structure_cache_subset_kept(cache: PagingStructureCache, pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn stale_cpus_only_change_implies_present_structure_cache_subset_kept(cache: PagingStructureCache, pre: WholePageTable, post: WholePageTable)
     requires
         post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
         post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),

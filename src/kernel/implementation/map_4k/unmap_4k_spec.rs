@@ -18,7 +18,7 @@ pub const THREAD_QUOTA_1G_REFUND_CAP: usize = 1;
 
 /// Every leaf of `table` the user cannot see in a window of `pagetable` that `window_lock_map` holds lies in a per-address
 /// flush of `count` pages from `va`, 4K or 2M apart by `stride_2m`, and no such window's L2 entry hides its L1 page.
-pub open spec fn held_windows_hidden_leaves_va_flushed(table: WholePageTable<PT_TYPE>, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable: RwLockPageTableRoot,
+pub open spec fn held_windows_hidden_leaves_va_flushed(table: WholePageTable, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable: RwLockPageTableRoot,
     va: VAddr, count: usize, stride_2m: bool) -> bool
 {
     &&& forall|w: WindowVa| #![trigger window_lock_map.dom().contains((pagetable, w))] window_lock_map.dom().contains((pagetable, w)) ==> {

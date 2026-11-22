@@ -4,10 +4,10 @@ use crate::*;
 use vstd::simple_pptr::*;
 use super::l2_page_map::*;
 
-impl PageTableHigher<PT_TYPE> {
+impl PageTableHigher {
     /// Link the empty L3 page `page_map_ptr` into root entry `target_l4i`. Writes only the big-lock payload, so the
     /// caller holds the big lock in write mode.
-    pub fn create_entry_l4(&mut self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, page_map_ptr: PageMapPtr,
+    pub fn create_entry_l4(&mut self, Tracked(lower): Tracked<&PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, page_map_ptr: PageMapPtr,
         Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *old(self), lower: *lower }).wf(),
@@ -80,7 +80,7 @@ impl PageTableHigher<PT_TYPE> {
     /// Retype the free page `page_map_ptr` into an empty L2 page and link it into L3 entry `target_l3i` of `target_l3_p`. Writes the
     /// big-lock payload, so the caller holds the big lock in write mode. Windows `lo..=hi` of the new page start locked by this thread
     /// and their lock perms are returned; the other new windows start unlocked.
-    pub fn create_entry_l3(&mut self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn create_entry_l3(&mut self, Tracked(lower): Tracked<&mut PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_perm): Tracked<PagePerm4k>, lo: L2Index, hi: L2Index, Ghost(root): Ghost<RwLockPageTableRoot>,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<Map<L2Index, LockPerm>>)
         requires
@@ -251,7 +251,7 @@ impl PageTableHigher<PT_TYPE> {
 
     /// Link the empty L1 page `page_map_ptr` into window `target_l2i` of L2 page `target_l2_p`. The entry is the window's spin lock
     /// word, so this thread must hold that window lock; the published word keeps the lock bit. The big-lock payload is unchanged.
-    pub fn create_entry_l2(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+    pub fn create_entry_l2(&self, Tracked(lower): Tracked<&mut PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
         target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(window_perm): Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>)
         requires

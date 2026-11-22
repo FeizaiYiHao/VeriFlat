@@ -44,6 +44,8 @@ pub(super) open spec fn create_endpoint_from_staged_page_eof_transition_framing(
     &&& post_staging.view_ghost() == pre_staging.view_ghost()
     &&& post.ep_mp.dom() == pre.ep_mp.dom().insert(pg_ptr)
     &&& forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e)] pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e) == pre.ep_mp.spec_index(e)
+    &&& forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e).view().owning_threads.view()]
+        pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e).view().owning_threads.view() == pre.ep_mp.spec_index(e).view().owning_threads.view()
     &&& endpoint.is_init()
     &&& !endpoint.being_killed()
     &&& endpoint.view().queue.view() == Seq::<RwLockThreadPtr>::empty()

@@ -3,7 +3,7 @@ use crate::*;
 verus! {
 /// Every cpu lock is well formed, and a cpu without a current page table runs the kernel cr3 with the kernel PCID.
 #[verifier::opaque]
-pub open spec fn cpu_array_wf(cpu_arr: CpuLockedArray, dflt_pt: PageTable<PT_TYPE>) -> bool {
+pub open spec fn cpu_array_wf(cpu_arr: CpuLockedArray, dflt_pt: PageTable) -> bool {
     &&& cpu_arr.inv()
     &&& forall|cpu_id: CpuId|
         #![trigger cpu_arr.spec_index(cpu_id)]
@@ -15,7 +15,7 @@ pub open spec fn cpu_array_wf(cpu_arr: CpuLockedArray, dflt_pt: PageTable<PT_TYP
 }
 
 /// Cpu `cpu_id`'s lock is well formed, and without a current page table the cpu runs the kernel cr3 with the kernel PCID.
-pub proof fn cpu_array_wf_at(cpu_arr: CpuLockedArray, dflt_pt: PageTable<PT_TYPE>, cpu_id: CpuId)
+pub proof fn cpu_array_wf_at(cpu_arr: CpuLockedArray, dflt_pt: PageTable, cpu_id: CpuId)
     requires
         cpu_array_wf(cpu_arr, dflt_pt),
         index_valid(NUM_CPUS, cpu_id),
@@ -27,14 +27,14 @@ pub proof fn cpu_array_wf_at(cpu_arr: CpuLockedArray, dflt_pt: PageTable<PT_TYPE
         }),
 { reveal(cpu_array_wf); }
 
-pub proof fn cpu_array_wf_implies_array_inv(cpu_arr: CpuLockedArray, dflt_pt: PageTable<PT_TYPE>)
+pub proof fn cpu_array_wf_implies_array_inv(cpu_arr: CpuLockedArray, dflt_pt: PageTable)
     requires cpu_array_wf(cpu_arr, dflt_pt)
     ensures cpu_arr.inv()
 { reveal(cpu_array_wf); }
 
 /// Point fact at one cpu: when cpu `cpu_id` runs `pcid` and its dirty bitmap maps `pcid` to `pt_ptr`, it runs that page
 /// table's process with the table's cr3.
-pub proof fn cpu_current_pcid_pagetable_match_at(cpu_arr: CpuLockedArray, dflt_pt: PageTable<PT_TYPE>, prc_mp: ProcessLockedMap,
+pub proof fn cpu_current_pcid_pagetable_match_at(cpu_arr: CpuLockedArray, dflt_pt: PageTable, prc_mp: ProcessLockedMap,
     pt_mp: PageTableLockedMap, cpu_id: CpuId, pcid: Pcid, pt_ptr: RwLockPageTableRoot)
     requires
         cpu_array_wf(cpu_arr, dflt_pt),

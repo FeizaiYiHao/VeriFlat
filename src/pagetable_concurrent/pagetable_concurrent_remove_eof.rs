@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `remove_l2_entry`: entry `target_l2i` of the L2 page `target_l2_p` is cleared and the
     /// L1 page `target_l1_p` leaves the L1 pages and their reverse index; every other field is unchanged.
     #[verifier::opaque]

@@ -3,10 +3,10 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 
-impl PageTableHigher<PT_TYPE> {
+impl PageTableHigher {
     /// Install a 4K leaf at entry `target_l1i` of the existing L1 page `target_l1_p`. The lower half changes only under its window
     /// lock, so this thread must hold the lock of window `(target_l4i, target_l3i, target_l2i)` that links `target_l1_p`.
-    pub fn map_4k_page(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
+    pub fn map_4k_page(&self, Tracked(lower): Tracked<&mut PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, target_entry: &MapEntry, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -14,7 +14,7 @@ impl PageTableHigher<PT_TYPE> {
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
-            page_table_key_4k_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            page_table_key_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None
@@ -91,7 +91,7 @@ impl PageTableHigher<PT_TYPE> {
 
     /// Install a 2M leaf at entry `target_l2i` of the L2 page `target_l2_p`. The entry is the window's spin lock word, so this
     /// thread must hold that window lock; the published word keeps the lock bit.
-    pub fn map_2m_page(&self, Tracked(lower): Tracked<&mut PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+    pub fn map_2m_page(&self, Tracked(lower): Tracked<&mut PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         target_entry: &MapEntry, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
@@ -105,7 +105,7 @@ impl PageTableHigher<PT_TYPE> {
                 || old(lower).mapping_2m.dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             (WholePageTable { higher: *self, lower: *old(lower) }).page_closure().contains(target_entry.addr) == false,
             mapping_2m_target_valid(target_entry.addr, target_entry.is_io),
-            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
+            page_table_key_2m_valid(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
             target_entry.present,
             (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
             old(lower).l2_owner(target_l2_p, target_l2i) == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
@@ -168,7 +168,7 @@ impl PageTableHigher<PT_TYPE> {
 
     /// Install a 1G leaf at the empty entry `target_l3i` of the L3 page `target_l3_p` that the present root entry `target_l4i` links.
     /// Writes only the big-lock payload, so the caller holds the big lock in write mode.
-    pub fn map_1g_page(&mut self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_entry: &MapEntry,
+    pub fn map_1g_page(&mut self, Tracked(lower): Tracked<&PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_entry: &MapEntry,
         Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (WholePageTable { higher: *old(self), lower: *lower }).wf(),
@@ -180,7 +180,7 @@ impl PageTableHigher<PT_TYPE> {
             old(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None || old(self).mapping_1g.view().dom().contains(spec_index2va((target_l4i, target_l3i, 0, 0))) == false,
             (WholePageTable { higher: *old(self), lower: *lower }).page_closure().contains(target_entry.addr) == false,
             page_ptr_1g_valid(target_entry.addr),
-            page_table_key_1g_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
+            page_table_key_1g_valid(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
             !target_entry.is_io,
             old(lctx).kernel_view_locking_state() is Acquire,

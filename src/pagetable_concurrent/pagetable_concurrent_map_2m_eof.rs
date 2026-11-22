@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `map_2m_page`: entry `target_l2i` of the L2 page `target_l2_p` now maps `target_entry` as a 2M
     /// page and the 2M mapping records it at that address; the big-lock payload and every other window-half field are unchanged.
     #[verifier::opaque]
@@ -36,7 +36,7 @@ impl WholePageTable<PT_TYPE> {
             pre.lower.l2_perms.dom().contains(target_l2_p),
             pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is None,
             mapping_2m_target_valid(target_entry.addr, target_entry.is_io),
-            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
+            page_table_key_2m_valid(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -68,7 +68,7 @@ impl WholePageTable<PT_TYPE> {
         requires
             pre.va_addr_valid(),
             mapping_2m_target_valid(target_entry.addr, target_entry.is_io),
-            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
+            page_table_key_2m_valid(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
             post.va_addr_valid(),

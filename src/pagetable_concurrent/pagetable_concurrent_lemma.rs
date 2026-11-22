@@ -14,7 +14,7 @@ pub proof fn in_range_implies_set_range_map_contains_image<B>(lo: usize, hi: usi
     Set::range(lo, hi).lemma_map_contains(f, f(i));
 }
 
-impl PageTableHigher<PT_TYPE> {
+impl PageTableHigher {
     pub proof fn wf_l4_cr3_at(&self)
         requires
             self.wf_l4(),
@@ -160,7 +160,7 @@ impl PageTableHigher<PT_TYPE> {
     }
 }
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     pub proof fn l3_links_l2_wf_at(&self, p: PageMapPtr, l3i: L3Index)
         requires
             self.l3_links_l2_wf(),
@@ -281,7 +281,7 @@ impl WholePageTable<PT_TYPE> {
             self.wf_window_locks(),
             self.lower.pagetable_window_locks.dom().contains(w),
         ensures
-            page_table_key_2m_valid::<PT_TYPE>(w.va),
+            page_table_key_2m_valid(w.va),
             self.kernel_l4_end() <= spec_v2l4index(w.va),
             self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)),
             self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
@@ -456,7 +456,7 @@ impl WholePageTable<PT_TYPE> {
     }
 }
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// Every linked 2M window of `range` has a window lock.
     pub proof fn range_windows_linked_implies_pagetable_range_windows_exist(&self, range: VaRange4K)
         requires

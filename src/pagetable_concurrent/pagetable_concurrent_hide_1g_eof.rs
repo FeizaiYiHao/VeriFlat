@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl WholePageTable<PT_TYPE> {
+impl WholePageTable {
     /// Operation-state summary of `hide_1g_leaf`: the 1G leaf in entry `target_l3i` of the L3 page `target_l3_p` has its user present bit clear and its `mapping_1g` record is no longer present; every other field is unchanged.
     #[verifier::opaque]
     pub open spec fn hide_1g_leaf_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr) -> bool {

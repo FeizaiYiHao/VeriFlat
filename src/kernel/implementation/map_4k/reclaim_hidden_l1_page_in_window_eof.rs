@@ -22,6 +22,8 @@ pub(super) open spec fn reclaim_hidden_l1_page_to_cache_eof_transition_framing(
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable))
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
+    &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r).higher.pci.view()]
+        pre.pt_mp.dom().contains(r) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r).higher.pci.view() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r).higher.pci.view()
     &&& new_c.page_closure() == old_c.page_closure().remove(l1_ptr)
     &&& new_c.mapping_4k() == old_c.mapping_4k()
     &&& new_c.mapping_2m() == old_c.mapping_2m()
