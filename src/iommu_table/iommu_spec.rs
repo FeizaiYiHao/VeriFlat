@@ -312,7 +312,7 @@ impl IommuTable {
             self.mapping_4k.view().dom().contains(va) ==> iova_4k_valid(va) && page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)
     }
 
-    /// Held leaves retain their frame, software XD, and historical write permission; present leaves also agree on hardware W.
+    /// Non-empty leaves retain their frame, software XD, and historical write permission; present leaves also agree on hardware W.
     #[verifier::opaque]
     pub open spec fn wf_mapping_4k(&self) -> bool {
         &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|

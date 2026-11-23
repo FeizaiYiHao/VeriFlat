@@ -27,7 +27,7 @@ pub proof fn kernel_pagetable_l3_windows_removed_implies_u_neq(pre: &KernelK, po
     old_c.higher.wf_l4_at(l4i);
     old_c.l3_links_l2_wf_at(old_c.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
     old_c.tables_reachable_wf_l2_at(p);
-    old_c.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
+    old_c.higher.disjoint_l4_l3_implies_nonempty_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
     old_c.wf_window_locks_l2_entry_at(p, 0usize);
     old_c.wf_window_locks_va_at(w);
     spec_va_2m_valid_index_roundtrip(w.va);

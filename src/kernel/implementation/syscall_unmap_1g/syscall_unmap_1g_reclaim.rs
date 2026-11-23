@@ -5,11 +5,11 @@ use super::syscall_unmap_1g_spec::*;
 use super::syscall_unmap_1g_trace::*;
 use super::syscall_unmap_1g_refund_to_thread::refund_unmap_1g_quota_to_thread;
 #[cfg(feature = "split-crates")]
-use veriflat_map_4k::map_4k::reclaim_held_1g_page::reclaim_held_1g_page;
+use veriflat_map_4k::map_4k::reclaim_nonempty_1g_page::reclaim_nonempty_1g_page;
 #[cfg(feature = "split-crates")]
 use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota;
 #[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::map_4k::reclaim_held_1g_page::reclaim_held_1g_page;
+use crate::kernel::implementation::map_4k::reclaim_nonempty_1g_page::reclaim_nonempty_1g_page;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota;
 
@@ -19,7 +19,7 @@ use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap
 use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap_1g_steps_from_k;
 verus! {
 /// After every page of `range` was hidden and flushed in the write-held page table `pagetable`: reclaim each page, which records no step, and refund the 1G quota the reclaims left pending on the thread. Steps recorded from `start` stay range steps; only the range's 1G leaves change. `hv`
-/// is the table record before the flush, whose held root and L3 entries resolve; the record differs from it only in its stale-CPU set, and reclaiming 1G leaves keeps every held root and L3 entry.
+/// is the table record before the flush, whose non-empty root and L3 entries resolve; the record differs from it only in its stale-CPU set, and reclaiming 1G leaves keeps every non-empty root and L3 entry.
 pub(super) fn unmap_1g_reclaim_range(
     krnl: &mut KernelK, range: &VaRange1G, pagetable: RwLockPageTableRoot, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, Ghost(start): Ghost<int>, Ghost(hv): Ghost<PageTableHigher>, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
@@ -57,9 +57,9 @@ pub(super) fn unmap_1g_reclaim_range(
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         old(krnl).pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..hv }),
-        forall|l4i: L4Index| #![trigger hv.spec_held_l4(l4i)] hv.kernel_l4_end <= l4i && pei_valid(l4i) && hv.spec_held_l4(l4i) is Some ==> hv.spec_resolve_mapping_l4(l4i) is Some,
-        forall|l4i: L4Index, l3i: L3Index| #![trigger hv.spec_held_l3(l4i, l3i)]
-            hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && hv.spec_held_l3(l4i, l3i) is Some ==> hv.spec_resolve_mapping_l3(l4i, l3i) is Some,
+        forall|l4i: L4Index| #![trigger hv.spec_nonempty_l4(l4i)] hv.kernel_l4_end <= l4i && pei_valid(l4i) && hv.spec_nonempty_l4(l4i) is Some ==> hv.spec_resolve_mapping_l4(l4i) is Some,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger hv.spec_nonempty_l3(l4i, l3i)]
+            hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && hv.spec_nonempty_l3(l4i, l3i) is Some ==> hv.spec_resolve_mapping_l3(l4i, l3i) is Some,
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_window_lock_map().dom().is_empty(),
@@ -105,11 +105,11 @@ pub(super) fn unmap_1g_reclaim_range(
         final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).leaves_present(),
-        forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-            final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+        forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i)]
+            final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i) is Some
             ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
-        forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
-            final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+        forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
+            final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i) is Some
             ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g().dom().contains(range.view()[j]),
 {
@@ -189,14 +189,14 @@ pub(super) fn unmap_1g_reclaim_range(
                 mapping_1g: krnl.pt_mp.spec_index(pagetable).view().higher.mapping_1g, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower == entry.lower,
             old(krnl).pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..hv }),
-            forall|l4i: L4Index| #![trigger hv.spec_held_l4(l4i)] hv.kernel_l4_end <= l4i && pei_valid(l4i) && hv.spec_held_l4(l4i) is Some ==> hv.spec_resolve_mapping_l4(l4i) is Some,
-            forall|l4i: L4Index, l3i: L3Index| #![trigger hv.spec_held_l3(l4i, l3i)]
-                hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && hv.spec_held_l3(l4i, l3i) is Some ==> hv.spec_resolve_mapping_l3(l4i, l3i) is Some,
-            forall|l4i: L4Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
+            forall|l4i: L4Index| #![trigger hv.spec_nonempty_l4(l4i)] hv.kernel_l4_end <= l4i && pei_valid(l4i) && hv.spec_nonempty_l4(l4i) is Some ==> hv.spec_resolve_mapping_l4(l4i) is Some,
+            forall|l4i: L4Index, l3i: L3Index| #![trigger hv.spec_nonempty_l3(l4i, l3i)]
+                hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && hv.spec_nonempty_l3(l4i, l3i) is Some ==> hv.spec_resolve_mapping_l3(l4i, l3i) is Some,
+            forall|l4i: L4Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i)]
                 hv.kernel_l4_end <= l4i && pei_valid(l4i)
-                    ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) == hv.spec_held_l4(l4i) && krnl.pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) == hv.spec_resolve_mapping_l4(l4i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
-                hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) == hv.spec_held_l3(l4i, l3i),
+                    ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i) == hv.spec_nonempty_l4(l4i) && krnl.pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) == hv.spec_resolve_mapping_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
+                hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> krnl.pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i) == hv.spec_nonempty_l3(l4i, l3i),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_window_lock_map().dom().is_empty(),
@@ -243,7 +243,7 @@ pub(super) fn unmap_1g_reclaim_range(
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == entry.mapping_4k() && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == entry.mapping_2m())
             by { assert(refund_lctx.pagetable_lock_map().dom().contains(pagetable)); };
     }
-    proof { broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq; }
+    proof { broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq; }
 }
 
 /// Reclaim the hidden, flushed 1G leaf `va` of the write-held page table `pagetable`: read the page it names, reclaim it, and close the unrecorded section, which leaves the user view unchanged.
@@ -320,8 +320,8 @@ fn unmap_1g_reclaim_leaf(
             &&& new_c.lower == old_c.lower
             &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g() == old_c.mapping_1g().remove(va)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_l3(l4i, l3i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_nonempty_l3(l4i, l3i) == old_c.spec_nonempty_l3(l4i, l3i)
         }),
 {
     let l4i = v2l4index(va);
@@ -338,12 +338,12 @@ fn unmap_1g_reclaim_leaf(
     let pg_ptr = l3_entry.addr;
     proof {
         let ghost c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        c.higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(l4i, l3i);
-        mapped_1g_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l4i, l3i);
+        c.higher.spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve(l4i, l3i);
+        mapped_1g_page_pagetable_wf_nonempty_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l4i, l3i);
         mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
         page_index_valid_imply_page_ptr_valid(); krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id());
     }
-    reclaim_held_1g_page(krnl, pagetable, va, pg_ptr, thrd_ptr, indirect, direct, Tracked(&mut *lctx), pagetable_perm, thread_perm);
+    reclaim_nonempty_1g_page(krnl, pagetable, va, pg_ptr, thrd_ptr, indirect, direct, Tracked(&mut *lctx), pagetable_perm, thread_perm);
     proof {
         kernel_restored_locks_implies_u_eq(&steps.snapshot_k(), &*krnl, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable));
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);

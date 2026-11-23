@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// The paging-structure invariant carries over an operation that keeps the paging-structure caches, every CPU's dirty
-/// records and current PCID, the flush marks, and in every page table the big-lock payload, the L2 entries, the held L2
+/// records and current PCID, the flush marks, and in every page table the big-lock payload, the L2 entries, the non-empty L2
 /// entries of user paths, and the window stale-CPU records.
 pub proof fn structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre: KernelK, post: KernelK)
     requires
@@ -21,8 +21,8 @@ pub proof fn structure_caches_dirty_maps_and_table_structures_unchanged_implies_
             &&& after.higher == before.higher
             &&& after.lower.window_stale_cpus == before.lower.window_stale_cpus
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger after.lower.l2_entry(p, i)] after.lower.l2_entry(p, i) == before.lower.l2_entry(p, i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after.spec_held_l2(l4i, l3i, l2i)]
-                before.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> after.spec_held_l2(l4i, l3i, l2i) == before.spec_held_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after.spec_nonempty_l2(l4i, l3i, l2i)]
+                before.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> after.spec_nonempty_l2(l4i, l3i, l2i) == before.spec_nonempty_l2(l4i, l3i, l2i)
         },
     ensures structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 { reveal(structure_cache_wf); }

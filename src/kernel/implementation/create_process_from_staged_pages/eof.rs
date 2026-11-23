@@ -260,17 +260,17 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     }
 }
 
-/// The new table is empty: no user root entry is held, so no L3 entry is held and no window is locked.
+/// The new table is empty: no user root entry is non-empty, so no L3 entry is non-empty and no window is locked.
 proof fn create_process_from_staged_pages_eof_new_table_empty(post: KernelK, pagetable_pg_ptr: PagePtr)
     requires
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_pg_ptr).wf(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_pg_ptr).is_empty(),
     ensures
-        forall|r: RwLockPageTableRoot, l4i: L4Index| #![trigger post.pt_mp.spec_index(r).view().higher.spec_held_l4(l4i)]
-            r == pagetable_pg_ptr && post.pt_mp.spec_index(r).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) ==> post.pt_mp.spec_index(r).view().higher.spec_held_l4(l4i) is None,
-        forall|r: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(r).view().higher.spec_held_l3(l4i, l3i)]
+        forall|r: RwLockPageTableRoot, l4i: L4Index| #![trigger post.pt_mp.spec_index(r).view().higher.spec_nonempty_l4(l4i)]
+            r == pagetable_pg_ptr && post.pt_mp.spec_index(r).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) ==> post.pt_mp.spec_index(r).view().higher.spec_nonempty_l4(l4i) is None,
+        forall|r: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(r).view().higher.spec_nonempty_l3(l4i, l3i)]
             r == pagetable_pg_ptr && post.pt_mp.spec_index(r).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                ==> post.pt_mp.spec_index(r).view().higher.spec_held_l3(l4i, l3i) is None,
+                ==> post.pt_mp.spec_index(r).view().higher.spec_nonempty_l3(l4i, l3i) is None,
         forall|r: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             r == pagetable_pg_ptr && whole_pagetable(post.pt_mp, post.pt_lower.view(), r).kernel_l4_end() <= l4i && pei_valid(l4i)
@@ -378,15 +378,15 @@ proof fn create_process_from_staged_pages_eof_mapped_4k_page_pagetable(
         forall|pt: RwLockPageTableRoot|
             #![trigger post.pt_mp.dom().contains(pt)]
             post.pt_mp.dom().contains(pt) ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-                #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                pt != pagetable_pg_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i),
+                #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                pt != pagetable_pg_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
     ensures
         mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_held_4k; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_4k; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -419,15 +419,15 @@ proof fn create_process_from_staged_pages_eof_mapped_2m_page_pagetable(
         forall|pt: RwLockPageTableRoot|
             #![trigger post.pt_mp.dom().contains(pt)]
             post.pt_mp.dom().contains(pt) ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i)]
-                pt != pagetable_pg_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i),
+                #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                pt != pagetable_pg_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_nonempty_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_nonempty_2m_l2(l4i, l3i, l2i),
     ensures
         mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_held_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -463,7 +463,7 @@ proof fn create_process_from_staged_pages_eof_mapped_1g_page_pagetable(
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_held_1g; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_1g; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -766,7 +766,7 @@ pub(crate) proof fn create_process_from_staged_pages_eof_pagetable_pci_mappings_
     ensures
         pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
-    broadcast use whole_pagetable_is_empty_implies_no_held_4k, whole_pagetable_is_empty_implies_no_held_2m, whole_pagetable_is_empty_implies_no_held_1g;
+    broadcast use whole_pagetable_is_empty_implies_no_nonempty_4k, whole_pagetable_is_empty_implies_no_nonempty_2m, whole_pagetable_is_empty_implies_no_nonempty_1g;
     reveal(create_process_from_staged_pages_eof_transition_framing);
     reveal(pagetable_pci_mappings_wf);
 }

@@ -75,7 +75,7 @@ pub open spec fn window_stale_cpus_after(update: WindowStaleUpdate, table: Whole
 }
 
 /// S of `KernelK::replace_window_stale_cpus`: only the stale-CPU map of page table `root` moved, with a write-held table's
-/// payload backup following; its other big-lock fields, the rest of its window half, so its held 4K and 2M leaves, and every other table stay.
+/// payload backup following; its other big-lock fields, the rest of its window half, so its non-empty 4K and 2M leaves, and every other table stay.
 #[verifier::opaque]
 pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, root_write_held: bool) -> bool {
     let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root);
@@ -107,8 +107,8 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
         #![trigger after.window_locked_by_thread(l4, l3, l2, t)]
         #![trigger before.window_locked_by_thread(l4, l3, l2, t)]
         after.window_locked_by_thread(l4, l3, l2, t) == before.window_locked_by_thread(l4, l3, l2, t)
-    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index, l1: L1Index| #![trigger after.spec_held_4k_l1(l4, l3, l2, l1)] after.spec_held_4k_l1(l4, l3, l2, l1) == before.spec_held_4k_l1(l4, l3, l2, l1)
-    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index| #![trigger after.spec_held_2m_l2(l4, l3, l2)] after.spec_held_2m_l2(l4, l3, l2) == before.spec_held_2m_l2(l4, l3, l2)
+    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index, l1: L1Index| #![trigger after.spec_nonempty_4k_l1(l4, l3, l2, l1)] after.spec_nonempty_4k_l1(l4, l3, l2, l1) == before.spec_nonempty_4k_l1(l4, l3, l2, l1)
+    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index| #![trigger after.spec_nonempty_2m_l2(l4, l3, l2)] after.spec_nonempty_2m_l2(l4, l3, l2) == before.spec_nonempty_2m_l2(l4, l3, l2)
 }
 
 /// The PCI mapping records of every page table carry over from `pre`.
@@ -215,7 +215,7 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
                     let rev = before.higher.l2_rev_map.view().spec_index(p);
                     let w = WindowVa { va: spec_index2va((rev.0, rev.1, i, 0)) };
                     before.wf_window_locks_va_at(w);
-                    before.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(rev.0, rev.1);
+                    before.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(rev.0, rev.1);
                     pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), root, rev.0, rev.1, i, thread_id);
                 }
             };
@@ -227,7 +227,7 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
                     let rev = before.higher.l2_rev_map.view().spec_index(key.0);
                     let w = WindowVa { va: spec_index2va((rev.0, rev.1, key.1, 0)) };
                     before.wf_window_locks_va_at(w);
-                    before.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(rev.0, rev.1);
+                    before.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(rev.0, rev.1);
                     pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), root, rev.0, rev.1, key.1, thread_id);
                 }
             });
@@ -407,7 +407,7 @@ proof fn window_stale_cpus_update_eof_structure_cache_wf_new_map(pre: KernelK, p
     }
 }
 
-/// Page-to-table records, table pages and emptied-process tables after `KernelK::replace_window_stale_cpus`: no leaf, held
+/// Page-to-table records, table pages and emptied-process tables after `KernelK::replace_window_stale_cpus`: no leaf, non-empty
 /// entry or table page moved.
 proof fn window_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, root_write_held: bool)
     requires

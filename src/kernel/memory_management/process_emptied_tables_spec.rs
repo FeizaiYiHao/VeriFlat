@@ -6,7 +6,7 @@ verus! {
 /// no mapped page lists its page table in its mappings, no user L4 entry of its page table resolves, its page table holds
 /// no user leaf of any size, RAM or IO, and its page table's PCI function array is empty.
 /// An IOMMU table maps 4K leaves only, and its 4K mapping holds hidden leaves too. The
-/// held-leaf clauses exclude the page table's 2M/1G and held 4K leaves directly: an IO leaf is listed by no page, so the
+/// non-empty-leaf clauses exclude the page table's 2M/1G and non-empty 4K leaves directly: an IO leaf is listed by no page, so the
 /// no-listing clause with `mapped_2m_page_pagetable_wf` and `mapped_1g_page_pagetable_wf` excludes RAM leaves only.
 #[verifier::opaque]
 pub open spec fn process_emptied_tables_wf(
@@ -40,15 +40,15 @@ pub open spec fn process_emptied_tables_wf(
                         whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_resolve_mapping_l4(l4i) is None
                 // Its page table holds no user leaf of any size.
                 &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-                    #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                    #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
                     whole_pagetable(pt_mp, pt_lower, process.pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i) is None
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_2m_l2(l4i, l3i, l2i)]
+                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is None
+                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_2m_l2(l4i, l3i, l2i)]
                     whole_pagetable(pt_mp, pt_lower, process.pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_2m_l2(l4i, l3i, l2i) is None
-                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_1g_l3(l4i, l3i)]
+                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_2m_l2(l4i, l3i, l2i) is None
+                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_1g_l3(l4i, l3i)]
                     whole_pagetable(pt_mp, pt_lower, process.pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_1g_l3(l4i, l3i) is None
+                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_1g_l3(l4i, l3i) is None
             }
 }
 
@@ -79,15 +79,15 @@ pub proof fn process_emptied_tables_wf_at(
                         ==>
                         whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_resolve_mapping_l4(l4i) is None
                 &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-                    #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                    #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
                     whole_pagetable(pt_mp, pt_lower, process.pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i) is None
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_2m_l2(l4i, l3i, l2i)]
+                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is None
+                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_2m_l2(l4i, l3i, l2i)]
                     whole_pagetable(pt_mp, pt_lower, process.pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_2m_l2(l4i, l3i, l2i) is None
-                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_1g_l3(l4i, l3i)]
+                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_2m_l2(l4i, l3i, l2i) is None
+                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_1g_l3(l4i, l3i)]
                     whole_pagetable(pt_mp, pt_lower, process.pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_held_1g_l3(l4i, l3i) is None
+                        ==> whole_pagetable(pt_mp, pt_lower, process.pagetable).spec_nonempty_1g_l3(l4i, l3i) is None
             }),
 { reveal(process_emptied_tables_wf); }
 }

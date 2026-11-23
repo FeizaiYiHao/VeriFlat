@@ -36,19 +36,19 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
     &&& new_c.mapping_1g() == old_c.mapping_1g()
     &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& new_c.higher.table_stale_cpus == old_c.higher.table_stale_cpus
-    &&& forall|l4i: L4Index| #![trigger new_c.spec_held_l4(l4i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && old_c.spec_held_l4(l4i) is Some ==> new_c.spec_held_l4(l4i) == old_c.spec_held_l4(l4i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && old_c.spec_held_l3(l4i, l3i) is Some ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && old_c.spec_held_l2(l4i, l3i, l2i) is Some
-            ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)] #![trigger old_c.spec_held_1g_l3(l4i, l3i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
+    &&& forall|l4i: L4Index| #![trigger new_c.spec_nonempty_l4(l4i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && old_c.spec_nonempty_l4(l4i) is Some ==> new_c.spec_nonempty_l4(l4i) == old_c.spec_nonempty_l4(l4i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && old_c.spec_nonempty_l3(l4i, l3i) is Some ==> new_c.spec_nonempty_l3(l4i, l3i) == old_c.spec_nonempty_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && old_c.spec_nonempty_l2(l4i, l3i, l2i) is Some
+            ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_1g_l3(l4i, l3i)] #![trigger old_c.spec_nonempty_1g_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_nonempty_1g_l3(l4i, l3i) == old_c.spec_nonempty_1g_l3(l4i, l3i)
     &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_resolve_mapping_l3(l4i, l3i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && old_c.window_exists(l4i, l3i) ==> new_c.spec_resolve_mapping_l3(l4i, l3i) == old_c.spec_resolve_mapping_l3(l4i, l3i)
     &&& new_pt.view().higher.kernel_entries == old_pt.view().higher.kernel_entries
@@ -505,7 +505,7 @@ broadcast proof fn install_staged_4k_page_table_page_eof_structure_cache_at(
 }
 
 /// EOF closure of `install_staged_4k_page_table_page` for the paging-structure cache of `(cpu_id, pcid)` when it is dirty for
-/// the table that received the new page: the new page removes no held walk entry, so every cached entry stays a table entry.
+/// the table that received the new page: the new page removes no non-empty walk entry, so every cached entry stays a table entry.
 proof fn install_staged_4k_page_table_page_eof_structure_cache_subset_at(
     pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, cpu_id: CpuId, pcid: Pcid,
 )
@@ -523,8 +523,8 @@ proof fn install_staged_4k_page_table_page_eof_structure_cache_subset_at(
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
-    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
-        WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
+        WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq;
 }
 
 /// EOF closure of `install_staged_4k_page_table_page` for the paging-structure cache of `(cpu_id, pcid)` when it is dirty for
@@ -572,7 +572,7 @@ proof fn install_staged_4k_page_table_page_eof_structure_cache_present_roots_at(
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
-    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq;
 }
 
 /// EOF closure of `install_staged_4k_page_table_page` for cached L2 entries of the receiving table: every one that does not
@@ -602,7 +602,7 @@ proof fn install_staged_4k_page_table_page_eof_structure_cache_present_windows_a
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
-    broadcast use PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq;
 }
 pub(super) proof fn install_staged_4k_page_table_page_eof(
     pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
@@ -646,18 +646,18 @@ pub(super) proof fn install_staged_4k_page_table_page_eof(
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         pre.default_pagetable_wf_at(pagetable_ptr);
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq,
-            PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq,
-            WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq,
+            PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
+            WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq;
         reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(cpu_tlb_wf);
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); broadcast use install_staged_4k_page_table_page_eof_structure_cache_at; };
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
-/// An L3 install at `indices` keeps every held L3 entry of a user root resolvable: a held entry other than the new one names an
+/// An L3 install at `indices` keeps every non-empty L3 entry of a user root resolvable: a non-empty entry other than the new one names an
 /// L2 page that the table held before, under the same path, so it resolved before and still does.
-pub(super) proof fn install_staged_4k_page_table_page_eof_held_l3_resolves(pre: KernelK, post: KernelK, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), pg_ptr: PagePtr)
+pub(super) proof fn install_staged_4k_page_table_page_eof_nonempty_l3_resolves(pre: KernelK, post: KernelK, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), pg_ptr: PagePtr)
     requires
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).wf(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
@@ -666,21 +666,21 @@ pub(super) proof fn install_staged_4k_page_table_page_eof_held_l3_resolves(pre: 
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == pg_ptr,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.l2_perms.dom().insert(pg_ptr),
-        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3i)]
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3i) is Some
-                ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_nonempty_l3(l4i, l3i)]
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_nonempty_l3(l4i, l3i) is Some
+                ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_nonempty_l3(l4i, l3i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_nonempty_l3(l4i, l3i),
         forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)]
             pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && !(l4i == indices.0 && l3i == indices.1)
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i),
     ensures
-        (forall|l4i: L4Index, l3i: L3Index| #![trigger pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
-            pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+        (forall|l4i: L4Index, l3i: L3Index| #![trigger pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_nonempty_l3(l4i, l3i)]
+            pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                 ==> pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some)
-            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
-                post.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_nonempty_l3(l4i, l3i)]
+                post.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                     ==> post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
 {
-    broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
+    broadcast use PageTableHigher::disjoint_l4_l3_implies_nonempty_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq;
     reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::tables_reachable_wf);
 }
 }

@@ -1,18 +1,18 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_reclaim_scoped_spec::kill_reclaim_held_2m_page_scoped_eof_transition_framing;
+use super::syscall_kill_process_reclaim_scoped_spec::kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing;
 
 verus! {
-/// Every page-owner relation holds after the last mapping of the 2M page `pg_ptr`, a held leaf of `pagetable`, leaves
+/// Every page-owner relation holds after the last mapping of the 2M page `pg_ptr`, a non-empty leaf of `pagetable`, leaves
 /// with its record and the page returns to its owner's 2M allocator.
-proof fn kill_reclaim_held_2m_page_scoped_eof_page_owners(
+proof fn kill_reclaim_nonempty_2m_page_scoped_eof_page_owners(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
-        kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
@@ -22,8 +22,8 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_owners(
             &&& old_c.kernel_l4_end() <= spec_v2l4index(va)
             &&& forall|l4i: L4Index| #![trigger old_c.spec_resolve_mapping_l4(l4i)] KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> old_c.spec_resolve_mapping_l4(l4i) is None
             &&& !old_c.mapping_2m().dom().contains(va)
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
             &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
@@ -56,7 +56,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_owners(
         thread_staged_pages_wf(post.thrd_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
 {
-    reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
+    reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -85,13 +85,13 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_owners(
 
 /// Every page keeps the mapping records of the page tables after the last mapping of the 2M page `pg_ptr` leaves
 /// `pagetable` and the page returns to its owner's 2M allocator.
-proof fn kill_reclaim_held_2m_page_scoped_eof_page_mappings(
+proof fn kill_reclaim_nonempty_2m_page_scoped_eof_page_mappings(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
-        kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
@@ -101,8 +101,8 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_mappings(
             &&& old_c.kernel_l4_end() <= spec_v2l4index(va)
             &&& forall|l4i: L4Index| #![trigger old_c.spec_resolve_mapping_l4(l4i)] KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> old_c.spec_resolve_mapping_l4(l4i) is None
             &&& !old_c.mapping_2m().dom().contains(va)
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
             &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
@@ -122,7 +122,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_mappings(
         mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
+    reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
@@ -137,13 +137,13 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_mappings(
 
 /// The mapping relations and the allocator invariants hold after the last mapping of the 2M page `pg_ptr` leaves
 /// `pagetable` and the page returns to its owner's 2M allocator.
-proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
+proof fn kill_reclaim_nonempty_2m_page_scoped_eof_page_relations(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
-        kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
@@ -153,8 +153,8 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
             &&& old_c.kernel_l4_end() <= spec_v2l4index(va)
             &&& forall|l4i: L4Index| #![trigger old_c.spec_resolve_mapping_l4(l4i)] KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> old_c.spec_resolve_mapping_l4(l4i) is None
             &&& !old_c.mapping_2m().dom().contains(va)
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
             &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
@@ -184,7 +184,7 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
         allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
         allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
+    reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
@@ -211,35 +211,35 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
 }
 
 /// The 2M page that returns to its owner's 2M allocator carries one unit of quota, which that allocator's quota gains.
-proof fn kill_reclaim_held_2m_page_scoped_eof_allocator_quota_wf(
+proof fn kill_reclaim_nonempty_2m_page_scoped_eof_allocator_quota_wf(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, node_addr: usize,
 )
     requires
         pre.inv(),
-        kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.allc_2m_mp.dom().contains(allc_ptr),
     ensures container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
+    reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf); };
 }
 
 /// `pagetable_pci_mappings_wf`: the cleared 2M leaf at `va` was the RAM leaf the page lists, so no BAR mapping record names it,
 /// and every other leaf and record is unchanged.
-proof fn kill_reclaim_held_2m_page_scoped_eof_pagetable_pci_mappings_wf(
+proof fn kill_reclaim_nonempty_2m_page_scoped_eof_pagetable_pci_mappings_wf(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, node_addr: usize,
 )
     requires
         pre.inv(),
-        kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped2m,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
-    reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
+    reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid();
     mapped_2m_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
     reveal(pagetable_pci_mappings_wf);
@@ -247,29 +247,29 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_pagetable_pci_mappings_wf(
 }
 
 /// `pci_function_ownership_wf`: the root table, the processes, and the higher part of every page table are unchanged.
-proof fn kill_reclaim_held_2m_page_scoped_eof_pci_function_ownership_wf(
+proof fn kill_reclaim_nonempty_2m_page_scoped_eof_pci_function_ownership_wf(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, node_addr: usize,
 )
     requires
         pre.inv(),
-        kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
     ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
-    reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
+    reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     reveal(pci_function_ownership_wf);
 }
 
-/// Every invariant holds after the last mapping of the 2M page `pg_ptr`, a held leaf of `pagetable` whose user root entries
+/// Every invariant holds after the last mapping of the 2M page `pg_ptr`, a non-empty leaf of `pagetable` whose user root entries
 /// no longer resolve, is cleared and the page returns to shard `cpu_id` of its owner's 2M allocator `allc_ptr`, whose quota
 /// grows by one.
-pub(crate) proof fn kill_reclaim_held_2m_page_scoped_eof(
+pub(crate) proof fn kill_reclaim_nonempty_2m_page_scoped_eof(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
-        kill_reclaim_held_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
+        kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
@@ -279,8 +279,8 @@ pub(crate) proof fn kill_reclaim_held_2m_page_scoped_eof(
             &&& old_c.kernel_l4_end() <= spec_v2l4index(va)
             &&& forall|l4i: L4Index| #![trigger old_c.spec_resolve_mapping_l4(l4i)] KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> old_c.spec_resolve_mapping_l4(l4i) is None
             &&& !old_c.mapping_2m().dom().contains(va)
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
-            &&& old_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
+            &&& old_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
             &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
@@ -310,16 +310,16 @@ pub(crate) proof fn kill_reclaim_held_2m_page_scoped_eof(
         kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
 {
-    reveal(kill_reclaim_held_2m_page_scoped_eof_transition_framing);
+    reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(page_array_wf); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
-    kill_reclaim_held_2m_page_scoped_eof_page_owners(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
-    kill_reclaim_held_2m_page_scoped_eof_page_mappings(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
-    kill_reclaim_held_2m_page_scoped_eof_page_relations(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
-    kill_reclaim_held_2m_page_scoped_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
+    kill_reclaim_nonempty_2m_page_scoped_eof_page_owners(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
+    kill_reclaim_nonempty_2m_page_scoped_eof_page_mappings(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
+    kill_reclaim_nonempty_2m_page_scoped_eof_page_relations(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
+    kill_reclaim_nonempty_2m_page_scoped_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    kill_reclaim_held_2m_page_scoped_eof_pagetable_pci_mappings_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
+    kill_reclaim_nonempty_2m_page_scoped_eof_pagetable_pci_mappings_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
     assert(post.memory_management_inv()) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
-    kill_reclaim_held_2m_page_scoped_eof_pci_function_ownership_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
+    kill_reclaim_nonempty_2m_page_scoped_eof_pci_function_ownership_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pre.default_pagetable_wf_at(pagetable); reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip,
         spec_va_2m_valid_index_roundtrip; };

@@ -34,9 +34,9 @@ fn io_leaf_function_entry(krnl: &KernelK, pagetable: RwLockPageTableRoot, addr: 
     index
 }
 
-/// Clear the held, unresolvable IO 4K leaf `va` of the write-held `pagetable`, which lists no CPU stale and whose PCI functions
+/// Clear the non-empty, unresolvable IO 4K leaf `va` of the write-held `pagetable`, which lists no CPU stale and whose PCI functions
 /// were released; the page array is not touched.
-pub fn remove_held_io_4k_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>)
+pub fn remove_nonempty_io_4k_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -45,8 +45,8 @@ pub fn remove_held_io_4k_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableR
         va_4k_valid(va),
         old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_va2index(va).0,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
@@ -76,14 +76,14 @@ pub fn remove_held_io_4k_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableR
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
                 old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != spec_va2index(va)
-                    ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-            &&& new_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None
+                    ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+            &&& new_c.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None
         }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
@@ -95,16 +95,16 @@ pub fn remove_held_io_4k_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableR
         spec_va_4k_valid_index_roundtrip(va); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
     }
-    pagetable_map_clear_held_4k_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, Tracked(&mut *lctx), pagetable_perm);
+    pagetable_map_clear_nonempty_4k_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, Tracked(&mut *lctx), pagetable_perm);
     proof {
-        assert(remove_held_io_4k_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_held_io_4k_mapping_eof_transition_framing); };
-        remove_held_io_4k_mapping_eof(*old(krnl), *krnl, pagetable, va);
+        assert(remove_nonempty_io_4k_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_nonempty_io_4k_mapping_eof_transition_framing); };
+        remove_nonempty_io_4k_mapping_eof(*old(krnl), *krnl, pagetable, va);
     }
 }
 
-/// Clear the held, unresolvable IO 2M leaf `va` of the write-held `pagetable`, which lists no CPU stale and whose PCI functions
+/// Clear the non-empty, unresolvable IO 2M leaf `va` of the write-held `pagetable`, which lists no CPU stale and whose PCI functions
 /// were released; the page array is not touched.
-pub fn remove_held_io_2m_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>)
+pub fn remove_nonempty_io_2m_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -113,8 +113,8 @@ pub fn remove_held_io_2m_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableR
         va_2m_valid(va),
         old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
@@ -143,17 +143,17 @@ pub fn remove_held_io_2m_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableR
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)]
-                (p, i) != (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
-            &&& new_c.lower.l2_entry(old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)).is_empty()
+                (p, i) != (old_c.spec_nonempty_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
+            &&& new_c.lower.l2_entry(old_c.spec_nonempty_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)).is_empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
                 old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
-                    ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-            &&& new_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+                    ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+            &&& new_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
         }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
@@ -165,10 +165,10 @@ pub fn remove_held_io_2m_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableR
         spec_va_2m_valid_index_roundtrip(va); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
     }
-    pagetable_map_clear_held_2m_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, (indices.0, indices.1, indices.2), Tracked(&mut *lctx), pagetable_perm);
+    pagetable_map_clear_nonempty_2m_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, (indices.0, indices.1, indices.2), Tracked(&mut *lctx), pagetable_perm);
     proof {
-        assert(remove_held_io_2m_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_held_io_2m_mapping_eof_transition_framing); };
-        remove_held_io_2m_mapping_eof(*old(krnl), *krnl, pagetable, va);
+        assert(remove_nonempty_io_2m_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_nonempty_io_2m_mapping_eof_transition_framing); };
+        remove_nonempty_io_2m_mapping_eof(*old(krnl), *krnl, pagetable, va);
     }
 }
 
@@ -199,17 +199,17 @@ pub fn remove_io_4k_mapping(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
             == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
     ensures
-        (forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+        (forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i) is Some
                 ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some)
-            ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+            ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i)]
+                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i) is Some
                     ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
-        (forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+        (forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                 ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some)
-            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
-                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
+                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                     ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows()
             ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
@@ -248,7 +248,7 @@ pub fn remove_io_4k_mapping(
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
-        c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(indices.0, indices.1, indices.2, indices.3);
+        c.spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq(indices.0, indices.1, indices.2, indices.3);
         pagetable_pci_mappings_wf_present_4k_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, va);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         assert(spec_v2l4index(window_of(va).va) == indices.0 && spec_v2l3index(window_of(va).va) == indices.1 && spec_v2l2index(window_of(va).va) == indices.2) by {
@@ -296,17 +296,17 @@ pub fn remove_io_2m_mapping(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
             == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
     ensures
-        (forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+        (forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i) is Some
                 ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some)
-            ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+            ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i)]
+                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i) is Some
                     ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
-        (forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+        (forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                 ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some)
-            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
-                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
+                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                     ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows()
             ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
@@ -346,7 +346,7 @@ pub fn remove_io_2m_mapping(
         };
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.wf_mapping_2m_at(indices.0, indices.1, indices.2);
-        c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(indices.0, indices.1, indices.2);
+        c.spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq(indices.0, indices.1, indices.2);
         pagetable_pci_mappings_wf_present_2m_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, va);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
     }

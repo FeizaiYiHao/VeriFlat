@@ -5,16 +5,16 @@ verus! {
     /// placeholder, naming the same page: the structure-cache form of `single_tlb_subset_of_whole_pagetable`.
     pub open spec fn single_structure_cache_subset_of_whole_pagetable(cache: PagingStructureCache, table: WholePageTable) -> bool {
         &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] #![trigger cache.pml4e.spec_index(i)]
-            cache.pml4e.dom().contains(i) ==> table.kernel_l4_end() <= i && pei_valid(i) && table.spec_held_l4(i) is Some && table.spec_held_l4(i)->0.addr == cache.pml4e.spec_index(i)
+            cache.pml4e.dom().contains(i) ==> table.kernel_l4_end() <= i && pei_valid(i) && table.spec_nonempty_l4(i) is Some && table.spec_nonempty_l4(i)->0.addr == cache.pml4e.spec_index(i)
         &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] #![trigger cache.pdpte.spec_index(key)]
             cache.pdpte.dom().contains(key) ==> table.kernel_l4_end() <= key.0 && pei_valid(key.0) && pei_valid(key.1)
-                && table.spec_held_l3(key.0, key.1) is Some && table.spec_held_l3(key.0, key.1)->0.addr == cache.pdpte.spec_index(key)
+                && table.spec_nonempty_l3(key.0, key.1) is Some && table.spec_nonempty_l3(key.0, key.1)->0.addr == cache.pdpte.spec_index(key)
         &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] #![trigger cache.pde.spec_index(key)]
             cache.pde.dom().contains(key) ==> table.kernel_l4_end() <= key.0 && pei_valid(key.0) && pei_valid(key.1) && pei_valid(key.2)
-                && table.spec_held_l2(key.0, key.1, key.2) is Some && table.spec_held_l2(key.0, key.1, key.2)->0.addr == cache.pde.spec_index(key)
+                && table.spec_nonempty_l2(key.0, key.1, key.2) is Some && table.spec_nonempty_l2(key.0, key.1, key.2)->0.addr == cache.pde.spec_index(key)
     }
 
-    /// Every directory entry the cache keeps is held and its path resolves: the shape after a flush or a CR3 write, the
+    /// Every directory entry the cache keeps is non-empty and its path resolves: the shape after a flush or a CR3 write, the
     /// structure-cache form of `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
     pub open spec fn single_structure_cache_subset_of_present_pagetable(cache: PagingStructureCache, table: WholePageTable) -> bool {
         &&& single_structure_cache_subset_of_whole_pagetable(cache, table)
@@ -139,9 +139,9 @@ verus! {
         }
     }
 
-    /// The L2 page that the held L3 entry `(l4i, l3i)` of `table` links, or with `l1` the L1 page of its held L2 entry `l2i`, is named
+    /// The L2 page that the non-empty L3 entry `(l4i, l3i)` of `table` links, or with `l1` the L1 page of its non-empty L2 entry `l2i`, is named
     /// by no usable paging-structure cache once the L3 path no longer resolves and the table lists no CPU stale: a cached entry naming
-    /// the page is the held L3 entry or an L2 entry under it, whose unresolvable path the empty table record cannot cover.
+    /// the page is the non-empty L3 entry or an L2 entry under it, whose unresolvable path the empty table record cannot cover.
     pub proof fn held_table_page_under_unresolvable_l3_entry_with_empty_table_record_implies_unreferenced_by_structure_caches(k: KernelK, table: RwLockPageTableRoot,
         l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, page: PageMapPtr)
         requires
@@ -151,11 +151,11 @@ verus! {
             pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
-            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l3(l4i, l3i) is Some,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l3(l4i, l3i) is Some,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is None,
-            l1 ==> whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l2(l4i, l3i, l2i) is Some,
+            l1 ==> whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l2(l4i, l3i, l2i) is Some,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
-            page == (if l1 { whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l2(l4i, l3i, l2i)->0.addr } else { whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l3(l4i, l3i)->0.addr }),
+            page == (if l1 { whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l2(l4i, l3i, l2i)->0.addr } else { whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l3(l4i, l3i)->0.addr }),
         ensures table_page_unreferenced_by_structure_caches(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, page),
     {
         broadcast use held_table_page_under_unresolvable_l3_entry_with_empty_table_record_implies_unreferenced_by_structure_cache_l2_page_at,
@@ -171,7 +171,7 @@ verus! {
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i,
             pei_valid(l4i),
             pei_valid(l3i),
-            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l3(l4i, l3i) is Some,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l3(l4i, l3i) is Some,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is None,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ensures
@@ -179,7 +179,7 @@ verus! {
             index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
             && (!k.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || k.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
                 let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
-                let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l3(l4i, l3i)->0.addr;
+                let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l3(l4i, l3i)->0.addr;
                 &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
                 &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
                 &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
@@ -189,7 +189,7 @@ verus! {
         let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
         let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
         let t = whole_pagetable(k.pt_mp, k.pt_lower.view(), table);
-        let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l3(l4i, l3i)->0.addr;
+        let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l3(l4i, l3i)->0.addr;
         structure_cache_wf_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
         pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), table);
         reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); reveal(WholePageTable::table_pages_wf); reveal(PageTableHigher::table_pages_wf);
@@ -202,7 +202,7 @@ verus! {
                 }
             };
             reveal(WholePageTable::disjoint_l2); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
-            broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
+            broadcast use PageTableHigher::disjoint_l4_l3_implies_nonempty_l3_addr_unique_at;
         }
     }
 
@@ -216,16 +216,16 @@ verus! {
             pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
-            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l3(l4i, l3i) is Some,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l3(l4i, l3i) is Some,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is None,
-            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l2(l4i, l3i, l2i) is Some,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l2(l4i, l3i, l2i) is Some,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ensures
-            #![trigger k.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l2(l4i, l3i, l2i)]
+            #![trigger k.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l2(l4i, l3i, l2i)]
             index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
             && (!k.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || k.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
                 let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
-                let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l2(l4i, l3i, l2i)->0.addr;
+                let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l2(l4i, l3i, l2i)->0.addr;
                 &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
                 &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
                 &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
@@ -235,7 +235,7 @@ verus! {
         let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
         let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
         let t = whole_pagetable(k.pt_mp, k.pt_lower.view(), table);
-        let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_held_l2(l4i, l3i, l2i)->0.addr;
+        let page = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_nonempty_l2(l4i, l3i, l2i)->0.addr;
         structure_cache_wf_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
         pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), table);
         reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); reveal(WholePageTable::table_pages_wf); reveal(PageTableHigher::table_pages_wf);
@@ -248,7 +248,7 @@ verus! {
                 }
             };
             reveal(WholePageTable::disjoint_l2); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
-            broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
+            broadcast use PageTableHigher::disjoint_l4_l3_implies_nonempty_l3_addr_unique_at;
         }
     }
 

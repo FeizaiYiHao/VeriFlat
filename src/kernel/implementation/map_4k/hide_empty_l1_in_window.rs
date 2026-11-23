@@ -190,8 +190,8 @@ pub fn hide_empty_l1_in_window_wlocked(krnl: &mut KernelK, pagetable: RwLockPage
             &&& post.spec_resolve_mapping_l2(l4i, l3i, l2i) is None
             &&& pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows()
         },
-        forall|l1i: L1Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i)]
-            pei_valid(l1i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i) is None,
+        forall|l1i: L1Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i)]
+            pei_valid(l1i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i) is None,
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_entry(p, i)]
@@ -218,7 +218,7 @@ pub fn hide_empty_l1_in_window_wlocked(krnl: &mut KernelK, pagetable: RwLockPage
         assert(hide_empty_l1_in_window_wlocked_eof_transition_framing(locked, *krnl, pagetable, va, l2_ptr)) by { reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing); };
         hide_empty_l1_in_window_wlocked_eof(locked, *krnl, pagetable, va, l2_ptr);
         hide_empty_l1_in_window_wlocked_eof_hidden_l1_tables(locked, *krnl, pagetable, va, l2_ptr);
-        hide_empty_l1_in_window_wlocked_eof_no_held_4k(locked, *krnl, pagetable, va, l2_ptr);
+        hide_empty_l1_in_window_wlocked_eof_no_nonempty_4k(locked, *krnl, pagetable, va, l2_ptr);
         assert_maps_equal!(krnl.pt_lower.view(), old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

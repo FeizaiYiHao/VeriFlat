@@ -338,8 +338,8 @@ pub(super) proof fn unlock_window_eof_hidden_l1_tables_in_locked_windows(pre: Wh
         pre.lower.hidden_l1_tables_in_locked_windows() && !pre.lower.l2_entry_hides_l1(pre.window_l2_page(l4i, l3i), l2i) ==> post.lower.hidden_l1_tables_in_locked_windows(),
 {}
 
-/// EOF closure of `lock_window` for the held chain: only the window's lock owner moved.
-pub(super) proof fn lock_window_eof_held_chain(pre: WholePageTable, post: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+/// EOF closure of `lock_window` for the non-empty chain: only the window's lock owner moved.
+pub(super) proof fn lock_window_eof_nonempty_chain(pre: WholePageTable, post: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
     requires
         pre.wf(),
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
@@ -348,19 +348,19 @@ pub(super) proof fn lock_window_eof_held_chain(pre: WholePageTable, post: WholeP
         pre.window_exists(l4i, l3i),
         lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
     ensures
-        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_l2(l4j, l3j, l2j)]
-            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_l2(l4j, l3j, l2j) == pre.spec_held_l2(l4j, l3j, l2j),
-        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_held_4k_l1(l4j, l3j, l2j, l1j)]
-            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j) ==> post.spec_held_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_held_4k_l1(l4j, l3j, l2j, l1j),
-        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_2m_l2(l4j, l3j, l2j)]
-            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_2m_l2(l4j, l3j, l2j) == pre.spec_held_2m_l2(l4j, l3j, l2j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_nonempty_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_nonempty_l2(l4j, l3j, l2j) == pre.spec_nonempty_l2(l4j, l3j, l2j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_nonempty_4k_l1(l4j, l3j, l2j, l1j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j) ==> post.spec_nonempty_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_nonempty_4k_l1(l4j, l3j, l2j, l1j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_nonempty_2m_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_nonempty_2m_l2(l4j, l3j, l2j) == pre.spec_nonempty_2m_l2(l4j, l3j, l2j),
 {
-    broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
-    pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+    broadcast use PageTableHigher::disjoint_l4_l3_implies_nonempty_l3_addr_unique_at;
+    pre.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i);
 }
 
-/// EOF closure of `unlock_window` for the held chain: only the window's lock owner moved.
-pub(super) proof fn unlock_window_eof_held_chain(pre: WholePageTable, post: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+/// EOF closure of `unlock_window` for the non-empty chain: only the window's lock owner moved.
+pub(super) proof fn unlock_window_eof_nonempty_chain(pre: WholePageTable, post: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         pre.wf(),
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
@@ -369,15 +369,15 @@ pub(super) proof fn unlock_window_eof_held_chain(pre: WholePageTable, post: Whol
         pre.window_exists(l4i, l3i),
         unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
     ensures
-        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_l2(l4j, l3j, l2j)]
-            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_l2(l4j, l3j, l2j) == pre.spec_held_l2(l4j, l3j, l2j),
-        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_held_4k_l1(l4j, l3j, l2j, l1j)]
-            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j) ==> post.spec_held_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_held_4k_l1(l4j, l3j, l2j, l1j),
-        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_2m_l2(l4j, l3j, l2j)]
-            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_2m_l2(l4j, l3j, l2j) == pre.spec_held_2m_l2(l4j, l3j, l2j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_nonempty_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_nonempty_l2(l4j, l3j, l2j) == pre.spec_nonempty_l2(l4j, l3j, l2j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_nonempty_4k_l1(l4j, l3j, l2j, l1j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j) ==> post.spec_nonempty_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_nonempty_4k_l1(l4j, l3j, l2j, l1j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_nonempty_2m_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_nonempty_2m_l2(l4j, l3j, l2j) == pre.spec_nonempty_2m_l2(l4j, l3j, l2j),
 {
-    broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
-    pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+    broadcast use PageTableHigher::disjoint_l4_l3_implies_nonempty_l3_addr_unique_at;
+    pre.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i);
 }
 
 /// EOF closure of `lock_window` for the resolved leaves: no L2 entry or L1 page moved.

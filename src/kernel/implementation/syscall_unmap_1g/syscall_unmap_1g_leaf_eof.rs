@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Hiding the present 1G leaf `va` of the write-held `pagetable` changes only that table's record: the leaf keeps its frame and access bits with the present bit clear, every other resolved or held entry and every other field of the record stay, and the lower half and every other table are
+/// Hiding the present 1G leaf `va` of the write-held `pagetable` changes only that table's record: the leaf keeps its frame and access bits with the present bit clear, every other resolved or non-empty entry and every other field of the record stay, and the lower half and every other table are
 /// unchanged.
 #[verifier::opaque]
 pub(super) open spec fn unmap_1g_hide_leaf_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr) -> bool {
@@ -36,19 +36,19 @@ pub(super) open spec fn unmap_1g_hide_leaf_eof_transition_framing(pre: KernelK, 
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_resolve_mapping_2m_l2(i4, i3, i2) == old_c.spec_resolve_mapping_2m_l2(i4, i3, i2)
     &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_resolve_mapping_4k_l1(i4, i3, i2, i1)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_resolve_mapping_4k_l1(i4, i3, i2, i1) == old_c.spec_resolve_mapping_4k_l1(i4, i3, i2, i1)
-    &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4)
-    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
-    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != target ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_l2(i4, i3, i2)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_l2(i4, i3, i2) == old_c.spec_held_l2(i4, i3, i2)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_2m_l2(i4, i3, i2)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_2m_l2(i4, i3, i2) == old_c.spec_held_2m_l2(i4, i3, i2)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_held_4k_l1(i4, i3, i2, i1)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_held_4k_l1(i4, i3, i2, i1) == old_c.spec_held_4k_l1(i4, i3, i2, i1)
+    &&& forall|i4: L4Index| #![trigger new_c.spec_nonempty_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_nonempty_l4(i4) == old_c.spec_nonempty_l4(i4)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_nonempty_l3(i4, i3) == old_c.spec_nonempty_l3(i4, i3)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_1g_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != target ==> new_c.spec_nonempty_1g_l3(i4, i3) == old_c.spec_nonempty_1g_l3(i4, i3)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_l2(i4, i3, i2)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_l2(i4, i3, i2) == old_c.spec_nonempty_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_2m_l2(i4, i3, i2)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_2m_l2(i4, i3, i2) == old_c.spec_nonempty_2m_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_nonempty_4k_l1(i4, i3, i2, i1)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_nonempty_4k_l1(i4, i3, i2, i1) == old_c.spec_nonempty_4k_l1(i4, i3, i2, i1)
     &&& new_c.spec_resolve_mapping_1g_l3(target.0, target.1) == Some(hidden)
-    &&& new_c.spec_held_1g_l3(target.0, target.1) == Some(hidden)
+    &&& new_c.spec_nonempty_1g_l3(target.0, target.1) == Some(hidden)
 }
 
 /// The PCI mapping records of every page table carry over from `pre`.
@@ -69,7 +69,7 @@ proof fn unmap_1g_hide_leaf_eof_pci_ownership(pre: KernelK, post: KernelK, paget
     ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 { reveal(unmap_1g_hide_leaf_eof_transition_framing); reveal(pci_function_ownership_wf); }
 
-/// Every 4K page record still names a held leaf: the hide changes no 4K mapping.
+/// Every 4K page record still names a non-empty leaf: the hide changes no 4K mapping.
 proof fn unmap_1g_hide_leaf_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
@@ -97,7 +97,7 @@ proof fn unmap_1g_hide_leaf_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pag
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
 }
 
-/// Every 2M page record still names a held leaf: the hide changes no 2M mapping.
+/// Every 2M page record still names a non-empty leaf: the hide changes no 2M mapping.
 proof fn unmap_1g_hide_leaf_eof_mapped_2m_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
@@ -125,7 +125,7 @@ proof fn unmap_1g_hide_leaf_eof_mapped_2m_pages(pre: KernelK, post: KernelK, pag
     broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf);
 }
 
-/// Every 1G page record still names a held leaf with its frame: the hidden leaf stays held.
+/// Every 1G page record still names a non-empty leaf with its frame: the hidden leaf stays non-empty.
 proof fn unmap_1g_hide_leaf_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
@@ -155,7 +155,7 @@ proof fn unmap_1g_hide_leaf_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pag
     broadcast use spec_va_1g_valid_index_roundtrip;
     reveal(mapped_1g_page_pagetable_wf);
     assert(new_c.mapping_1g().spec_index(va).addr == old_c.mapping_1g().spec_index(va).addr) by {
-        pre.pt_mp.spec_index(pagetable).view().higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
+        pre.pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
     };
 }
 
@@ -187,7 +187,7 @@ proof fn unmap_1g_hide_leaf_eof_cpu_tlb(pre: KernelK, post: KernelK, pagetable: 
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; reveal(cpu_tlb_wf);
 }
 
-/// The invariant survives hiding the present 1G leaf `va` of the write-held `pagetable` while every CPU is listed stale for the whole table: a translation cached for `va` is covered by the table record, every page record still names a held leaf with its frame, and every other entry
+/// The invariant survives hiding the present 1G leaf `va` of the write-held `pagetable` while every CPU is listed stale for the whole table: a translation cached for `va` is covered by the table record, every page record still names a non-empty leaf with its frame, and every other entry
 /// resolves as before.
 pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
     requires

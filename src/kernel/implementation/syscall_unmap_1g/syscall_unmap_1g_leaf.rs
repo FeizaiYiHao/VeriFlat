@@ -60,9 +60,9 @@ pub(super) fn unmap_1g_hide_leaf(
             &&& forall|i4: L4Index| #![trigger new_c.spec_resolve_mapping_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
             &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_resolve_mapping_l3(i4, i3)]
                 old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_resolve_mapping_l3(i4, i3) == old_c.spec_resolve_mapping_l3(i4, i3)
-            &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4)
-            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
+            &&& forall|i4: L4Index| #![trigger new_c.spec_nonempty_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_nonempty_l4(i4) == old_c.spec_nonempty_l4(i4)
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_nonempty_l3(i4, i3) == old_c.spec_nonempty_l3(i4, i3)
         }),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable) == whole_pagetable(ret.0.view().pt_mp, ret.0.view().pt_lower.view(), pagetable),
         kernel_step_boundary_framing(ret.0.view(), *final(krnl), ret.1@),

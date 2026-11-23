@@ -131,10 +131,10 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         target_l1_ptr = target.higher.get_entry_l2(Tracked(target_lower), target_indices.0, target_indices.1, target_indices.2, &target_l3_entry).unwrap().addr;
     }
     proof {
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_held_4k_l1(target_indices.0, target_indices.1, target_indices.2, target_indices.3) is None) by {
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_nonempty_4k_l1(target_indices.0, target_indices.1, target_indices.2, target_indices.3) is None) by {
             let target_c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
-            target_c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(target_indices.0, target_indices.1);
-            target_c.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(target_indices.0, target_indices.1, target_indices.2);
+            target_c.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(target_indices.0, target_indices.1);
+            target_c.spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq(target_indices.0, target_indices.1, target_indices.2);
             target_c.wf_mapping_4k_at(target_indices.0, target_indices.1, target_indices.2, target_indices.3);
         };
     }

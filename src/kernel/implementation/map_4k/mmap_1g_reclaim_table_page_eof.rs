@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The table page `pg_ptr` (the L1 page of entry `(l4i, l3i, l2i)` when `l1`, else the L2 page of the hidden L3 entry `(l4i, l3i)`) leaves the write-held `table`, every held leaf and mapping
+/// The table page `pg_ptr` (the L1 page of entry `(l4i, l3i, l2i)` when `l1`, else the L2 page of the hidden L3 entry `(l4i, l3i)`) leaves the write-held `table`, every non-empty leaf and mapping
 /// staying, and returns through its free-list node at `node_addr` to shard `cpu_id` of the 4K allocator `allc_ptr` of its owner, whose quota grows by one.
 #[verifier::opaque]
 pub(super) open spec fn mmap_1g_reclaim_table_page_to_cache_eof_transition_framing(
@@ -49,19 +49,19 @@ pub(super) open spec fn mmap_1g_reclaim_table_page_to_cache_eof_transition_frami
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_perms.dom().contains(p) ==> old_c.lower.l2_perms.dom().contains(p) && new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
     &&& forall|i4: L4Index| #![trigger new_c.spec_resolve_mapping_l4(i4)] #![trigger old_c.spec_resolve_mapping_l4(i4)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
-    &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] #![trigger old_c.spec_held_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4)
-    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)] #![trigger old_c.spec_held_l3(i4, i3)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (l1 || (i4, i3) != (l4i, l3i)) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
-    &&& !l1 ==> new_c.spec_held_l3(l4i, l3i) is None
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_l2(i4, i3, i2)] #![trigger old_c.spec_held_l2(i4, i3, i2)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && (!l1 || (i4, i3, i2) != (l4i, l3i, l2i)) ==> new_c.spec_held_l2(i4, i3, i2) == old_c.spec_held_l2(i4, i3, i2)
-    &&& l1 ==> new_c.spec_held_l2(l4i, l3i, l2i) is None
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_held_4k_l1(i4, i3, i2, i1)] #![trigger old_c.spec_held_4k_l1(i4, i3, i2, i1)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_held_4k_l1(i4, i3, i2, i1) == old_c.spec_held_4k_l1(i4, i3, i2, i1)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_2m_l2(i4, i3, i2)] #![trigger old_c.spec_held_2m_l2(i4, i3, i2)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_2m_l2(i4, i3, i2) == old_c.spec_held_2m_l2(i4, i3, i2)
-    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)] #![trigger old_c.spec_held_1g_l3(i4, i3)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
+    &&& forall|i4: L4Index| #![trigger new_c.spec_nonempty_l4(i4)] #![trigger old_c.spec_nonempty_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_nonempty_l4(i4) == old_c.spec_nonempty_l4(i4)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_l3(i4, i3)] #![trigger old_c.spec_nonempty_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (l1 || (i4, i3) != (l4i, l3i)) ==> new_c.spec_nonempty_l3(i4, i3) == old_c.spec_nonempty_l3(i4, i3)
+    &&& !l1 ==> new_c.spec_nonempty_l3(l4i, l3i) is None
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_l2(i4, i3, i2)] #![trigger old_c.spec_nonempty_l2(i4, i3, i2)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && (!l1 || (i4, i3, i2) != (l4i, l3i, l2i)) ==> new_c.spec_nonempty_l2(i4, i3, i2) == old_c.spec_nonempty_l2(i4, i3, i2)
+    &&& l1 ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) is None
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_nonempty_4k_l1(i4, i3, i2, i1)] #![trigger old_c.spec_nonempty_4k_l1(i4, i3, i2, i1)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_nonempty_4k_l1(i4, i3, i2, i1) == old_c.spec_nonempty_4k_l1(i4, i3, i2, i1)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_2m_l2(i4, i3, i2)] #![trigger old_c.spec_nonempty_2m_l2(i4, i3, i2)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_2m_l2(i4, i3, i2) == old_c.spec_nonempty_2m_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_1g_l3(i4, i3)] #![trigger old_c.spec_nonempty_1g_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_nonempty_1g_l3(i4, i3) == old_c.spec_nonempty_1g_l3(i4, i3)
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {
@@ -240,7 +240,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_page_relations(
     assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, pg_idx); };
 }
 
-/// Every l3 path of `table` that resolved before the page left still resolves to the same entry: it keeps its held entries and the changed slot never resolved.
+/// Every l3 path of `table` that resolved before the page left still resolves to the same entry: it keeps its non-empty entries and the changed slot never resolved.
 proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_l3(
     pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
@@ -261,12 +261,12 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_l3(
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
     pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
-    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
-        PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq,
-        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
+        PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
+        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq;
 }
 
-/// Every l2 path of `table` that resolved before the page left still resolves to the same entry: it keeps its held entries and the changed slot never resolved.
+/// Every l2 path of `table` that resolved before the page left still resolves to the same entry: it keeps its non-empty entries and the changed slot never resolved.
 proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_l2(
     pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
@@ -289,12 +289,12 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_l2(
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
     pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
-    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
-        PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq,
-        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
+        PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
+        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq;
 }
 
-/// Every 4k path of `table` that resolved before the page left still resolves to the same entry: it keeps its held entries and the changed slot never resolved.
+/// Every 4k path of `table` that resolved before the page left still resolves to the same entry: it keeps its non-empty entries and the changed slot never resolved.
 proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_4k(
     pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
@@ -318,12 +318,12 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_4k(
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
     pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
-    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
-        PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq,
-        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
+        PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
+        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq;
 }
 
-/// Every 2m path of `table` that resolved before the page left still resolves to the same entry: it keeps its held entries and the changed slot never resolved.
+/// Every 2m path of `table` that resolved before the page left still resolves to the same entry: it keeps its non-empty entries and the changed slot never resolved.
 proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_2m(
     pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
@@ -346,12 +346,12 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_2m(
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
     pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
-    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
-        PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq,
-        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
+        PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
+        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq;
 }
 
-/// Every 1g path of `table` that resolved before the page left still resolves to the same entry: it keeps its held entries and the changed slot never resolved.
+/// Every 1g path of `table` that resolved before the page left still resolves to the same entry: it keeps its non-empty entries and the changed slot never resolved.
 proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_1g(
     pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
@@ -367,18 +367,18 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_1g(
     ensures
         forall|i4: L4Index, i3: L3Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), table).spec_resolve_mapping_1g_l3(i4, i3)]
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_1g_l3(i4, i3) is Some
-                ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), table).spec_held_1g_l3(i4, i3) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_held_1g_l3(i4, i3)
+                ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), table).spec_nonempty_1g_l3(i4, i3) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_nonempty_1g_l3(i4, i3)
                     && whole_pagetable(post.pt_mp, post.pt_lower.view(), table).spec_resolve_mapping_1g_l3(i4, i3) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_1g_l3(i4, i3),
 {
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
     pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
-    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
-        PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq,
-        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+    broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
+        PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
+        WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq;
 }
 
-/// The TLBs and paging-structure caches stay inside their tables: `table` lists no CPU stale before or after, so each cached entry of it resolved before and still resolves to the same held entry.
+/// The TLBs and paging-structure caches stay inside their tables: `table` lists no CPU stale before or after, so each cached entry of it resolved before and still resolves to the same non-empty entry.
 proof fn mmap_1g_reclaim_table_page_to_cache_eof_cpu_caches(
     pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,

@@ -39,35 +39,35 @@ verus! {
             #![trigger cpu_tlb.tlb_4k().dom().contains(va)]
             #![trigger cpu_tlb.tlb_4k().spec_index(va)]
             cpu_tlb.tlb_4k().dom().contains(va) ==> {
-                let held = pagetable.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+                let nonempty = pagetable.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
                 &&& va_4k_valid(va)
                 &&& pagetable.kernel_l4_end() <= spec_v2l4index(va)
-                &&& held is Some
-                &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_4k().spec_index(va), held->0)
+                &&& nonempty is Some
+                &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_4k().spec_index(va), nonempty->0)
             }
         &&& forall|va: VAddr|
             #![trigger cpu_tlb.tlb_2m().dom().contains(va)]
             #![trigger cpu_tlb.tlb_2m().spec_index(va)]
             cpu_tlb.tlb_2m().dom().contains(va) ==> {
-                let held = pagetable.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+                let nonempty = pagetable.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
                 &&& va_2m_valid(va)
                 &&& pagetable.kernel_l4_end() <= spec_v2l4index(va)
-                &&& held is Some
-                &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_2m().spec_index(va), held->0)
+                &&& nonempty is Some
+                &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_2m().spec_index(va), nonempty->0)
             }
         &&& forall|va: VAddr|
             #![trigger cpu_tlb.tlb_1g().dom().contains(va)]
             #![trigger cpu_tlb.tlb_1g().spec_index(va)]
             cpu_tlb.tlb_1g().dom().contains(va) ==> {
-                let held = pagetable.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+                let nonempty = pagetable.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
                 &&& va_1g_valid(va)
                 &&& pagetable.kernel_l4_end() <= spec_v2l4index(va)
-                &&& held is Some
-                &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_1g().spec_index(va), held->0)
+                &&& nonempty is Some
+                &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_1g().spec_index(va), nonempty->0)
             }
     }
 
-    /// Every translation a CPU TLB caches is a held leaf of the table that also resolves and is present: the shape after a
+    /// Every translation a CPU TLB caches is a non-empty leaf of the table that also resolves and is present: the shape after a
     /// flush or a CR3 write.
     pub open spec fn single_cpu_single_pcid_tlb_subset_of_present_pagetable(cpu_tlb: SingleTLB, pagetable: WholePageTable) -> bool {
         &&& single_tlb_subset_of_whole_pagetable(cpu_tlb, pagetable)
@@ -135,7 +135,7 @@ verus! {
                 ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable)
     }
 
-    /// A TLB keeps only held leaves of its CPU's dirty table, and a leaf the table no longer shows only while the CPU is
+    /// A TLB keeps only non-empty leaves of its CPU's dirty table, and a leaf the table no longer shows only while the CPU is
     /// listed stale for it. Inactive, marked PCIDs remain exempt until their next activation flush.
     #[verifier::opaque]
     pub open spec fn cpu_tlb_wf(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {

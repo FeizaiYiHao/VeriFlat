@@ -17,13 +17,13 @@ pub proof fn resolve_mappings_eq_for_higher_and_lower_tables_eq(old: WholePageTa
 {}
 
 impl WholePageTable {
-    /// `scan` names a table page of the held chain that the matching unlink can take out, post-order, or reports that no user
+    /// `scan` names a table page of the non-empty chain that the matching unlink can take out, post-order, or reports that no user
     /// root entry holds an L3 page. The scan runs only over a table whose user root entries no longer resolve.
     pub open spec fn structure_scan_wf(&self, scan: StructureScan) -> bool {
         match scan {
             StructureScan::L1 { l4i, l3i, l2i, l2_p, l1_p } => {
                 &&& self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                &&& self.spec_held_l3(l4i, l3i) is Some && self.spec_held_l3(l4i, l3i)->0.addr == l2_p
+                &&& self.spec_nonempty_l3(l4i, l3i) is Some && self.spec_nonempty_l3(l4i, l3i)->0.addr == l2_p
                 &&& self.lower.l2_page(l2_p).entry_lock(l2i).l1() is Some && self.lower.l2_entry(l2_p, l2i).addr == l1_p
                 &&& self.spec_resolve_mapping_l2(l4i, l3i, l2i) is None
                 &&& self.lower.l2_owner(l2_p, l2i) is None
@@ -31,8 +31,8 @@ impl WholePageTable {
             },
             StructureScan::L2 { l4i, l3i, l3_p, l2_p } => {
                 &&& self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                &&& self.spec_held_l4(l4i) is Some && self.spec_held_l4(l4i)->0.addr == l3_p
-                &&& self.spec_held_l3(l4i, l3i) is Some && self.spec_held_l3(l4i, l3i)->0.addr == l2_p
+                &&& self.spec_nonempty_l4(l4i) is Some && self.spec_nonempty_l4(l4i)->0.addr == l3_p
+                &&& self.spec_nonempty_l3(l4i, l3i) is Some && self.spec_nonempty_l3(l4i, l3i)->0.addr == l2_p
                 &&& forall|i: L2Index|
                     #![trigger self.lower.l2_page(l2_p).entry_lock(i).l1()]
                     #![trigger self.lower.l2_entry(l2_p, i)]
@@ -43,14 +43,14 @@ impl WholePageTable {
             },
             StructureScan::L3 { l4i, l3_p } => {
                 &&& self.kernel_l4_end() <= l4i && pei_valid(l4i)
-                &&& self.spec_held_l4(l4i) is Some && self.spec_held_l4(l4i)->0.addr == l3_p
-                &&& forall|i: L3Index| #![trigger self.spec_held_l3(l4i, i)] pei_valid(i) ==> self.spec_held_l3(l4i, i) is None
+                &&& self.spec_nonempty_l4(l4i) is Some && self.spec_nonempty_l4(l4i)->0.addr == l3_p
+                &&& forall|i: L3Index| #![trigger self.spec_nonempty_l3(l4i, i)] pei_valid(i) ==> self.spec_nonempty_l3(l4i, i) is None
                 &&& forall|i: L3Index| #![trigger self.spec_resolve_mapping_1g_l3(l4i, i)] pei_valid(i) ==> self.spec_resolve_mapping_1g_l3(l4i, i) is None
-                &&& forall|i: L3Index| #![trigger self.spec_held_1g_l3(l4i, i)] pei_valid(i) ==> self.spec_held_1g_l3(l4i, i) is None
+                &&& forall|i: L3Index| #![trigger self.spec_nonempty_1g_l3(l4i, i)] pei_valid(i) ==> self.spec_nonempty_1g_l3(l4i, i) is None
                 &&& self.page_closure().contains(l3_p) && l3_p != self.cr3()
             },
             StructureScan::Empty => {
-                &&& forall|i: L4Index| #![trigger self.spec_held_l4(i)] self.kernel_l4_end() <= i && pei_valid(i) ==> self.spec_held_l4(i) is None
+                &&& forall|i: L4Index| #![trigger self.spec_nonempty_l4(i)] self.kernel_l4_end() <= i && pei_valid(i) ==> self.spec_nonempty_l4(i) is None
                 &&& forall|i: L4Index| #![trigger self.spec_resolve_mapping_l4(i)] self.kernel_l4_end() <= i && pei_valid(i) ==> self.spec_resolve_mapping_l4(i) is None
                 &&& self.page_closure() =~= set![self.cr3()]
                 // When every valid key lies in the user part, no mapping is left.
@@ -68,7 +68,7 @@ impl WholePageTable {
     proof fn next_structure_page_eof_empty(&self)
         requires
             self.wf(),
-            forall|l4i: L4Index| #![trigger self.spec_held_l4(l4i)] self.kernel_l4_end() <= l4i && pei_valid(l4i) ==> self.spec_held_l4(l4i) is None,
+            forall|l4i: L4Index| #![trigger self.spec_nonempty_l4(l4i)] self.kernel_l4_end() <= l4i && pei_valid(l4i) ==> self.spec_nonempty_l4(l4i) is None,
             forall|l4i: L4Index| #![trigger self.spec_resolve_mapping_l4(l4i)] self.kernel_l4_end() <= l4i && pei_valid(l4i) ==> self.spec_resolve_mapping_l4(l4i) is None,
         ensures
             self.structure_scan_wf(StructureScan::Empty),
@@ -87,7 +87,7 @@ impl WholePageTable {
 }
 
 impl PageTableHigher {
-    /// Find the first table page of the held chain that can be unlinked, post-order in index order: an L1 page, else an L2 page
+    /// Find the first table page of the non-empty chain that can be unlinked, post-order in index order: an L1 page, else an L2 page
     /// that holds no L1 page, else an L3 page that holds no L2 page, else report that only the root is left. Every user root entry
     /// no longer resolves, no window is locked, and no hidden L1 page sits outside a locked window, so each L2 word tells whether
     /// it holds an L1 page.
@@ -95,7 +95,7 @@ impl PageTableHigher {
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             forall|l4i: L4Index| #![trigger self.spec_resolve_mapping_l4(l4i)] self.kernel_l4_end <= l4i && pei_valid(l4i) ==> self.spec_resolve_mapping_l4(l4i) is None,
-            forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_held_1g_l3(l4i, l3i)] self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> self.spec_held_1g_l3(l4i, l3i) is None,
+            forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_nonempty_1g_l3(l4i, l3i)] self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> self.spec_nonempty_1g_l3(l4i, l3i) is None,
             lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
         ensures
@@ -108,15 +108,15 @@ impl PageTableHigher {
             invariant
                 (WholePageTable { higher: *self, lower: *lower }).wf(),
                 forall|j: L4Index| #![trigger self.spec_resolve_mapping_l4(j)] self.kernel_l4_end <= j && pei_valid(j) ==> self.spec_resolve_mapping_l4(j) is None,
-                forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_held_1g_l3(l4i, l3i)] self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> self.spec_held_1g_l3(l4i, l3i) is None,
+                forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_nonempty_1g_l3(l4i, l3i)] self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> self.spec_nonempty_1g_l3(l4i, l3i) is None,
                 lower.hidden_l1_tables_in_locked_windows(),
                 forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
                 pei_valid(self.kernel_l4_end),
                 self.kernel_l4_end <= l4i <= 512,
-                forall|j: L4Index| #![trigger self.spec_held_l4(j)] self.kernel_l4_end <= j < l4i ==> self.spec_held_l4(j) is None,
+                forall|j: L4Index| #![trigger self.spec_nonempty_l4(j)] self.kernel_l4_end <= j < l4i ==> self.spec_nonempty_l4(j) is None,
             decreases 512 - l4i,
         {
-            if let Some(l4_entry) = self.get_held_entry_l4(l4i) { return self.scan_l3_table(Tracked(lower), l4i, &l4_entry); }
+            if let Some(l4_entry) = self.get_nonempty_entry_l4(l4i) { return self.scan_l3_table(Tracked(lower), l4i, &l4_entry); }
             l4i = l4i + 1;
         }
         proof { (WholePageTable { higher: *self, lower: *lower }).next_structure_page_eof_empty(); }
@@ -168,15 +168,15 @@ impl PageTableHigher {
                 #![trigger (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
-                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i)]
-                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) is Some
-                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i)]
-                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i) is Some
-                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_1g_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is Some
+                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i) is Some
+                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_1g_l3(l4i, l3i)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_1g_l3(l4i, l3i) is Some
+                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_nonempty_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_nonempty_1g_l3(l4i, l3i),
             ret.view().is_init(),
             ret.view().addr() == scan.spec_table_page()->Some_0,
     {
@@ -200,9 +200,9 @@ impl PageTableHigher {
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
-            self.spec_held_l4(l4i) =~= Some(*l4_entry),
+            self.spec_nonempty_l4(l4i) =~= Some(*l4_entry),
             self.spec_resolve_mapping_l4(l4i) is None,
-            forall|j: L3Index| #![trigger self.spec_held_1g_l3(l4i, j)] pei_valid(j) ==> self.spec_held_1g_l3(l4i, j) is None,
+            forall|j: L3Index| #![trigger self.spec_nonempty_1g_l3(l4i, j)] pei_valid(j) ==> self.spec_nonempty_1g_l3(l4i, j) is None,
             lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
         ensures
@@ -216,16 +216,16 @@ impl PageTableHigher {
                 c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
-                self.spec_held_l4(l4i) =~= Some(*l4_entry),
+                self.spec_nonempty_l4(l4i) =~= Some(*l4_entry),
                 self.spec_resolve_mapping_l4(l4i) is None,
-                forall|j: L3Index| #![trigger self.spec_held_1g_l3(l4i, j)] pei_valid(j) ==> self.spec_held_1g_l3(l4i, j) is None,
+                forall|j: L3Index| #![trigger self.spec_nonempty_1g_l3(l4i, j)] pei_valid(j) ==> self.spec_nonempty_1g_l3(l4i, j) is None,
                 lower.hidden_l1_tables_in_locked_windows(),
                 forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
                 l3i <= 512,
-                forall|j: L3Index| #![trigger self.spec_held_l3(l4i, j)] j < l3i ==> self.spec_held_l3(l4i, j) is None,
+                forall|j: L3Index| #![trigger self.spec_nonempty_l3(l4i, j)] j < l3i ==> self.spec_nonempty_l3(l4i, j) is None,
             decreases 512 - l3i,
         {
-            if let Some(l3_entry) = self.get_held_entry_l3(l4i, l3i, l4_entry) { return self.scan_l2_table(Tracked(lower), l4i, l3i, l4_entry, &l3_entry); }
+            if let Some(l3_entry) = self.get_nonempty_entry_l3(l4i, l3i, l4_entry) { return self.scan_l2_table(Tracked(lower), l4i, l3i, l4_entry, &l3_entry); }
             l3i = l3i + 1;
         }
         proof { assert(c.page_closure().contains(l4_entry.addr) && l4_entry.addr != self.cr3) by { self.wf_l4_at(l4i); self.wf_l4_cr3_at(); self.table_pages_wf_l3_at(l4_entry.addr); }; }
@@ -237,8 +237,8 @@ impl PageTableHigher {
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
-            self.spec_held_l4(l4i) =~= Some(*l4_entry),
-            self.spec_held_l3(l4i, l3i) =~= Some(*l3_entry),
+            self.spec_nonempty_l4(l4i) =~= Some(*l4_entry),
+            self.spec_nonempty_l3(l4i, l3i) =~= Some(*l3_entry),
             self.spec_resolve_mapping_l4(l4i) is None,
             lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
@@ -258,8 +258,8 @@ impl PageTableHigher {
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(l3i),
-                self.spec_held_l4(l4i) =~= Some(*l4_entry),
-                self.spec_held_l3(l4i, l3i) =~= Some(*l3_entry),
+                self.spec_nonempty_l4(l4i) =~= Some(*l4_entry),
+                self.spec_nonempty_l3(l4i, l3i) =~= Some(*l3_entry),
                 self.spec_resolve_mapping_l4(l4i) is None,
                 lower.hidden_l1_tables_in_locked_windows(),
                 forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,

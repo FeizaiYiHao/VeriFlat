@@ -55,13 +55,13 @@ pub(super) fn unmap_1g_unmap_and_finish(
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-            #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+            #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l4(l4i) is Some
                 ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
         !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-            #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+            #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                 ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         pagetable_perm.state() is WriteLock,
         pagetable_perm.thread_id() == old(lctx).thread_id(),

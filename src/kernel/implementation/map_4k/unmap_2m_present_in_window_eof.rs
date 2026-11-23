@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// Clears the present bit of the 2M leaf `va` in the window half of `pagetable`, whose L2 page is `l2_ptr`: only that window's
-/// L2 entry changes, keeping its address and staying the held 2M leaf; the stale-CPU map, every other mapping and held entry,
+/// L2 entry changes, keeping its address and staying the non-empty 2M leaf; the stale-CPU map, every other mapping and non-empty entry,
 /// and every other table and kernel field are unchanged.
 #[verifier::opaque]
 pub(super) open spec fn clear_2m_mapping_present_in_window_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr) -> bool {
@@ -22,13 +22,13 @@ pub(super) open spec fn clear_2m_mapping_present_in_window_eof_transition_framin
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (l2_ptr, target.2) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
     &&& new_c.lower.l2_entry(l2_ptr, target.2) == (PageEntry { perm: PageEntryPerm { present: false, ..old_c.lower.l2_entry(l2_ptr, target.2).perm }, ..old_c.lower.l2_entry(l2_ptr, target.2) })
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& new_c.spec_held_2m_l2(target.0, target.1, target.2) == Some(new_c.lower.l2_entry(l2_ptr, target.2))
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& new_c.spec_nonempty_2m_l2(target.0, target.1, target.2) == Some(new_c.lower.l2_entry(l2_ptr, target.2))
 }
 
 /// The cleared leaf is still held with its address and access bits, so the TLBs stay inside the table.
@@ -51,11 +51,11 @@ proof fn clear_2m_mapping_present_in_window_eof_tlb(pre: KernelK, post: KernelK,
     let (l4i, l3i, l2i) = (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
     broadcast use spec_va_2m_valid_index_roundtrip;
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
-    old_c.wf_mapping_2m_at(l4i, l3i, l2i); old_c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(l4i, l3i, l2i);
+    old_c.wf_mapping_2m_at(l4i, l3i, l2i); old_c.spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq(l4i, l3i, l2i);
     reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip;
 }
 
-/// Clearing the present bit of a 2M leaf, which owns no L1 page, keeps every held L2 entry; the window lists every CPU stale.
+/// Clearing the present bit of a 2M leaf, which owns no L1 page, keeps every non-empty L2 entry; the window lists every CPU stale.
 proof fn clear_2m_mapping_present_in_window_eof_structure_cache(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
         pre.inv(),
@@ -92,8 +92,8 @@ proof fn clear_2m_mapping_present_in_window_eof_pci_mappings(pre: KernelK, post:
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     let (l4i, l3i, l2i) = (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
-    assert(old_c.spec_held_2m_l2(l4i, l3i, l2i) is Some ==> new_c.spec_held_2m_l2(l4i, l3i, l2i)->0.addr == old_c.spec_held_2m_l2(l4i, l3i, l2i)->0.addr
-        && new_c.spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io == old_c.spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io) by { reveal(clear_2m_mapping_present_in_window_eof_transition_framing); };
+    assert(old_c.spec_nonempty_2m_l2(l4i, l3i, l2i) is Some ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)->0.addr == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)->0.addr
+        && new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)->0.perm.is_io == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)->0.perm.is_io) by { reveal(clear_2m_mapping_present_in_window_eof_transition_framing); };
     reveal(clear_2m_mapping_present_in_window_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
 }
 

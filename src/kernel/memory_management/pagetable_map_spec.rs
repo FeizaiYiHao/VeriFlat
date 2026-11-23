@@ -143,19 +143,19 @@ pub open spec fn pagetable_hidden_roots_only_when_write_locked_or_emptied(pt_mp:
             ==> {
                 // User L4 entries.
                 &&& forall|l4i: L4Index|
-                    #![trigger pt_mp.spec_index(pt).view().higher.spec_held_l4(l4i)]
+                    #![trigger pt_mp.spec_index(pt).view().higher.spec_nonempty_l4(l4i)]
                     pt_mp.spec_index(pt).view().higher.kernel_l4_end <= l4i
                         && pei_valid(l4i)
-                        && pt_mp.spec_index(pt).view().higher.spec_held_l4(l4i) is Some
+                        && pt_mp.spec_index(pt).view().higher.spec_nonempty_l4(l4i) is Some
                         ==>
                         pt_mp.spec_index(pt).view().higher.spec_resolve_mapping_l4(l4i) is Some
                 // L3 entries under user L4 entries.
                 &&& forall|l4i: L4Index, l3i: L3Index|
-                    #![trigger pt_mp.spec_index(pt).view().higher.spec_held_l3(l4i, l3i)]
+                    #![trigger pt_mp.spec_index(pt).view().higher.spec_nonempty_l3(l4i, l3i)]
                     pt_mp.spec_index(pt).view().higher.kernel_l4_end <= l4i
                         && pei_valid(l4i)
                         && pei_valid(l3i)
-                        && pt_mp.spec_index(pt).view().higher.spec_held_l3(l4i, l3i) is Some
+                        && pt_mp.spec_index(pt).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                         ==>
                         pt_mp.spec_index(pt).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some
             }
@@ -171,10 +171,10 @@ pub proof fn pagetable_hidden_roots_only_when_write_locked_or_emptied_at(pt_mp: 
             && !(prc_mp.spec_index(pt_mp.spec_index(pt_ptr).view().higher.proc_ptr).view().state.view() is Zombie)
             ==>
             forall|l4i: L4Index|
-                #![trigger pt_mp.spec_index(pt_ptr).view().higher.spec_held_l4(l4i)]
+                #![trigger pt_mp.spec_index(pt_ptr).view().higher.spec_nonempty_l4(l4i)]
                 pt_mp.spec_index(pt_ptr).view().higher.kernel_l4_end <= l4i
                     && pei_valid(l4i)
-                    && pt_mp.spec_index(pt_ptr).view().higher.spec_held_l4(l4i) is Some
+                    && pt_mp.spec_index(pt_ptr).view().higher.spec_nonempty_l4(l4i) is Some
                     ==>
                     pt_mp.spec_index(pt_ptr).view().higher.spec_resolve_mapping_l4(l4i) is Some,
         !(pt_mp.spec_index(pt_ptr).locking_thread() is Write)
@@ -182,11 +182,11 @@ pub proof fn pagetable_hidden_roots_only_when_write_locked_or_emptied_at(pt_mp: 
             && !(prc_mp.spec_index(pt_mp.spec_index(pt_ptr).view().higher.proc_ptr).view().state.view() is Zombie)
             ==>
             forall|l4i: L4Index, l3i: L3Index|
-                #![trigger pt_mp.spec_index(pt_ptr).view().higher.spec_held_l3(l4i, l3i)]
+                #![trigger pt_mp.spec_index(pt_ptr).view().higher.spec_nonempty_l3(l4i, l3i)]
                 pt_mp.spec_index(pt_ptr).view().higher.kernel_l4_end <= l4i
                     && pei_valid(l4i)
                     && pei_valid(l3i)
-                    && pt_mp.spec_index(pt_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+                    && pt_mp.spec_index(pt_ptr).view().higher.spec_nonempty_l3(l4i, l3i) is Some
                     ==>
                     pt_mp.spec_index(pt_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
 { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); }

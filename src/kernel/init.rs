@@ -297,9 +297,9 @@ pub fn adopt_boot_dom0_pagetable(
         ret.1.view().window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         ret.1.view().hidden_l1_tables_in_locked_windows(),
         ret.0.table_stale_cpus.view() == Set::<CpuId>::empty(),
-        forall|l4i: L4Index| #![trigger ret.0.spec_held_l4(l4i)] kernel_l4_end <= l4i && pei_valid(l4i) && ret.0.spec_held_l4(l4i) is Some ==> ret.0.spec_resolve_mapping_l4(l4i) is Some,
-        forall|l4i: L4Index, l3i: L3Index| #![trigger ret.0.spec_held_l3(l4i, l3i)]
-            kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && ret.0.spec_held_l3(l4i, l3i) is Some ==> ret.0.spec_resolve_mapping_l3(l4i, l3i) is Some,
+        forall|l4i: L4Index| #![trigger ret.0.spec_nonempty_l4(l4i)] kernel_l4_end <= l4i && pei_valid(l4i) && ret.0.spec_nonempty_l4(l4i) is Some ==> ret.0.spec_resolve_mapping_l4(l4i) is Some,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger ret.0.spec_nonempty_l3(l4i, l3i)]
+            kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && ret.0.spec_nonempty_l3(l4i, l3i) is Some ==> ret.0.spec_resolve_mapping_l3(l4i, l3i) is Some,
         ret.0.cr3 == raw_cr3,
         ret.0.pcid == Some(1usize),
         ret.0.pcid_value() == 1,
@@ -706,18 +706,18 @@ pub open spec fn boot_kernel_state(
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == Map::<VAddr, MapEntry>::empty()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& forall|l4i: L4Index|
-        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l4(l4i)]
+        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_nonempty_l4(l4i)]
         kernel_l4_end <= l4i
             && pei_valid(l4i)
-            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l4(l4i) is Some
+            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_nonempty_l4(l4i) is Some
             ==>
             krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some
     &&& forall|l4i: L4Index, l3i: L3Index|
-        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_nonempty_l3(l4i, l3i)]
         kernel_l4_end <= l4i
             && pei_valid(l4i)
             && pei_valid(l3i)
-            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_nonempty_l3(l4i, l3i) is Some
             ==>
             krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some
     // IOMMU table.

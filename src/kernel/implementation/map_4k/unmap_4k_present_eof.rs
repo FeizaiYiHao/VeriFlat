@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// Clears the present bit of the 4K leaf `va` in the window half of `pagetable`, keeping its stale-CPU map, its L2 entries
-/// and every other held leaf; every other kernel field is unchanged.
+/// and every other non-empty leaf; every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn clear_4k_mapping_present_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr) -> bool {
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
@@ -23,17 +23,17 @@ pub(super) open spec fn clear_4k_mapping_present_eof_transition_framing(pre: Ker
     &&& new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != spec_va2index(va)
-            ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& new_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) == Some(PageEntry {
-            perm: PageEntryPerm { present: false, ..old_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm },
-            ..old_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0
+            ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& new_c.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) == Some(PageEntry {
+            perm: PageEntryPerm { present: false, ..old_c.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm },
+            ..old_c.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0
         })
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
 }
 
 /// `pagetable_pci_mappings_wf`: the hidden leaf at `va` stays held with its target and IO bit, so its record still holds, and no
@@ -53,7 +53,7 @@ proof fn clear_4k_mapping_present_eof_pagetable_pci_mappings_wf(pre: KernelK, po
     broadcast use spec_va_4k_valid_index_roundtrip;
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
     reveal(pagetable_pci_mappings_wf);
 }
 
@@ -68,7 +68,7 @@ proof fn clear_4k_mapping_present_eof_pci_function_ownership_wf(pre: KernelK, po
     reveal(pci_function_ownership_wf);
 }
 
-/// Every 4K page record still names a held leaf: the cleared leaf stays held with its frame.
+/// Every 4K page record still names a non-empty leaf: the cleared leaf stays held with its frame.
 proof fn clear_4k_mapping_present_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
@@ -89,7 +89,7 @@ proof fn clear_4k_mapping_present_eof_mapped_4k_pages(pre: KernelK, post: Kernel
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at;
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
     reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
 }
 

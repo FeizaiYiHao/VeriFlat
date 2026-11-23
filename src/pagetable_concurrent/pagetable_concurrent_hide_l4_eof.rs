@@ -101,7 +101,7 @@ impl WholePageTable {
         broadcast use spec_va_1g_valid_index_roundtrip;
     }
 
-    /// EOF closure of `hide_l4_entry`: the leaves that read no walk below the root, and `tables_reachable_wf`, which reads the held chain.
+    /// EOF closure of `hide_l4_entry`: the leaves that read no walk below the root, and `tables_reachable_wf`, which reads the non-empty chain.
     proof fn hide_l4_entry_eof_table_leaves(pre: Self, post: Self, target_l4i: L4Index)
         requires
             pre.wf(),
@@ -257,27 +257,27 @@ impl WholePageTable {
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
     }
 
-    /// EOF closure of `hide_l4_entry`: the placeholder holds the same L3 page, so the held chain is unchanged below it.
-    pub(super) proof fn hide_l4_entry_eof_held_chain(pre: Self, post: Self, target_l4i: L4Index)
+    /// EOF closure of `hide_l4_entry`: the placeholder holds the same L3 page, so the non-empty chain is unchanged below it.
+    pub(super) proof fn hide_l4_entry_eof_nonempty_chain(pre: Self, post: Self, target_l4i: L4Index)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             Self::hide_l4_entry_eof_transition_framing(pre, post, target_l4i),
         ensures
-            forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
-            post.spec_held_l4(target_l4i) == Some(PageEntry { addr: pre.spec_held_l4(target_l4i)->0.addr,
+            forall|l4i: L4Index| #![trigger post.spec_nonempty_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_nonempty_l4(l4i) == pre.spec_nonempty_l4(l4i),
+            post.spec_nonempty_l4(target_l4i) == Some(PageEntry { addr: pre.spec_nonempty_l4(target_l4i)->0.addr,
                 perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_l3(l4i, l3i) == pre.spec_nonempty_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_nonempty_l2(l4i, l3i, l2i) == pre.spec_nonempty_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_nonempty_2m_l2(l4i, l3i, l2i) == pre.spec_nonempty_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_1g_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_1g_l3(l4i, l3i) == pre.spec_nonempty_1g_l3(l4i, l3i),
     {
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
     }

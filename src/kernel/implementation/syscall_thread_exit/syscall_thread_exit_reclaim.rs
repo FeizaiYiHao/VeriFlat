@@ -12,7 +12,7 @@ use super::syscall_thread_exit_reclaim_unown::thread_exit_reclaim_unown;
 verus! {
 /// Reclaim the user memory of the running last thread's process inside its exit: write-lock the process's page table,
 /// hide every user root entry of it, and flush the process's PCID from every cpu once; then give up the process's PCI
-/// functions, which write-locks its IOMMU table, if any, and detaches it; reclaim the pages of the held leaves; remove
+/// functions, which write-locks its IOMMU table, if any, and detaches it; reclaim the pages of the non-empty leaves; remove
 /// every IOMMU 4K leaf of the detached table while refunding their quota to the thread's container chain, return the
 /// thread's and the process's quota of every size to their container, and unlock the tables. Each user-visible change is
 /// one middle step of the partial trace that starts at `start`.

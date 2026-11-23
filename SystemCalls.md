@@ -2043,7 +2043,7 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
 - Refund: pre `reclaim(ThreadExitReclaim { flushed: true })`; effect: one
   container in `C` or `C.uppertree_seq` gains 4K, 2M, or 1G quota
   (`thread_exit_refund_step`). Before the refunds, K reclaims every held leaf
-  of `PT(P)`, hidden ones included (`reclaim_held_leaves`, after the unown
+  of `PT(P)`, hidden ones included (`reclaim_nonempty_leaves`, after the unown
   step, with the array empty): a RAM leaf's page returns to its owner's
   allocator cache of its size and its refund accumulates in the thread's
   pending quota; an IO leaf is removed with no page-array bookkeeping and no
@@ -2291,7 +2291,7 @@ children and no threads)
   - Refund (`kill_process_refund_step`, stage `Reclaim { flushed: true }` or
     `Retire`): one container in `C` or `C.uppertree_seq` gains 4K, 2M, or 1G
     quota. Before the refunds, K reclaims every held leaf of `PT(L)` as in §17
-    (`reclaim_held_leaves`, after the unown step): a RAM leaf's page
+    (`reclaim_nonempty_leaves`, after the unown step): a RAM leaf's page
     (mapped-page major 10009) returns to shard `cpu_id` of its owner's
     allocator cache of its size (pool only to drain a full cache), an IO leaf
     is removed with no bookkeeping, in atomic sections that change no U state

@@ -52,14 +52,14 @@ impl PageTableHigher {
             final(lower).window_stale_cpus == old(lower).window_stale_cpus,
             old(lower).hidden_l1_tables_in_locked_windows() ==> final(lower).hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_page(p).entry_lock(i).l1()] pei_valid(i) && !old(lower).l2_entry_hides_l1(p, i) ==> !final(lower).l2_entry_hides_l1(p, i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_l2(l4i, l3i, l2i)]
+                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_nonempty_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
                 self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (target_l4i, target_l3i, target_l2i, target_l1i)
-                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
                 perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
     {
         proof {
@@ -85,7 +85,7 @@ impl PageTableHigher {
                 reveal(WholePageTable::map_4k_page_eof_transition_framing);
             };
             WholePageTable::map_4k_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
-            WholePageTable::map_4k_page_eof_held_chain(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
+            WholePageTable::map_4k_page_eof_nonempty_chain(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
         }
     }
 
@@ -131,15 +131,15 @@ impl PageTableHigher {
             final(lower).window_stale_cpus == old(lower).window_stale_cpus,
             old(lower).hidden_l1_tables_in_locked_windows() ==> final(lower).hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_page(p).entry_lock(i).l1()] pei_valid(i) && !old(lower).l2_entry_hides_l1(p, i) ==> !final(lower).l2_entry_hides_l1(p, i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_l2(l4i, l3i, l2i)]
+                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_nonempty_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
                 self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i)]
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i)]
                 self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (target_l4i, target_l3i, target_l2i)
-                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i),
-            (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: target_entry.addr,
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_nonempty_2m_l2(l4i, l3i, l2i),
+            (WholePageTable { higher: *self, lower: *final(lower) }).spec_nonempty_2m_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: target_entry.addr,
                 perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
     {
         proof {
@@ -162,7 +162,7 @@ impl PageTableHigher {
                 reveal(WholePageTable::map_2m_page_eof_transition_framing);
             };
             WholePageTable::map_2m_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
-            WholePageTable::map_2m_page_eof_held_chain(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
+            WholePageTable::map_2m_page_eof_nonempty_chain(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
         }
     }
 
@@ -176,7 +176,7 @@ impl PageTableHigher {
             pei_valid(target_l3i),
             old(self).spec_resolve_mapping_l4(target_l4i) is Some,
             old(self).spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            old(self).spec_held_l3(target_l4i, target_l3i) is None,
+            old(self).spec_nonempty_l3(target_l4i, target_l3i) is None,
             old(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None || old(self).mapping_1g.view().dom().contains(spec_index2va((target_l4i, target_l3i, 0, 0))) == false,
             (WholePageTable { higher: *old(self), lower: *lower }).page_closure().contains(target_entry.addr) == false,
             page_ptr_1g_valid(target_entry.addr),
@@ -226,26 +226,26 @@ impl PageTableHigher {
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     ==> (WholePageTable { higher: *final(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (WholePageTable { higher: *old(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
-            forall|l4i: L4Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l4(l4i)]
-                old(self).kernel_l4_end <= l4i && pei_valid(l4i) ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l4(l4i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_l4(l4i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l3(l4i, l3i)]
+            forall|l4i: L4Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_l4(l4i)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_l4(l4i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_nonempty_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_l3(l4i, l3i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_l3(l4i, l3i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_1g_l3(l4i, l3i)]
+                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_nonempty_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_1g_l3(l4i, l3i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i)
-                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_1g_l3(l4i, l3i),
-            (WholePageTable { higher: *final(self), lower: *lower }).spec_held_1g_l3(target_l4i, target_l3i)
+                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_nonempty_1g_l3(l4i, l3i),
+            (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_1g_l3(target_l4i, target_l3i)
                 == Some(PageEntry { addr: target_entry.addr,
                     perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l2(l4i, l3i, l2i)]
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_l2(l4i, l3i, l2i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_nonempty_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_2m_l2(l4i, l3i, l2i)]
+                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_2m_l2(l4i, l3i, l2i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_2m_l2(l4i, l3i, l2i),
+                    ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_nonempty_2m_l2(l4i, l3i, l2i),
     {
         proof {
             self.wf_l4_at(target_l4i);
@@ -265,7 +265,7 @@ impl PageTableHigher {
             };
             WholePageTable::map_1g_page_eof(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry);
             WholePageTable::map_1g_page_eof_resolve(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry);
-            WholePageTable::map_1g_page_eof_held_chain(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry);
+            WholePageTable::map_1g_page_eof_nonempty_chain(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry);
         }
     }
 }
