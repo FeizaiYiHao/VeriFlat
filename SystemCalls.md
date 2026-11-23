@@ -434,10 +434,10 @@ serve `C`. The victim `v = orphan_victim(u, C, cursor, cpu_id)` is the first
 orphan shard other than `cpu_id` at or after `cursor`, wrapping around to shard
 0 (`first_orphan_shard`); a cursor at or past `NUM_CPUS` scans from 0.
 
-- U locks acquired and released in the step: `cpu`, `C`'s cpu set (read on a
-  running cpu, whose running thread keeps the set unmarked; write unless marked
-  on an idle cpu, which returns `Nothing` for a set its container's killer
-  marked), and the moved thread. Non-U: shards `cpu_id` and `v` of `C`'s
+- U locks acquired and released in the step: `cpu`, `C`'s cpu set (read unless
+  marked, on running and idle cpus alike: a set its container's killer marked
+  returns `Nothing`, and a reader waiting on a slot the killer holds sees the
+  mark and gives up), and the moved thread. Non-U: shards `cpu_id` and `v` of `C`'s
   scheduler, the lower index first. The victim is decided from the cpu-set data
   under that lock.
 

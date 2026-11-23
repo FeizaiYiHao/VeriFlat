@@ -70,16 +70,15 @@ fn rebalance_orphan_pull_find_victim(cpu_set: &CpuSet, Ghost(ctn_ptr): Ghost<RwL
     None
 }
 
-/// Takes the cpu set `set_ptr` of the held non-Off cpu `cpu_id`: a read hold on a running cpu, whose set is unmarked; a
-/// write hold unless marked on an idle cpu, which returns `None` for a marked set and changes nothing.
-fn rebalance_orphan_pull_lock_cpu_set(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, set_ptr: RwLockCpuSetPtr, running: bool)
+/// Read-locks the cpu set `set_ptr` of the held non-Off cpu `cpu_id` unless the container's killer marked it; a marked
+/// set returns `None` and changes nothing.
+fn rebalance_orphan_pull_lock_cpu_set(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, set_ptr: RwLockCpuSetPtr)
     -> (ret: Option<Tracked<LockPerm>>)
     requires
         cpu_id == old(lctx).cpu_id(),
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).inv(),
         old(krnl).cpu_set_mp.dom().contains(set_ptr),
-        running ==> !old(krnl).cpu_set_mp.spec_index(set_ptr).being_killed(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         !(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off),
@@ -101,7 +100,7 @@ fn rebalance_orphan_pull_lock_cpu_set(krnl: &mut KernelK, Tracked(lctx): Tracked
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
-        (ret is None) == (!running && old(krnl).cpu_set_mp.spec_index(set_ptr).being_killed()),
+        (ret is None) == old(krnl).cpu_set_mp.spec_index(set_ptr).being_killed(),
         ret is None ==> *final(lctx) == *old(lctx) && kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         *final(krnl) == (KernelK { cpu_set_mp: final(krnl).cpu_set_mp, ..*old(krnl) }),
         forall|c: RwLockContainerPtr| #![trigger final(krnl).cpu_set_mp.spec_index(final(krnl).ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
@@ -136,41 +135,27 @@ fn rebalance_orphan_pull_lock_cpu_set(krnl: &mut KernelK, Tracked(lctx): Tracked
             &&& final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps()
             &&& final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps()
             &&& final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps()
-            &&& !running ==> {
-                &&& before.locking_thread() is None
-                &&& typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Write)
-                &&& perm.state() is WriteLock
-                &&& perm.lock_id() == after.locking_thread()->Write_lock_id
-            }
-            &&& running ==> {
-                &&& !(before.locking_thread() is Write)
-                &&& !(before.locking_thread() is Read && before.locking_thread()->Read_reader_map.dom().contains(final(lctx).thread_id()))
-                &&& before.locking_thread() is Read ==> !before.locking_thread()->Read_reader_map.dom().is_empty()
-                &&& typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Read)
-                &&& perm.state() is ReadLock
-                &&& after.read_lock_perm_match(&perm)
-                &&& after.locking_thread() == (RwLockState::Read {
-                    reader_map: (if before.locking_thread() is Read { before.locking_thread()->Read_reader_map } else { Map::empty() }).insert(final(lctx).thread_id(), perm.lock_id()),
-                })
-            }
+            &&& !(before.locking_thread() is Write)
+            &&& !(before.locking_thread() is Read && before.locking_thread()->Read_reader_map.dom().contains(final(lctx).thread_id()))
+            &&& before.locking_thread() is Read ==> !before.locking_thread()->Read_reader_map.dom().is_empty()
+            &&& typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Read)
+            &&& perm.state() is ReadLock
+            &&& after.read_lock_perm_match(&perm)
+            &&& after.locking_thread() == (RwLockState::Read {
+                reader_map: (if before.locking_thread() is Read { before.locking_thread()->Read_reader_map } else { Map::empty() }).insert(final(lctx).thread_id(), perm.lock_id()),
+            })
         },
 {
     proof { cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); }
-    if running {
-        let ret = krnl.rlock_cpu_set(cpu_id, set_ptr, Tracked(&mut *lctx));
-        Some(ret)
-    } else {
-        let ret = krnl.wlock_cpu_set_unless_killed(set_ptr, Tracked(&mut *lctx));
-        proof { if ret is None { assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; } }
-        ret
-    }
+    let ret = krnl.rlock_cpu_set_unless_killed(cpu_id, set_ptr, Tracked(&mut *lctx));
+    proof { if ret is None { assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; } }
+    ret
 }
 
-/// Releases this cpu's hold on the cpu set `set_ptr`, a write hold when `set_write` and a read hold otherwise; the set's
-/// holders return to `base`, those before the acquisition.
+/// Releases this cpu's read hold on the cpu set `set_ptr`; the set's holders return to `base`, those before the
+/// acquisition.
 fn rebalance_orphan_pull_unlock_cpu_set(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, set_ptr: RwLockCpuSetPtr, set_write: bool, Tracked(set_perm): Tracked<LockPerm>,
-    Ghost(base): Ghost<RwLockState>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, set_ptr: RwLockCpuSetPtr, Tracked(set_perm): Tracked<LockPerm>, Ghost(base): Ghost<RwLockState>,
 )
     requires
         cpu_id == old(lctx).cpu_id(),
@@ -179,22 +164,14 @@ fn rebalance_orphan_pull_unlock_cpu_set(
         !old(krnl).cpu_set_mp.spec_index(set_ptr).being_killed(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         set_perm.thread_id() == old(lctx).thread_id(),
-        set_write ==> {
-            &&& base is None
-            &&& typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Write)
-            &&& set_perm.state() is WriteLock
-            &&& set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id
-        },
-        !set_write ==> {
-            &&& !(base is Write)
-            &&& !(base is Read && base->Read_reader_map.dom().contains(old(lctx).thread_id()))
-            &&& base is Read ==> !base->Read_reader_map.dom().is_empty()
-            &&& typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Read)
-            &&& set_perm.state() is ReadLock
-            &&& old(krnl).cpu_set_mp.spec_index(set_ptr).read_lock_perm_match(&set_perm)
-            &&& old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()
-                == (RwLockState::Read { reader_map: (if base is Read { base->Read_reader_map } else { Map::empty() }).insert(old(lctx).thread_id(), set_perm.lock_id()) })
-        },
+        !(base is Write),
+        !(base is Read && base->Read_reader_map.dom().contains(old(lctx).thread_id())),
+        base is Read ==> !base->Read_reader_map.dom().is_empty(),
+        typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Read),
+        set_perm.state() is ReadLock,
+        old(krnl).cpu_set_mp.spec_index(set_ptr).read_lock_perm_match(&set_perm),
+        old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()
+            == (RwLockState::Read { reader_map: (if base is Read { base->Read_reader_map } else { Map::empty() }).insert(old(lctx).thread_id(), set_perm.lock_id()) }),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -212,18 +189,14 @@ fn rebalance_orphan_pull_unlock_cpu_set(
         final(krnl).cpu_set_mp.spec_index(set_ptr).being_killed() == old(krnl).cpu_set_mp.spec_index(set_ptr).being_killed(),
         typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::CpuSet(set_ptr)),
 {
-    if set_write {
-        krnl.wunlock_cpu_set(set_ptr, Tracked(&mut *lctx), Tracked(set_perm));
-    } else {
-        proof {
-            if base is Read {
-                assert_maps_equal!(base->Read_reader_map.insert(lctx.thread_id(), set_perm.lock_id()).remove(lctx.thread_id()), base->Read_reader_map);
-            } else {
-                assert_sets_equal!(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), set_perm.lock_id()).remove(lctx.thread_id()).dom(), Set::empty());
-            }
+    proof {
+        if base is Read {
+            assert_maps_equal!(base->Read_reader_map.insert(lctx.thread_id(), set_perm.lock_id()).remove(lctx.thread_id()), base->Read_reader_map);
+        } else {
+            assert_sets_equal!(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), set_perm.lock_id()).remove(lctx.thread_id()).dom(), Set::empty());
         }
-        krnl.runlock_cpu_set(cpu_id, set_ptr, Tracked(&mut *lctx), Tracked(set_perm));
     }
+    krnl.runlock_cpu_set(cpu_id, set_ptr, Tracked(&mut *lctx), Tracked(set_perm));
 }
 
 /// Write-locks shards `cpu_id` and `victim` of `sched_ptr`, the lower index first.
@@ -302,7 +275,7 @@ fn rebalance_orphan_pull_lock_shards(krnl: &mut KernelK, Tracked(lctx): Tracked<
 /// them and finishes the call without recording a step.
 fn rebalance_orphan_pull_release_unpulled(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, Ghost(cursor): Ghost<CpuId>, set_ptr: RwLockCpuSetPtr,
-    set_write: bool, Tracked(set_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Ghost(cs_locked): Ghost<KernelK>,
+    Tracked(set_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Ghost(cs_locked): Ghost<KernelK>,
 )
     requires
         old(krnl).inv(),
@@ -346,13 +319,7 @@ fn rebalance_orphan_pull_release_unpulled(
         old(steps).snapshot_k().cpu_set_mp.dom().contains(set_ptr),
         !old(krnl).cpu_set_mp.spec_index(set_ptr).being_killed(),
         set_perm.thread_id() == old(lctx).thread_id(),
-        set_write ==> {
-            &&& old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).locking_thread() is None
-            &&& typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Write)
-            &&& set_perm.state() is WriteLock
-            &&& set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id
-        },
-        !set_write ==> {
+        {
             let base = old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).locking_thread();
             &&& !(base is Write)
             &&& !(base is Read && base->Read_reader_map.dom().contains(old(lctx).thread_id()))
@@ -383,7 +350,7 @@ fn rebalance_orphan_pull_release_unpulled(
             kernel_k_to_kernel_u(*final(krnl)), cpu_id, cursor, false),
 {
     let ghost snap = steps.snapshot_k();
-    rebalance_orphan_pull_unlock_cpu_set(krnl, Tracked(&mut *lctx), cpu_id, set_ptr, set_write, Tracked(set_perm), Ghost(snap.cpu_set_mp.spec_index(set_ptr).locking_thread()));
+    rebalance_orphan_pull_unlock_cpu_set(krnl, Tracked(&mut *lctx), cpu_id, set_ptr, Tracked(set_perm), Ghost(snap.cpu_set_mp.spec_index(set_ptr).locking_thread()));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&snap, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
@@ -402,7 +369,7 @@ fn rebalance_orphan_pull_release_unpulled(
 /// the orphan pull step.
 fn rebalance_orphan_pull_move_head(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, Ghost(cursor): Ghost<CpuId>, sched_ptr: RwLockSchedulerPtr,
-    set_ptr: RwLockCpuSetPtr, victim: CpuId, thrd_ptr: RwLockThreadPtr, set_write: bool, Tracked(set_perm): Tracked<LockPerm>, Tracked(own_perm): Tracked<LockPerm>,
+    set_ptr: RwLockCpuSetPtr, victim: CpuId, thrd_ptr: RwLockThreadPtr, Tracked(set_perm): Tracked<LockPerm>, Tracked(own_perm): Tracked<LockPerm>,
     Tracked(victim_perm): Tracked<LockPerm>, Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 )
     requires
@@ -457,13 +424,7 @@ fn rebalance_orphan_pull_move_head(
         victim_perm.lock_id() == old(krnl).sched_mp.spec_index(sched_ptr).shards.spec_index(victim).view().locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (sched_ptr, victim), TypedLockMode::Write),
         set_perm.thread_id() == old(lctx).thread_id(),
-        set_write ==> {
-            &&& old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).locking_thread() is None
-            &&& typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Write)
-            &&& set_perm.state() is WriteLock
-            &&& set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id
-        },
-        !set_write ==> {
+        {
             let base = old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).locking_thread();
             &&& !(base is Write)
             &&& !(base is Read && base->Read_reader_map.dom().contains(old(lctx).thread_id()))
@@ -556,7 +517,7 @@ fn rebalance_orphan_pull_move_head(
     krnl.wunlock_scheduler_shard(sched_ptr, victim, Tracked(&mut *lctx), Tracked(victim_perm));
     krnl.wunlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx), Tracked(own_perm));
     let ghost snap = steps.snapshot_k();
-    rebalance_orphan_pull_unlock_cpu_set(krnl, Tracked(&mut *lctx), cpu_id, set_ptr, set_write, Tracked(set_perm), Ghost(snap.cpu_set_mp.spec_index(set_ptr).locking_thread()));
+    rebalance_orphan_pull_unlock_cpu_set(krnl, Tracked(&mut *lctx), cpu_id, set_ptr, Tracked(set_perm), Ghost(snap.cpu_set_mp.spec_index(set_ptr).locking_thread()));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost pull_before = steps.view();
@@ -577,7 +538,7 @@ fn rebalance_orphan_pull_move_head(
 /// shard `victim` and moves that shard's live head to the tail of the own shard; an empty or killed head moves nothing.
 fn rebalance_orphan_pull_locked(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, Ghost(cursor): Ghost<CpuId>, sched_ptr: RwLockSchedulerPtr,
-    set_ptr: RwLockCpuSetPtr, victim: CpuId, set_write: bool, Tracked(set_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
+    set_ptr: RwLockCpuSetPtr, victim: CpuId, Tracked(set_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 ) -> (ret: RebalanceResult)
     requires
         old(krnl).inv(),
@@ -618,13 +579,7 @@ fn rebalance_orphan_pull_locked(
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         set_perm.thread_id() == old(lctx).thread_id(),
-        set_write ==> {
-            &&& old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).locking_thread() is None
-            &&& typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Write)
-            &&& set_perm.state() is WriteLock
-            &&& set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id
-        },
-        !set_write ==> {
+        {
             let base = old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).locking_thread();
             &&& !(base is Write)
             &&& !(base is Read && base->Read_reader_map.dom().contains(old(lctx).thread_id()))
@@ -693,7 +648,7 @@ fn rebalance_orphan_pull_locked(
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
-        rebalance_orphan_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), set_ptr, set_write, Tracked(set_perm), Tracked(cpu_lock_perm), Ghost(*old(krnl)));
+        rebalance_orphan_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), set_ptr, Tracked(set_perm), Tracked(cpu_lock_perm), Ghost(*old(krnl)));
         return RebalanceResult::Nothing;
     }
     let (_, thrd_ptr) = krnl.sched_mp.borrow_shard_typed(sched_ptr, victim, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&victim_perm)).queue.peek_head();
@@ -706,12 +661,12 @@ fn rebalance_orphan_pull_locked(
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
-        rebalance_orphan_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), set_ptr, set_write, Tracked(set_perm), Tracked(cpu_lock_perm), Ghost(*old(krnl)));
+        rebalance_orphan_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), set_ptr, Tracked(set_perm), Tracked(cpu_lock_perm), Ghost(*old(krnl)));
         return RebalanceResult::Nothing;
     }
     let Tracked(thread_lock_perm) = res.unwrap();
     rebalance_orphan_pull_move_head(
-        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), sched_ptr, set_ptr, victim, thrd_ptr, set_write, Tracked(set_perm), Tracked(own_perm),
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), sched_ptr, set_ptr, victim, thrd_ptr, Tracked(set_perm), Tracked(own_perm),
         Tracked(victim_perm), Tracked(thread_lock_perm), Tracked(cpu_lock_perm),
     );
     RebalanceResult::Pulled { thread_ptr: thrd_ptr }
@@ -719,8 +674,8 @@ fn rebalance_orphan_pull_locked(
 
 /// Periodic orphan pull of the non-Off cpu `cpu_id`: moves the live head of the first shard of its container's scheduler
 /// at or after `cursor`, wrapping around and skipping its own, whose cpu does not serve the container (not owned by it,
-/// or Off) to the tail of its own shard. A running cpu read-locks its container's cpu set; an idle one write-locks it
-/// unless the container's killer marked it. A cursor at or past `NUM_CPUS` scans from shard 0.
+/// or Off) to the tail of its own shard. The cpu read-locks its container's cpu set unless the container's killer marked
+/// it. A cursor at or past `NUM_CPUS` scans from shard 0.
 pub fn rebalance_orphan_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, cursor: CpuId)
     -> (ret: RebalanceResult)
     requires
@@ -763,21 +718,15 @@ pub fn rebalance_orphan_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loc
     let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     proof { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); }
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
-    let running = match cpu.state() { CpuState::Running => true, _ => false };
     let ctn_ptr = cpu.owning_container();
     let container_ro = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow();
     let sched_ptr = container_ro.scheduler;
     let set_ptr = container_ro.cpu_set;
     proof {
         container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
-        if running {
-            // The running thread lives in the container, so its cpu set is not marked.
-            thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
-            cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, set_ptr);
-        }
         old(krnl).cpu_set_mp.typed_lock_map_aligned_locked_at(old(lctx).cpu_set_lock_map(), old(lctx).thread_id(), set_ptr);
     }
-    let set_res = rebalance_orphan_pull_lock_cpu_set(krnl, Tracked(&mut *lctx), cpu_id, set_ptr, running);
+    let set_res = rebalance_orphan_pull_lock_cpu_set(krnl, Tracked(&mut *lctx), cpu_id, set_ptr);
     if set_res.is_none() {
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -803,12 +752,12 @@ pub fn rebalance_orphan_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loc
     let victim = rebalance_orphan_pull_find_victim(cpu_set, Ghost(ctn_ptr), cpu_id, cursor, Ghost(*old(krnl)));
     if victim.is_none() {
         proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&*krnl, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; }
-        rebalance_orphan_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), set_ptr, !running, Tracked(set_perm), Tracked(cpu_lock_perm), Ghost(*krnl));
+        rebalance_orphan_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), set_ptr, Tracked(set_perm), Tracked(cpu_lock_perm), Ghost(*krnl));
         proof { rebalance_orphan_pull_result_from_k(old(krnl), cpu_id, cursor, victim, RebalanceResult::Nothing); }
         return RebalanceResult::Nothing;
     }
     let victim = victim.unwrap();
-    let ret = rebalance_orphan_pull_locked(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), sched_ptr, set_ptr, victim, !running, Tracked(set_perm), Tracked(cpu_lock_perm));
+    let ret = rebalance_orphan_pull_locked(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(cursor), sched_ptr, set_ptr, victim, Tracked(set_perm), Tracked(cpu_lock_perm));
     proof { rebalance_orphan_pull_result_from_k(old(krnl), cpu_id, cursor, Some(victim), ret); }
     ret
 }
