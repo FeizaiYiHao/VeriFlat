@@ -54,7 +54,7 @@ pub broadcast proof fn merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchange
     let cursor = cursors.spec_index(i);
     let before = before_allocator.merge_2m_source_list(cursor.source);
     let after = after_allocator.merge_2m_source_list(cursor.source);
-    before.wf_implies_view_len_eq_len(); after.wf_implies_view_len_eq_len(); seq_no_duplicates_implies_index_of_roundtrip::<PagePtr>();
+    before.wf_implies_view_len_eq_len(); after.wf_implies_view_len_eq_len();
     if cursor.node is Some {
         let node = cursor.node.unwrap();
         let position = before.addr_list.view().index_of(node);

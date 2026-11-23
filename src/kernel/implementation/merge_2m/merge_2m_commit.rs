@@ -99,7 +99,23 @@ pub fn merge_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
         merge_2m_complete_heads(merge_2m_source_pages(final(krnl).allc_4k_mp.spec_index(allocator_4k))).len() + 1
             == merge_2m_complete_heads(merge_2m_source_pages(old(krnl).allc_4k_mp.spec_index(allocator_4k))).len(),
         typed_lock_maps_aligned(final(krnl), lctx),
-        merge_2m_commit_eof_transition_framing(*old(krnl), *final(krnl), thread, allocator_4k, allocator_2m, *candidate),
+        *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, thrd_mp: final(krnl).thrd_mp, allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
+        forall|index: PageIndex| #![trigger final(krnl).pg_arr.spec_index(index)] candidate.head <= index < candidate.head + 512 ==>
+            final(krnl).pg_arr.spec_index(index).view().locking_thread() == old(krnl).pg_arr.spec_index(index).view().locking_thread(),
+        final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, thread),
+        final(krnl).thrd_mp.spec_index(thread).view() == (Thread { quota_4k: (old(krnl).thrd_mp.spec_index(thread).view().quota_4k - 512) as usize,
+            quota_2m: (old(krnl).thrd_mp.spec_index(thread).view().quota_2m + 1) as usize, ..old(krnl).thrd_mp.spec_index(thread).view() }),
+        final(krnl).thrd_mp.spec_index(thread).locking_thread() == old(krnl).thrd_mp.spec_index(thread).locking_thread(),
+        final(krnl).thrd_mp.spec_index(thread).being_killed() == old(krnl).thrd_mp.spec_index(thread).being_killed(),
+        final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allocator_4k),
+        final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, allocator_2m),
+        final(krnl).allc_4k_mp.spec_index(allocator_4k).quota == old(krnl).allc_4k_mp.spec_index(allocator_4k).quota,
+        final(krnl).allc_2m_mp.spec_index(allocator_2m).quota == old(krnl).allc_2m_mp.spec_index(allocator_2m).quota,
+        final(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.locking_thread() == old(krnl).allc_4k_mp.spec_index(allocator_4k).global_pool.locking_thread(),
+        final(krnl).allc_2m_mp.spec_index(allocator_2m).global_pool.locking_thread() == old(krnl).allc_2m_mp.spec_index(allocator_2m).global_pool.locking_thread(),
+        forall|cpu: CpuId| #![trigger final(krnl).allc_4k_mp.spec_index(allocator_4k).cpu_caches.spec_index(cpu)] cpu < NUM_CPUS ==>
+            final(krnl).allc_4k_mp.spec_index(allocator_4k).cpu_caches.spec_index(cpu).view().locking_thread()
+                == old(krnl).allc_4k_mp.spec_index(allocator_4k).cpu_caches.spec_index(cpu).view().locking_thread(),
         final(krnl).thrd_mp.spec_index(thread).view().quota_4k + 512 == old(krnl).thrd_mp.spec_index(thread).view().quota_4k,
         final(krnl).thrd_mp.spec_index(thread).view().quota_2m == old(krnl).thrd_mp.spec_index(thread).view().quota_2m + 1,
 {
