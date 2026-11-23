@@ -191,8 +191,9 @@ pub(crate) fn kill_walk_and_finish(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, KillTraceCtx::Process { child_index }),
-        kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_target_step_bound() * kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
-        kill_walk_state(*old(krnl), *old(lctx), cpu_id, KillScope::Subtree { process: prc_ptr }, prc_ptr, thrd_ptr, seq![child_ptr], None, KillStage::Walk, cpu_perm, process_perm, thread_perm, chain_perms),
+        kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id)
+            <= process_tables_step_bound() * kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_walk_state(*old(krnl), *old(lctx), cpu_id, KillScope::Subtree, prc_ptr, thrd_ptr, seq![child_ptr], None, KillStage::Walk, cpu_perm, process_perm, thread_perm, chain_perms),
         killer_info.process == prc_ptr,
     ensures
         final(krnl).inv(),
@@ -207,7 +208,7 @@ pub(crate) fn kill_walk_and_finish(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_process_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, child_index, true),
 {
-    let ghost scope = KillScope::Subtree { process: prc_ptr };
+    let ghost scope = KillScope::Subtree;
     let ghost ctx = KillTraceCtx::Process { child_index };
     let tracked mut chain_perms = chain_perms;
     let ghost mut chain: Seq<RwLockProcessPtr> = seq![child_ptr];
@@ -223,8 +224,8 @@ pub(crate) fn kill_walk_and_finish(
             0 <= start <= old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
-            kill_process_table_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) <= kill_process_target_step_bound() * kill_process_retire_count(steps.view().subrange(start, steps.view().len() as int), cpu_id),
-            scope == (KillScope::Subtree { process: prc_ptr }) && ctx == (KillTraceCtx::Process { child_index }),
+            kill_process_table_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) <= process_tables_step_bound() * kill_process_retire_count(steps.view().subrange(start, steps.view().len() as int), cpu_id),
+            scope == (KillScope::Subtree) && ctx == (KillTraceCtx::Process { child_index }),
             kill_walk_state(*krnl, *lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, cpu_perm, process_perm, thread_perm, chain_perms),
             old(lctx).cpu_id() == cpu_id,
             killer_info.process == prc_ptr,

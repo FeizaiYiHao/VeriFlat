@@ -18,15 +18,15 @@ pub open spec fn kill_process_walk_remaining(prc_mp: ProcessLockedMap, chain: Se
         kill_process_walk_digits(prc_mp, chain), usize::MAX as nat + 1, usize::MAX as nat + 2) } else { 0 }
 }
 
-/// What a kill reaches: the subtree below the killer's process `process`, or every process of the victim container
+/// What a kill reaches: the subtree below the killer's process, or every process of the victim container
 /// `container`.
-pub ghost enum KillScope { Subtree { process: RwLockProcessPtr }, Container { container: RwLockContainerPtr } }
+pub ghost enum KillScope { Subtree, Container { container: RwLockContainerPtr } }
 
 /// The killer's progress after moving to `process` at `stage` in `scope`: a process kill below its process, or a
 /// container kill working on a process of the victim container.
 pub open spec fn kill_scope_progress(scope: KillScope, process: RwLockProcessPtr, stage: KillStage) -> Option<SyscallProgress> {
     match scope {
-        KillScope::Subtree { .. } => kill_progress(process, stage),
+        KillScope::Subtree => kill_progress(process, stage),
         KillScope::Container { container } => Some(SyscallProgress::KillContainer { container, stage: ContainerKillStage::Process { process, stage } }),
     }
 }
@@ -64,8 +64,8 @@ pub open spec fn kill_chain_state(
     let process = k.prc_mp.spec_index(prc_ptr);
     let thread = k.thrd_mp.spec_index(thrd_ptr);
     let depth = process.view_rodata().view().depth;
-    let base = match scope { KillScope::Subtree { process: root } => k.prc_mp.spec_index(root).view_rodata().view().depth + 1, KillScope::Container { .. } => 0int };
-    let ctn_ptr = match scope { KillScope::Subtree { .. } => process.view_rodata().view().owning_container, KillScope::Container { container } => container };
+    let base = match scope { KillScope::Subtree => depth + 1, KillScope::Container { .. } => 0int };
+    let ctn_ptr = match scope { KillScope::Subtree => process.view_rodata().view().owning_container, KillScope::Container { container } => container };
     &&& cpu_id == lctx.cpu_id()
     &&& lctx.cpu_set_lock_map().dom().is_empty()
     &&& k.prc_mp.dom().contains(prc_ptr)
@@ -84,7 +84,7 @@ pub open spec fn kill_chain_state(
     &&& thread.view().syscall_progress.view() == kill_scope_progress(scope, if chain.len() == 0 { prc_ptr } else { chain[chain.len() - 1] }, stage)
     &&& !thread.view().exited.view()
     &&& match scope {
-        KillScope::Subtree { process: root } => root == prc_ptr && lctx.container_lock_map().dom().is_empty() && process.view_rodata().view().owning_container == cpu.owning_container,
+        KillScope::Subtree => lctx.container_lock_map().dom().is_empty() && process.view_rodata().view().owning_container == cpu.owning_container,
         KillScope::Container { container } => {
             &&& k.ctn_mp.dom().contains(container)
             &&& k.ctn_mp.spec_index(container).being_killed()
@@ -127,8 +127,8 @@ pub open spec fn kill_chain_state(
         &&& chain_perms[chain[i]].lock_id() == p.locking_thread()->Write_lock_id
     }
     &&& scope is Subtree ==> forall|i: int| #![trigger chain[i]] 0 <= i < chain.len() ==> {
-        &&& k.prc_mp.spec_index(chain[i]).view().uppertree_seq.view().contains(scope->Subtree_process)
-        &&& i == 0 ==> k.prc_mp.spec_index(chain[i]).view_rodata().view().parent == Some(scope->Subtree_process)
+        &&& k.prc_mp.spec_index(chain[i]).view().uppertree_seq.view().contains(prc_ptr)
+        &&& i == 0 ==> k.prc_mp.spec_index(chain[i]).view_rodata().view().parent == Some(prc_ptr)
     }
     &&& scope is Container ==> forall|i: int| #![trigger chain[i]] 0 <= i < chain.len() ==> {
         &&& cpu.container_depth < k.prc_mp.spec_index(chain[i]).view_rodata().view().container_depth

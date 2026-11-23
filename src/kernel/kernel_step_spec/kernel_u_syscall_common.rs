@@ -62,7 +62,8 @@ pub open spec fn process_table_hidden_step(old_u: KernelU, new_u: KernelU, prc_p
     &&& forall|a: VAddr, b: VAddr| #![trigger process_table_key_dropped(o, n, a), process_table_key_dropped(o, n, b)]
         process_table_key_dropped(o, n, a) && process_table_key_dropped(o, n, b) ==> spec_v2l4index(a) == spec_v2l4index(b)
     &&& forall|a: VAddr, b: VAddr| #![trigger process_table_key_dropped(o, n, a), spec_v2l4index(b)]
-        process_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a) ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
+        process_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a)
+            ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU {
@@ -84,4 +85,57 @@ pub open spec fn process_user_4k_unmapped(u: KernelU, pagetable: PageTableU) -> 
 pub open spec fn process_iommu_4k_unmapped(iommu_table: PageTableU) -> bool {
     forall|iova: VAddr| #![trigger iommu_table.mapping_4k.dom().contains(iova)] !iommu_table.mapping_4k.dom().contains(iova)
 }
+
+/// The attached flags of `table` after every function in `functions` is detached.
+pub open spec fn pci_functions_detached_attached(table: IommuRootTableU, functions: Set<PciBdf>) -> Seq3<bool> {
+    Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat,
+        |function: int| table.attached[bus][device][function] && !functions.contains((bus as usize, device as usize, function as usize)))))
+}
+
+/// Process `prc_ptr` gives up its PCI functions on cpu `cpu_id`: a process with an IOMMU table write-locks it, every
+/// function of its page table's array is detached, the table drops its DID, and the IOTLB domain of that DID, if any, is
+/// emptied; then every function of the array becomes unowned and the array is emptied.
+pub open spec fn process_pci_functions_unowned(old_u: KernelU, new_u: KernelU, prc_ptr: RwLockProcessPtr, cpu_id: CpuId) -> bool {
+    let process = old_u.process_map[prc_ptr];
+    let pagetable = process.pagetable->Some_0;
+    let functions = pagetable.pci_functions.dom();
+    let table = old_u.iommu_root_table;
+    new_u == (KernelU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
+            pagetable: Some(PageTableU { pci_functions: Map::empty(), ..pagetable }),
+            iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..t }), None => None },
+            ..process
+        }),
+        iommu_root_table: IommuRootTableU {
+            owners: if functions == Set::<PciBdf>::empty() { table.owners } else { pci_owners_released(table.owners, functions) },
+            attached: if process.iommu_table is Some { pci_functions_detached_attached(table, functions) } else { table.attached },
+        },
+        iommu_tlb: if process.iommu_table is Some && process.iommu_table->Some_0.did is Some {
+            old_u.iommu_tlb.insert(process.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        } else { old_u.iommu_tlb },
+        ..old_u
+    })
+}
+
+/// Exactly one 4K mapping leaves the write-locked IOMMU table of process `prc_ptr` and every other entry stays; the kernel
+/// chooses the IOVA.
+pub open spec fn process_iommu_leaf_removed(old_u: KernelU, new_u: KernelU, prc_ptr: RwLockProcessPtr) -> bool {
+    let process = old_u.process_map[prc_ptr];
+    let iommu_table = process.iommu_table->Some_0;
+    let kept = new_u.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom();
+    let removed = iommu_table.mapping_4k.dom().difference(kept);
+    &&& process.iommu_table is Some
+    &&& iommu_table.lock_state is WriteLocked
+    &&& kept.subset_of(iommu_table.mapping_4k.dom())
+    &&& removed.len() == 1
+    &&& new_u == (KernelU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { iommu_table: Some(PageTableU { mapping_4k: iommu_table.mapping_4k.restrict(kept), ..iommu_table }), ..process }),
+        ..old_u
+    })
+}
+
+/// At most this many steps of a kill or an exit work on the tables of one process: 512 * 512 * 512 * 513 = 68,853,694,464
+/// IOMMU cursor positions plus 10,000 for locking the tables, the hidden root entries, the TLB flushes, the refunds, the
+/// quota and unlock steps, and for a kill the zombie, retire, and walk steps.
+pub open spec fn process_tables_step_bound() -> nat { 68_853_704_464 }
 } // verus!

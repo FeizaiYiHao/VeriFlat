@@ -332,17 +332,14 @@ pub(super) proof fn thread_exit_lock_pcid_allocator_step_pre_from_k(
             let thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
             &&& thread.owning_container == ctn_ptr
             &&& thread.caller is None
-            &&& thread.syscall_progress.view() is Some
             &&& forall|j: int| #![trigger thread.endpoint_descriptors.view()[j]] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> thread.endpoint_descriptors.view()[j] is None
-            &&& if process.owned_threads.view().len() == 1 {
-                &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie)
-                &&& process.quota_4k == 0
-                &&& process.quota_2m == 0
-                &&& process.quota_1g == 0
-                &&& thread.quota_4k == 0
-                &&& thread.quota_2m == 0
-                &&& thread.quota_1g == 0
-            } else { thread.syscall_progress.view() matches Some(SyscallProgress::ThreadExit { .. }) }
+            &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie)
+            &&& process.quota_4k == 0
+            &&& process.quota_2m == 0
+            &&& process.quota_1g == 0
+            &&& thread.quota_4k == 0
+            &&& thread.quota_2m == 0
+            &&& thread.quota_1g == 0
         },
     ensures
         thread_exit_lock_pcid_allocator_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
@@ -1171,14 +1168,14 @@ pub(super) proof fn thread_exit_refund_step_from_u(pre: KernelU, post: KernelU, 
     ensures thread_exit_refund_step(pre, post, cpu_id),
 { reveal(thread_exit_refund_step); }
 
-/// The finish step pushed after the partial trace that starts at `start`, with at most `thread_exit_reclaim_step_bound()`
+/// The finish step pushed after the partial trace that starts at `start`, with at most `process_tables_step_bound()`
 /// reclaim steps and fewer than `bound` steps, completes the trace of an exit with at most `bound` steps.
 pub(super) proof fn thread_exit_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, bound: nat)
     requires
         0 <= start <= before.len(),
         before.len() - start + 1 <= bound,
         thread_exit_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id),
-        thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
+        thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) <= process_tables_step_bound(),
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         thread_exit_finish_step_pre(finish_pre, cpu_id),
         thread_exit_finish_step(finish_pre, post, cpu_id),
