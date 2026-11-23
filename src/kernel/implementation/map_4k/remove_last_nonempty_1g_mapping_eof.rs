@@ -2,10 +2,10 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Clears the record `(pagetable, va)` of a held 1G leaf from the page `pg_ptr`, whose last mapping it was, pushes the page through its free-list node at `node_addr` onto the global pool of the owner's 1G allocator `allc_ptr`, credits the thread's pending free 1G quota at `depth`, and
-/// clears that leaf; every other held entry of the table is unchanged.
+/// Clears the record `(pagetable, va)` of a non-empty 1G leaf from the page `pg_ptr`, whose last mapping it was, pushes the page through its free-list node at `node_addr` onto the global pool of the owner's 1G allocator `allc_ptr`, credits the thread's pending free 1G quota at `depth`, and
+/// clears that leaf; every other non-empty entry of the table is unchanged.
 #[verifier::opaque]
-pub(super) open spec fn remove_last_held_1g_mapping_to_allocator_eof_transition_framing(
+pub(super) open spec fn remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize,
 ) -> bool {
@@ -42,18 +42,18 @@ pub(super) open spec fn remove_last_held_1g_mapping_to_allocator_eof_transition_
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == old_c.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index| #![trigger new_c.spec_held_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_held_l4(l4i) == old_c.spec_held_l4(l4i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& new_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
+    &&& forall|l4i: L4Index| #![trigger new_c.spec_nonempty_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_nonempty_l4(l4i) == old_c.spec_nonempty_l4(l4i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_nonempty_l3(l4i, l3i) == old_c.spec_nonempty_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_1g_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_nonempty_1g_l3(l4i, l3i) == old_c.spec_nonempty_1g_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& new_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
     &&& new_c.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex|
@@ -124,17 +124,17 @@ pub(super) open spec fn remove_last_held_1g_mapping_to_allocator_eof_transition_
 }
 
 /// The process-management invariant closes after the thread is credited one pending free 1G quota at `depth`.
-proof fn remove_last_held_1g_mapping_to_allocator_eof_process_management_inv(
+proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_process_management_inv(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     assert(thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
     assert(thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.ep_mp); };
@@ -148,38 +148,38 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_process_management_inv(
 }
 
 /// The process and PCI-function links of the page tables close: no table changes its process or its PCI function array.
-proof fn remove_last_held_1g_mapping_to_allocator_eof_process_links(
+proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_process_links(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         pre.pt_mp.dom().contains(pagetable),
     ensures
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
-/// The page-table relations close after the last mapping of `pg_ptr`, the held 1G leaf `va`, is dropped and cleared.
-proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
+/// The page-table relations close after the last mapping of `pg_ptr`, the non-empty 1G leaf `va`, is dropped and cleared.
+proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_page_relations(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         ({
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_1g_valid(va)
-            &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some
-            &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr
+            &&& old_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some
+            &&& old_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped1g
@@ -196,7 +196,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
@@ -212,18 +212,18 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
     };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
-    remove_last_held_1g_mapping_to_allocator_eof_process_links(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
+    remove_last_nonempty_1g_mapping_to_allocator_eof_process_links(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
 
 /// The 1G allocator relations close after `pg_ptr` enters the head of the owner allocator's global pool.
-proof fn remove_last_held_1g_mapping_to_allocator_eof_free_1g_pages(
+proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_free_1g_pages(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize, owner: RwLockContainerPtr,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& page_ptr_valid(pg_ptr)
@@ -244,7 +244,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_free_1g_pages(
         allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
         allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
@@ -259,13 +259,13 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_free_1g_pages(
 }
 
 /// The page ownership relations close after the 1G head `pg_ptr` turns from a mapped page into a free page of the owner allocator; its tails stay merged into it.
-proof fn remove_last_held_1g_mapping_to_allocator_eof_page_owners(
+proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_page_owners(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
         post.subsystems_inv(),
@@ -289,7 +289,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_owners(
         allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
         allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -321,13 +321,13 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_owners(
 }
 
 /// The allocator quota and kill-retire relations close after the freed page's quota unit moves to the thread's pending free 1G counter at the owner's `depth`.
-proof fn remove_last_held_1g_mapping_to_allocator_eof_allocator_quota_wf(
+proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_allocator_quota_wf(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize, owner: RwLockContainerPtr,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         ({
             let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
             &&& pre.allc_1g_mp.dom().contains(allc_ptr)
@@ -345,7 +345,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_allocator_quota_wf(
         container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(thread_perms_wf);
         unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq_forall();
@@ -369,28 +369,28 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_allocator_quota_wf(
     };
 }
 
-/// `remove_last_held_1g_mapping_to_allocator` EOF: the CPU TLB and paging-structure caches stay consistent after the held 1G leaf `va` of `pagetable` is cleared: its root does not resolve or the leaf is hidden, and the table lists no CPU stale, so no TLB entry or cached directory entry
+/// `remove_last_nonempty_1g_mapping_to_allocator` EOF: the CPU TLB and paging-structure caches stay consistent after the non-empty 1G leaf `va` of `pagetable` is cleared: its root does not resolve or the leaf is hidden, and the table lists no CPU stale, so no TLB entry or cached directory entry
 /// names it.
-proof fn remove_last_held_1g_mapping_to_allocator_eof_cpu_caches(
+proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_cpu_caches(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
     old_counter: usize, new_counter: usize, node_addr: usize,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None
-            || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present,
+            || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
     ensures
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
         structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g);
@@ -399,15 +399,15 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_cpu_caches(
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
 }
 
-/// EOF closure of `remove_last_held_1g_mapping_to_allocator`: the held 1G leaf `va` and its record leave together, so the freed page carries no other record and no CPU caches it, the page heads the owner's 1G global pool, and its quota unit moves to the thread's pending 1G counter at the
+/// EOF closure of `remove_last_nonempty_1g_mapping_to_allocator`: the non-empty 1G leaf `va` and its record leave together, so the freed page carries no other record and no CPU caches it, the page heads the owner's 1G global pool, and its quota unit moves to the thread's pending 1G counter at the
 /// owner's depth.
-pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
+pub(super) proof fn remove_last_nonempty_1g_mapping_to_allocator_eof(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize,
     allc_ptr: RwLockPageAllocatorPtr, old_counter: usize, new_counter: usize, node_addr: usize,
 )
     requires
         pre.inv(),
-        remove_last_held_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
+        remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
@@ -415,10 +415,10 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_1g_valid(va)
             &&& pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va)
-            &&& old_c.spec_resolve_mapping_l4(spec_v2l4index(va)) is None || !old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present
+            &&& old_c.spec_resolve_mapping_l4(spec_v2l4index(va)) is None || !old_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present
             &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
-            &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some
-            &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr
+            &&& old_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some
+            &&& old_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped1g
@@ -455,7 +455,7 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
-    reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     assert(post.subsystems_inv()) by {
@@ -463,14 +463,14 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(thread_ipc_transit_wf); reveal(KernelK::default_pagetable_wf);
         reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    remove_last_held_1g_mapping_to_allocator_eof_page_relations(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
-    remove_last_held_1g_mapping_to_allocator_eof_free_1g_pages(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr, owner);
-    remove_last_held_1g_mapping_to_allocator_eof_page_owners(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
-    remove_last_held_1g_mapping_to_allocator_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr, owner);
+    remove_last_nonempty_1g_mapping_to_allocator_eof_page_relations(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
+    remove_last_nonempty_1g_mapping_to_allocator_eof_free_1g_pages(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr, owner);
+    remove_last_nonempty_1g_mapping_to_allocator_eof_page_owners(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
+    remove_last_nonempty_1g_mapping_to_allocator_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr, owner);
     assert(post.memory_management_inv()) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
-    remove_last_held_1g_mapping_to_allocator_eof_process_management_inv(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
+    remove_last_nonempty_1g_mapping_to_allocator_eof_process_management_inv(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
-    remove_last_held_1g_mapping_to_allocator_eof_cpu_caches(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
+    remove_last_nonempty_1g_mapping_to_allocator_eof_cpu_caches(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     assert(new_c.user_view(LockStateU::Unlocked).mapping_1g =~= old_c.user_view(LockStateU::Unlocked).mapping_1g) by {

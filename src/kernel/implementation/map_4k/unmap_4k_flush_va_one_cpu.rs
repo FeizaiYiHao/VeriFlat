@@ -430,7 +430,7 @@ pub(super) fn drop_stale_cpu_after_va_flush(krnl: &mut KernelK, pagetable: RwLoc
 /// After a per-address flush of `count` pages from `va`, 4K or 2M apart by `stride_2m`, under `pcid` on cpu `cpu_id`, which
 /// runs `pagetable` under `pcid` in `pre` or whose pair is unmarked there with no other dirty table, every 4K or 2M
 /// translation of the TLB of `cur` in a window of `pagetable` that `lctx` holds is a present leaf: it is a present leaf the
-/// walker refilled, or a held leaf the TLB of `pre` cached and the flush left, which resolves through the window's L2 entry
+/// walker refilled, or a non-empty leaf the TLB of `pre` cached and the flush left, which resolves through the window's L2 entry
 /// that hides no L1 page and is present outside the flush.
 pub(super) proof fn held_window_vas_flushed_implies_window_tlb_entries_present(pre: KernelK, cur: KernelK, lctx: &LocalContext, pagetable: RwLockPageTableRoot, cpu_id: CpuId, pcid: Pcid, va: VAddr,
     count: usize, stride_2m: bool)
@@ -461,6 +461,6 @@ pub(super) proof fn held_window_vas_flushed_implies_window_tlb_entries_present(p
     assert(table.mapping_4k() =~= table.lower.mapping_4k && table.mapping_2m() =~= table.lower.mapping_2m);
     reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
     reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m);
-    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq;
 }
 }

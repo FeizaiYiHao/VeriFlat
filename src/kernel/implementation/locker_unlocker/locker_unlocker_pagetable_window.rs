@@ -74,12 +74,12 @@ impl KernelK {
             forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1)
                     == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1),
-            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_4k_l1(i4, i3, i2, i1)]
+            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_4k_l1(i4, i3, i2, i1)]
                 whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1)
-                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_4k_l1(i4, i3, i2, i1) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_held_4k_l1(i4, i3, i2, i1),
-            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2)]
+                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_4k_l1(i4, i3, i2, i1) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_nonempty_4k_l1(i4, i3, i2, i1),
+            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_2m_l2(i4, i3, i2)]
                 whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2)
-                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2),
+                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_2m_l2(i4, i3, i2) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_nonempty_2m_l2(i4, i3, i2),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks
@@ -241,12 +241,12 @@ impl KernelK {
             forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1)
                     == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1),
-            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_4k_l1(i4, i3, i2, i1)]
+            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_4k_l1(i4, i3, i2, i1)]
                 whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1)
-                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_4k_l1(i4, i3, i2, i1) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_held_4k_l1(i4, i3, i2, i1),
-            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2)]
+                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_4k_l1(i4, i3, i2, i1) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_nonempty_4k_l1(i4, i3, i2, i1),
+            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_2m_l2(i4, i3, i2)]
                 whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2)
-                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_held_2m_l2(i4, i3, i2),
+                    ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).spec_nonempty_2m_l2(i4, i3, i2) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).spec_nonempty_2m_l2(i4, i3, i2),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks

@@ -305,23 +305,23 @@ pub(super) proof fn flush_pagetable_tlbs_eol_exit(pre: KernelK, cur: KernelK, po
 }
 
 /// EOL closure of `flush_pagetable_tlbs` at loop exit: only the stale-CPU set of `pagetable` changed in its big-lock payload, so
-/// every held and resolved root and L3 entry of the table is as before.
-pub(super) proof fn flush_pagetable_tlbs_eol_exit_held_entries(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot)
+/// every non-empty and resolved root and L3 entry of the table is as before.
+pub(super) proof fn flush_pagetable_tlbs_eol_exit_nonempty_entries(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot)
     requires
         post.pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: post.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..pre.pt_mp.spec_index(pagetable).view().higher }),
     ensures
         ({
             let old_h = pre.pt_mp.spec_index(pagetable).view().higher;
             let new_h = post.pt_mp.spec_index(pagetable).view().higher;
-            &&& forall|l4i: L4Index| #![trigger new_h.spec_held_l4(l4i)] new_h.spec_held_l4(l4i) == old_h.spec_held_l4(l4i) && new_h.spec_resolve_mapping_l4(l4i) == old_h.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_h.spec_held_l3(l4i, l3i)]
-                new_h.spec_held_l3(l4i, l3i) == old_h.spec_held_l3(l4i, l3i) && new_h.spec_resolve_mapping_l3(l4i, l3i) == old_h.spec_resolve_mapping_l3(l4i, l3i)
+            &&& forall|l4i: L4Index| #![trigger new_h.spec_nonempty_l4(l4i)] new_h.spec_nonempty_l4(l4i) == old_h.spec_nonempty_l4(l4i) && new_h.spec_resolve_mapping_l4(l4i) == old_h.spec_resolve_mapping_l4(l4i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_h.spec_nonempty_l3(l4i, l3i)]
+                new_h.spec_nonempty_l3(l4i, l3i) == old_h.spec_nonempty_l3(l4i, l3i) && new_h.spec_resolve_mapping_l3(l4i, l3i) == old_h.spec_resolve_mapping_l3(l4i, l3i)
         }),
 {}
 
 /// EOL closure of `flush_pagetable_tlbs` at loop exit under a table write hold: only the table and window stale-CPU sets of
-/// `pagetable` changed, so every held 4K and 2M leaf of the table is as before.
-pub(super) proof fn flush_pagetable_tlbs_eol_exit_held_leaves(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot)
+/// `pagetable` changed, so every non-empty 4K and 2M leaf of the table is as before.
+pub(super) proof fn flush_pagetable_tlbs_eol_exit_nonempty_leaves(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot)
     requires
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).higher
             == (PageTableHigher { table_stale_cpus: whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).higher.table_stale_cpus, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).higher }),
@@ -331,8 +331,8 @@ pub(super) proof fn flush_pagetable_tlbs_eol_exit_held_leaves(pre: KernelK, post
         ({
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)] new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)] new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)] new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)] new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
         }),
 {}
 }

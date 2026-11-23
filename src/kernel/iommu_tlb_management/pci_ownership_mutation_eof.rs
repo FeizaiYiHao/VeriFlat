@@ -5,7 +5,7 @@ use vstd::{assert_seqs_equal, assert_seqs_equal_internal};
 
 /// S of `KernelK::update_pci_entry`: only the PCI function array of page table `root` and the root table moved; the table's lock
 /// state, ghost slot, the rest of its big-lock payload, every window half, and every other table stay.
-/// `update_pci_entry_eof_tables_unchanged` derives that the table's mappings, held leaves, root resolution, pages, and window
+/// `update_pci_entry_eof_tables_unchanged` derives that the table's mappings, non-empty leaves, root resolution, pages, and window
 /// holders stay; `update_pci_entry_eof_owner_update` states the root-table change.
 #[verifier::opaque]
 pub open spec fn update_pci_entry_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate) -> bool {
@@ -26,7 +26,7 @@ pub open spec fn update_pci_entry_eof_transition_framing(pre: KernelK, post: Ker
 }
 
 /// The tables of `KernelK::update_pci_entry`: no walk reads the PCI function array, so page table `root` keeps its mappings,
-/// held leaves, root resolution, pages, and window holders, and every other table stays.
+/// non-empty leaves, root resolution, pages, and window holders, and every other table stays.
 pub(super) proof fn update_pci_entry_eof_tables_unchanged(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
     requires update_pci_entry_eof_transition_framing(pre, post, root, index, update),
     ensures
@@ -44,10 +44,10 @@ pub(super) proof fn update_pci_entry_eof_tables_unchanged(pre: KernelK, post: Ke
                 #![trigger before_table.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 before_table.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     ==> after_table.window_locked_by_thread(l4i, l3i, l2i, thread_id) == before_table.window_locked_by_thread(l4i, l3i, l2i, thread_id)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger after_table.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                after_table.spec_held_4k_l1(l4i, l3i, l2i, l1i) == before_table.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after_table.spec_held_2m_l2(l4i, l3i, l2i)] after_table.spec_held_2m_l2(l4i, l3i, l2i) == before_table.spec_held_2m_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger after_table.spec_held_1g_l3(l4i, l3i)] after_table.spec_held_1g_l3(l4i, l3i) == before_table.spec_held_1g_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger after_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                after_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == before_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after_table.spec_nonempty_2m_l2(l4i, l3i, l2i)] after_table.spec_nonempty_2m_l2(l4i, l3i, l2i) == before_table.spec_nonempty_2m_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger after_table.spec_nonempty_1g_l3(l4i, l3i)] after_table.spec_nonempty_1g_l3(l4i, l3i) == before_table.spec_nonempty_1g_l3(l4i, l3i)
             &&& forall|l4i: L4Index| #![trigger after_table.spec_resolve_mapping_l4(l4i)] after_table.spec_resolve_mapping_l4(l4i) == before_table.spec_resolve_mapping_l4(l4i)
             &&& forall|pagetable_ptr: RwLockPageTableRoot|
                 #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr)]
@@ -118,7 +118,7 @@ proof fn update_pci_entry_eof_entries(pre: PageTableHigher, post: PageTableHighe
         post == (PageTableHigher { pci: post.pci, ..pre }),
     ensures
         forall|i: L4Index| #![trigger post.l4_entry(i)] post.l4_entry(i) == pre.l4_entry(i),
-        forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
+        forall|l4i: L4Index| #![trigger post.spec_nonempty_l4(l4i)] post.spec_nonempty_l4(l4i) == pre.spec_nonempty_l4(l4i),
         forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_resolve_mapping_1g_l3(l4i, l3i)]
             post.spec_resolve_mapping_1g_l3(l4i, l3i) == pre.spec_resolve_mapping_1g_l3(l4i, l3i),
 {}
@@ -284,7 +284,7 @@ proof fn update_pci_entry_eof_page_tables_structure_cache(pre: KernelK, post: Ke
     reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match);
 }
 
-/// EOF closure of `KernelK::update_pci_entry` for the page-table invariants: no leaf, held entry, table page, or process link
+/// EOF closure of `KernelK::update_pci_entry` for the page-table invariants: no leaf, non-empty entry, table page, or process link
 /// moved, and the array of a process whose tables were emptied stays empty.
 proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
     requires

@@ -76,24 +76,24 @@ pub(super) fn mmap_1g_hide_l3_entry(
             &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus && new_c.lower.l2_perms == old_c.lower.l2_perms && new_c.lower.l1_rev_map == old_c.lower.l1_rev_map
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|i4: L4Index| #![trigger new_c.spec_resolve_mapping_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
-            &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4)
+            &&& forall|i4: L4Index| #![trigger new_c.spec_nonempty_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_nonempty_l4(i4) == old_c.spec_nonempty_l4(i4)
             &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_resolve_mapping_l3(i4, i3)]
                 old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != (l4i, l3i) ==> new_c.spec_resolve_mapping_l3(i4, i3) == old_c.spec_resolve_mapping_l3(i4, i3)
             &&& new_c.spec_resolve_mapping_l3(l4i, l3i) is None
-            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != (l4i, l3i) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
-            &&& new_c.spec_held_l3(l4i, l3i) == Some(PageEntry { addr: old_c.spec_resolve_mapping_l3(l4i, l3i)->0.addr,
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != (l4i, l3i) ==> new_c.spec_nonempty_l3(i4, i3) == old_c.spec_nonempty_l3(i4, i3)
+            &&& new_c.spec_nonempty_l3(l4i, l3i) == Some(PageEntry { addr: old_c.spec_resolve_mapping_l3(l4i, l3i)->0.addr,
                     perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
-            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_1g_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_nonempty_1g_l3(i4, i3) == old_c.spec_nonempty_1g_l3(i4, i3)
             &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_resolve_mapping_1g_l3(i4, i3)]
                 old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_resolve_mapping_1g_l3(i4, i3) == old_c.spec_resolve_mapping_1g_l3(i4, i3)
-            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_l2(i4, i3, i2)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_l2(i4, i3, i2) == old_c.spec_held_l2(i4, i3, i2)
-            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_2m_l2(i4, i3, i2)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_2m_l2(i4, i3, i2) == old_c.spec_held_2m_l2(i4, i3, i2)
-            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_held_4k_l1(i4, i3, i2, i1)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_held_4k_l1(i4, i3, i2, i1) == old_c.spec_held_4k_l1(i4, i3, i2, i1)
+            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_l2(i4, i3, i2)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_l2(i4, i3, i2) == old_c.spec_nonempty_l2(i4, i3, i2)
+            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_2m_l2(i4, i3, i2)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_2m_l2(i4, i3, i2) == old_c.spec_nonempty_2m_l2(i4, i3, i2)
+            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_nonempty_4k_l1(i4, i3, i2, i1)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_nonempty_4k_l1(i4, i3, i2, i1) == old_c.spec_nonempty_4k_l1(i4, i3, i2, i1)
         }),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable) == whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable),
         kernel_step_boundary_framing(ret.0@, *final(krnl), ret.1@),

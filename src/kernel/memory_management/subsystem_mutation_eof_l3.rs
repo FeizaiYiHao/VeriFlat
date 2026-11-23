@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// S of `pagetable_map_unlink_hidden_l3_l1_page`: under the big write lock only the window half of `pagetable_ptr` changes, by taking one L1 page that holds no 4K leaf out of an
-/// unresolvable path; the lock's payload backup is reset to the new window half, and every mapping, window lock of a valid user index, and held leaf stays.
+/// unresolvable path; the lock's payload backup is reset to the new window half, and every mapping, window lock of a valid user index, and non-empty leaf stays.
 #[verifier::opaque]
 pub(super) open spec fn pagetable_map_unlink_hidden_l3_l1_page_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
@@ -30,18 +30,18 @@ pub(super) open spec fn pagetable_map_unlink_hidden_l3_l1_page_eof_transition_fr
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-            ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)
+            ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
-        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_nonempty_2m_l2(l4i, l3i, l2i)]
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-            ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)
+            ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_nonempty_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_nonempty_2m_l2(l4i, l3i, l2i)
 }
 
-/// EOF closure of `pagetable_map_unlink_hidden_l3_l1_page`: the big-lock and window-half invariants after one L1 page that holds no 4K leaf leaves an unresolvable path; every held leaf stays, so the page records keep following the held chains.
+/// EOF closure of `pagetable_map_unlink_hidden_l3_l1_page`: the big-lock and window-half invariants after one L1 page that holds no 4K leaf leaves an unresolvable path; every non-empty leaf stays, so the page records keep following the non-empty chains.
 pub(super) proof fn pagetable_map_unlink_hidden_l3_l1_page_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
     page_array: PageLockedArray, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
@@ -99,7 +99,7 @@ pub(super) proof fn pagetable_map_unlink_hidden_l3_l1_page_eof(
 }
 
 /// S of `pagetable_map_remove_l3_entry`: under the big write lock only the entry and window half of `pagetable_ptr` change, by unlinking the L2 page of the unresolvable L3 entry `(l4i, l3i)`; the lock's ghost
-/// slot is reset to the new window half, every mapping and every window lock of a valid user index stay, the windows of `(l4i, l3i)` leave the table, and every held leaf stays.
+/// slot is reset to the new window half, every mapping and every window lock of a valid user index stay, the windows of `(l4i, l3i)` leave the table, and every non-empty leaf stays.
 #[verifier::opaque]
 pub(super) open spec fn pagetable_map_remove_l3_entry_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, l4i: L4Index,
@@ -128,17 +128,17 @@ pub(super) open spec fn pagetable_map_remove_l3_entry_eof_transition_framing(
     &&& post_c.mapping_2m() == pre_c.mapping_2m()
     &&& post_c.mapping_1g() == pre_c.mapping_1g()
     &&& post_c.lower.pagetable_window_locks == pre_c.lower.pagetable_window_locks.remove_keys(pre_c.lower.pagetable_window_locks.dom().filter(|w: WindowVa| spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i))
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger post_c.spec_held_4k_l1(i4, i3, i2, i1)] #![trigger pre_c.spec_held_4k_l1(i4, i3, i2, i1)]
-        pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> post_c.spec_held_4k_l1(i4, i3, i2, i1) == pre_c.spec_held_4k_l1(i4, i3, i2, i1)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger post_c.spec_held_2m_l2(i4, i3, i2)] #![trigger pre_c.spec_held_2m_l2(i4, i3, i2)]
-        pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> post_c.spec_held_2m_l2(i4, i3, i2) == pre_c.spec_held_2m_l2(i4, i3, i2)
-    &&& forall|i4: L4Index, i3: L3Index| #![trigger post_c.spec_held_1g_l3(i4, i3)] #![trigger pre_c.spec_held_1g_l3(i4, i3)]
-        pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> post_c.spec_held_1g_l3(i4, i3) == pre_c.spec_held_1g_l3(i4, i3)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger post_c.spec_nonempty_4k_l1(i4, i3, i2, i1)] #![trigger pre_c.spec_nonempty_4k_l1(i4, i3, i2, i1)]
+        pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> post_c.spec_nonempty_4k_l1(i4, i3, i2, i1) == pre_c.spec_nonempty_4k_l1(i4, i3, i2, i1)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger post_c.spec_nonempty_2m_l2(i4, i3, i2)] #![trigger pre_c.spec_nonempty_2m_l2(i4, i3, i2)]
+        pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> post_c.spec_nonempty_2m_l2(i4, i3, i2) == pre_c.spec_nonempty_2m_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger post_c.spec_nonempty_1g_l3(i4, i3)] #![trigger pre_c.spec_nonempty_1g_l3(i4, i3)]
+        pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> post_c.spec_nonempty_1g_l3(i4, i3) == pre_c.spec_nonempty_1g_l3(i4, i3)
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
     &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
-/// EOF closure of `pagetable_map_remove_l3_entry`: the big-lock and window-half invariants after the L2 page of an unresolvable L3 entry is unlinked; every held leaf stays, so the page records keep following the held chains. The unresolvable entry had no window, so the window locks stay.
+/// EOF closure of `pagetable_map_remove_l3_entry`: the big-lock and window-half invariants after the L2 page of an unresolvable L3 entry is unlinked; every non-empty leaf stays, so the page records keep following the non-empty chains. The unresolvable entry had no window, so the window locks stay.
 pub(super) proof fn pagetable_map_remove_l3_entry_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, l4i: L4Index,
     l3i: L3Index, page_array: PageLockedArray, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>,

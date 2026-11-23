@@ -341,8 +341,8 @@ proof fn boot_memory_management_inv_eof_mappings(
     assert(page_mappings_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr)) by {
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
         reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); page_ptr_valid_imply_page_index_valid();
-        broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq,
-            WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq, PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve;
+        broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq,
+            WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq, PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve;
     };
     assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(boot_page_array_ready); };
     assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { reveal(page_iommu_table_wf); reveal(boot_page_array_ready); };
@@ -380,8 +380,8 @@ proof fn boot_memory_management_inv_eof_io_mappings(
     assert(pagetable_pci_mappings_wf(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view())) by {
         reveal(pagetable_pci_mappings_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
         reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
-        broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq,
-            WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq, PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve;
+        broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq,
+            WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq, PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve;
     };
 }
 

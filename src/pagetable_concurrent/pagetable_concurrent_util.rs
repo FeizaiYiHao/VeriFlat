@@ -174,12 +174,12 @@ impl PageTableHigher {
     }
 
     /// User root entry `target_l4i` while it holds an L3 page, present or as a placeholder.
-    pub fn get_held_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
+    pub fn get_nonempty_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
         requires
             self.inv(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
         ensures
-            self.spec_held_l4(target_l4i) == ret,
+            self.spec_nonempty_l4(target_l4i) == ret,
     {
         proof { self.wf_l4_cr3_at(); }
         let tracked l4_perm = self.l4_table.borrow().tracked_borrow(self.cr3);
@@ -188,16 +188,16 @@ impl PageTableHigher {
         if l4_entry.perm.present || l4_entry.perm.kernel_present { Some(l4_entry) } else { None }
     }
 
-    /// Non-huge L3 entry `(target_l4i, target_l3i)` under the held root entry `l4_entry` while it holds an L2 page, present or as a
+    /// Non-huge L3 entry `(target_l4i, target_l3i)` under the non-empty root entry `l4_entry` while it holds an L2 page, present or as a
     /// placeholder.
-    pub fn get_held_entry_l3(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: Option<PageEntry>)
+    pub fn get_nonempty_entry_l3(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             self.inv(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
-            self.spec_held_l4(target_l4i) =~= Some(*l4_entry),
+            self.spec_nonempty_l4(target_l4i) =~= Some(*l4_entry),
         ensures
-            self.spec_held_l3(target_l4i, target_l3i) =~= ret,
+            self.spec_nonempty_l3(target_l4i, target_l3i) =~= ret,
     {
         proof {
             self.wf_l4_at(target_l4i);
@@ -209,17 +209,17 @@ impl PageTableHigher {
         if (l3_entry.perm.present || l3_entry.perm.kernel_present) && !l3_entry.perm.ps { Some(l3_entry) } else { None }
     }
 
-    /// Word of entry `target_l3i` of the L3 page that the held root entry `l4_entry` links: a held L3 link when present or kernel-present
-    /// and not huge, a held 1G leaf when kernel-present and huge; under a present root entry it resolves the same way.
+    /// Word of entry `target_l3i` of the L3 page that the non-empty root entry `l4_entry` links: a non-empty L3 link when present or kernel-present
+    /// and not huge, a non-empty 1G leaf when kernel-present and huge; under a present root entry it resolves the same way.
     pub fn get_l3_entry_word(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: PageEntry)
         requires
             self.inv(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
-            self.spec_held_l4(target_l4i) =~= Some(*l4_entry),
+            self.spec_nonempty_l4(target_l4i) =~= Some(*l4_entry),
         ensures
-            self.spec_held_l3(target_l4i, target_l3i) =~= (if (ret.perm.present || ret.perm.kernel_present) && !ret.perm.ps { Some(ret) } else { None }),
-            self.spec_held_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
+            self.spec_nonempty_l3(target_l4i, target_l3i) =~= (if (ret.perm.present || ret.perm.kernel_present) && !ret.perm.ps { Some(ret) } else { None }),
+            self.spec_nonempty_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
             self.spec_resolve_mapping_l4(target_l4i) is Some ==> self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= (if ret.perm.present && !ret.perm.ps { Some(ret) } else { None }),
             self.spec_resolve_mapping_l4(target_l4i) is Some ==> self.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
     {
@@ -232,7 +232,7 @@ impl PageTableHigher {
         l3_tbl.get(target_l3i)
     }
 
-    /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the held L3 entry `l3_entry`. It is a held 2M leaf when kernel-present
+    /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the non-empty L3 entry `l3_entry`. It is a non-empty 2M leaf when kernel-present
     /// and huge. The entry is unlocked and no hidden L1 page sits outside a locked window, so it holds an L1 page exactly when present
     /// and not huge.
     pub fn get_l2_entry_word(&self, Tracked(lower): Tracked<&PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry)
@@ -242,18 +242,18 @@ impl PageTableHigher {
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
-            self.spec_held_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
+            self.spec_nonempty_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
             lower.hidden_l1_tables_in_locked_windows(),
             lower.l2_owner(l3_entry.addr, target_l2i) is None,
         ensures
             ret == lower.l2_entry(l3_entry.addr, target_l2i),
-            (WholePageTable { higher: *self, lower: *lower }).spec_held_2m_l2(target_l4i, target_l3i, target_l2i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
-            (WholePageTable { higher: *self, lower: *lower }).spec_held_l2(target_l4i, target_l3i, target_l2i) =~= (if ret.perm.present && !ret.perm.ps { Some(ret) } else { None }),
+            (WholePageTable { higher: *self, lower: *lower }).spec_nonempty_2m_l2(target_l4i, target_l3i, target_l2i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
+            (WholePageTable { higher: *self, lower: *lower }).spec_nonempty_l2(target_l4i, target_l3i, target_l2i) =~= (if ret.perm.present && !ret.perm.ps { Some(ret) } else { None }),
     {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.l3_links_l2_wf_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_nonempty_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
         }
         let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
@@ -261,7 +261,7 @@ impl PageTableHigher {
         l2_tbl.borrow_entry_lock(target_l2i).get()
     }
 
-    /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the held L3 entry `l3_entry` while this thread holds the entry's
+    /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the non-empty L3 entry `l3_entry` while this thread holds the entry's
     /// window lock; the acquire-load decodes past the lock bit. A kernel-present, non-present, non-huge word is the hidden-L1 marker:
     /// the entry hides the L1 page at the word's address.
     pub fn get_l2_entry_word_write_held(&self, Tracked(lower): Tracked<&PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
@@ -271,7 +271,7 @@ impl PageTableHigher {
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
-            self.spec_held_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
+            self.spec_nonempty_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
             lower.hidden_l1_tables_in_locked_windows(),
             lower.l2_owner(l3_entry.addr, target_l2i) is Write,
         ensures
@@ -279,12 +279,12 @@ impl PageTableHigher {
             ret.perm.kernel_present && !ret.perm.present && !ret.perm.ps ==> lower.l2_entry_hides_l1(l3_entry.addr, target_l2i) && lower.l1_perm(l3_entry.addr, target_l2i).addr() == ret.addr,
             lower.l2_page(l3_entry.addr).entry_lock(target_l2i).l1() is Some ==> !ret.perm.ps && (ret.perm.present || ret.perm.kernel_present),
             ret.perm.present && !ret.perm.ps ==> lower.l2_page(l3_entry.addr).entry_lock(target_l2i).l1() is Some,
-            (WholePageTable { higher: *self, lower: *lower }).spec_held_2m_l2(target_l4i, target_l3i, target_l2i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
+            (WholePageTable { higher: *self, lower: *lower }).spec_nonempty_2m_l2(target_l4i, target_l3i, target_l2i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
     {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.l3_links_l2_wf_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_nonempty_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
         }
         let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
@@ -292,9 +292,9 @@ impl PageTableHigher {
         l2_tbl.borrow_entry_lock(target_l2i).get()
     }
 
-    /// Kernel-present 4K leaf `(target_l4i, target_l3i, target_l2i, target_l1i)` of the L1 page that the held L2 entry `l2_entry` holds,
+    /// Kernel-present 4K leaf `(target_l4i, target_l3i, target_l2i, target_l1i)` of the L1 page that the non-empty L2 entry `l2_entry` holds,
     /// linked or hidden.
-    pub fn get_held_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
+    pub fn get_nonempty_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         l3_entry: &PageEntry, l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
@@ -302,15 +302,15 @@ impl PageTableHigher {
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
-            self.spec_held_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
-            (WholePageTable { higher: *self, lower: *lower }).spec_held_l2(target_l4i, target_l3i, target_l2i) =~= Some(*l2_entry),
+            self.spec_nonempty_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
+            (WholePageTable { higher: *self, lower: *lower }).spec_nonempty_l2(target_l4i, target_l3i, target_l2i) =~= Some(*l2_entry),
         ensures
-            (WholePageTable { higher: *self, lower: *lower }).spec_held_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) =~= ret,
+            (WholePageTable { higher: *self, lower: *lower }).spec_nonempty_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) =~= ret,
     {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.l3_links_l2_wf_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_nonempty_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
             c.wf_l1_at(l3_entry.addr, target_l2i);
         }

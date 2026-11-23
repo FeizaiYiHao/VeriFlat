@@ -86,41 +86,41 @@ impl PageTableHigher {
     { reveal(PageTableHigher::kernel_entries_wf); }
 
     /// A resolving user root entry is held as the same entry.
-    pub broadcast proof fn spec_resolve_mapping_l4_some_implies_spec_held_l4_eq(&self, l4i: L4Index)
+    pub broadcast proof fn spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq(&self, l4i: L4Index)
         requires
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             self.spec_resolve_mapping_l4(l4i) is Some,
         ensures
             #![trigger self.spec_resolve_mapping_l4(l4i)]
-            #![trigger self.spec_held_l4(l4i)]
-            self.spec_held_l4(l4i) == self.spec_resolve_mapping_l4(l4i),
+            #![trigger self.spec_nonempty_l4(l4i)]
+            self.spec_nonempty_l4(l4i) == self.spec_resolve_mapping_l4(l4i),
     {}
 
     /// A resolving L3 entry is held as the same entry.
-    pub broadcast proof fn spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(&self, l4i: L4Index, l3i: L3Index)
+    pub broadcast proof fn spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(&self, l4i: L4Index, l3i: L3Index)
         requires
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             self.spec_resolve_mapping_l3(l4i, l3i) is Some,
         ensures
             #![trigger self.spec_resolve_mapping_l3(l4i, l3i)]
-            #![trigger self.spec_held_l3(l4i, l3i)]
-            self.spec_held_l3(l4i, l3i) == self.spec_resolve_mapping_l3(l4i, l3i),
+            #![trigger self.spec_nonempty_l3(l4i, l3i)]
+            self.spec_nonempty_l3(l4i, l3i) == self.spec_resolve_mapping_l3(l4i, l3i),
     {}
 
-    /// Under a resolving user root entry, the held 1G leaf is the resolving one.
-    pub broadcast proof fn spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(&self, l4i: L4Index, l3i: L3Index)
+    /// Under a resolving user root entry, the non-empty 1G leaf is the resolving one.
+    pub broadcast proof fn spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve(&self, l4i: L4Index, l3i: L3Index)
         requires
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             self.spec_resolve_mapping_l4(l4i) is Some,
         ensures
-            #![trigger self.spec_held_1g_l3(l4i, l3i)]
-            self.spec_held_1g_l3(l4i, l3i) == self.spec_resolve_mapping_1g_l3(l4i, l3i),
+            #![trigger self.spec_nonempty_1g_l3(l4i, l3i)]
+            self.spec_nonempty_1g_l3(l4i, l3i) == self.spec_resolve_mapping_1g_l3(l4i, l3i),
     {}
 
-    /// Distinct held L3 paths name distinct L2 pages.
-    pub broadcast proof fn disjoint_l4_l3_implies_held_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
+    /// Distinct non-empty L3 paths name distinct L2 pages.
+    pub broadcast proof fn disjoint_l4_l3_implies_nonempty_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
         requires
             self.wf_l4(),
             self.disjoint_l4(),
@@ -130,9 +130,9 @@ impl PageTableHigher {
             self.kernel_l4_end <= l4j && pei_valid(l4j),
             pei_valid(l3j),
         ensures
-            #![trigger self.spec_held_l3(l4i, l3i), self.spec_held_l3(l4j, l3j)]
-            (l4i, l3i) != (l4j, l3j) && self.spec_held_l3(l4i, l3i) is Some && self.spec_held_l3(l4j, l3j) is Some
-                ==> self.spec_held_l3(l4i, l3i)->0.addr != self.spec_held_l3(l4j, l3j)->0.addr,
+            #![trigger self.spec_nonempty_l3(l4i, l3i), self.spec_nonempty_l3(l4j, l3j)]
+            (l4i, l3i) != (l4j, l3j) && self.spec_nonempty_l3(l4i, l3i) is Some && self.spec_nonempty_l3(l4j, l3j) is Some
+                ==> self.spec_nonempty_l3(l4i, l3i)->0.addr != self.spec_nonempty_l3(l4j, l3j)->0.addr,
     {
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableHigher::disjoint_l4);
@@ -227,8 +227,8 @@ impl WholePageTable {
         ensures
             self.kernel_l4_end() <= self.higher.l2_rev_map.view().spec_index(p).0 && pei_valid(self.higher.l2_rev_map.view().spec_index(p).0),
             pei_valid(self.higher.l2_rev_map.view().spec_index(p).1),
-            self.spec_held_l3(self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1) is Some,
-            self.spec_held_l3(self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1)->0.addr == p,
+            self.spec_nonempty_l3(self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1) is Some,
+            self.spec_nonempty_l3(self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1)->0.addr == p,
     { reveal(WholePageTable::tables_reachable_wf); }
 
     pub proof fn tables_reachable_wf_l1_at(&self, p: PageMapPtr)
@@ -238,9 +238,9 @@ impl WholePageTable {
         ensures
             self.kernel_l4_end() <= self.lower.l1_rev_map.spec_index(p).0 && pei_valid(self.lower.l1_rev_map.spec_index(p).0),
             pei_valid(self.lower.l1_rev_map.spec_index(p).1) && pei_valid(self.lower.l1_rev_map.spec_index(p).2),
-            self.spec_held_l3(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1) is Some,
-            self.lower.l2_page(self.spec_held_l3(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1)->0.addr).entry_lock(self.lower.l1_rev_map.spec_index(p).2).l1() is Some,
-            self.lower.l2_entry(self.spec_held_l3(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1)->0.addr, self.lower.l1_rev_map.spec_index(p).2).addr == p,
+            self.spec_nonempty_l3(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1) is Some,
+            self.lower.l2_page(self.spec_nonempty_l3(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1)->0.addr).entry_lock(self.lower.l1_rev_map.spec_index(p).2).l1() is Some,
+            self.lower.l2_entry(self.spec_nonempty_l3(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1)->0.addr, self.lower.l1_rev_map.spec_index(p).2).addr == p,
     { reveal(WholePageTable::tables_reachable_wf); }
 
     pub proof fn wf_mapping_4k_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
@@ -321,7 +321,7 @@ impl WholePageTable {
         let p = self.window_l2_page(l4i, l3i);
         let rev = self.higher.l2_rev_map.view().spec_index(p);
         self.higher.wf_l4_at(l4i); self.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i); self.tables_reachable_wf_l2_at(p);
-        self.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); self.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
+        self.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i); self.higher.disjoint_l4_l3_implies_nonempty_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
         self.wf_window_locks_l2_entry_at(p, l2i);
     }
 
@@ -354,7 +354,7 @@ impl WholePageTable {
     }
 
     /// A resolving L2 entry owns its L1 page, so it is held as the same entry.
-    pub broadcast proof fn spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    pub broadcast proof fn spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
         requires
             self.higher.wf_l4(),
             self.l3_links_l2_wf(),
@@ -365,8 +365,8 @@ impl WholePageTable {
             self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
         ensures
             #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-            #![trigger self.spec_held_l2(l4i, l3i, l2i)]
-            self.spec_held_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_l2(l4i, l3i, l2i),
+            #![trigger self.spec_nonempty_l2(l4i, l3i, l2i)]
+            self.spec_nonempty_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {
         self.higher.wf_l4_at(l4i);
         self.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
@@ -374,7 +374,7 @@ impl WholePageTable {
     }
 
     /// A resolving 4K leaf is held as the same entry.
-    pub broadcast proof fn spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
+    pub broadcast proof fn spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
         requires
             self.higher.wf_l4(),
             self.l3_links_l2_wf(),
@@ -386,12 +386,12 @@ impl WholePageTable {
             self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some,
         ensures
             #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
-            #![trigger self.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-            self.spec_held_4k_l1(l4i, l3i, l2i, l1i) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
-    { self.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(l4i, l3i, l2i); }
+            #![trigger self.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+            self.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+    { self.spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq(l4i, l3i, l2i); }
 
     /// A resolving 2M leaf is held as the same entry.
-    pub broadcast proof fn spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    pub broadcast proof fn spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
         requires
             self.kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
@@ -399,8 +399,8 @@ impl WholePageTable {
             self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
         ensures
             #![trigger self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
-            #![trigger self.spec_held_2m_l2(l4i, l3i, l2i)]
-            self.spec_held_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
+            #![trigger self.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+            self.spec_nonempty_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
     {}
 
     /// Distinct L2 entries that own L1 pages name distinct L1 pages.
@@ -450,28 +450,28 @@ impl WholePageTable {
                     pei_valid(l3i) ==> forall|l2i: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)] pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {}
 
-    /// An L3 slot `(l4i, l3i)` under which no 2M or 4K VA is mapped has no 2M or 4K leaf below it, resolving or held, while no L2 entry is locked and every held root and L3 entry of the slot resolves.
+    /// An L3 slot `(l4i, l3i)` under which no 2M or 4K VA is mapped has no 2M or 4K leaf below it, resolving or non-empty, while no L2 entry is locked and every non-empty root and L3 entry of the slot resolves.
     pub proof fn mapping_free_l3_slot_implies_no_leaf_below(&self, l4i: L4Index, l3i: L3Index)
         requires
             self.wf(),
             self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i),
-            self.spec_held_l4(l4i) is Some ==> self.spec_resolve_mapping_l4(l4i) is Some,
-            self.spec_held_l3(l4i, l3i) is Some ==> self.spec_resolve_mapping_l3(l4i, l3i) is Some,
+            self.spec_nonempty_l4(l4i) is Some ==> self.spec_resolve_mapping_l4(l4i) is Some,
+            self.spec_nonempty_l3(l4i, l3i) is Some ==> self.spec_resolve_mapping_l3(l4i, l3i) is Some,
             self.lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger self.lower.l2_owner(p, i)] self.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> self.lower.l2_owner(p, i) is None,
             forall|l2i: L2Index| #![trigger self.mapping_2m().dom().contains(spec_index2va((l4i, l3i, l2i, 0)))] pei_valid(l2i) ==> !self.mapping_2m().dom().contains(spec_index2va((l4i, l3i, l2i, 0))),
             forall|l2i: L2Index, l1i: L1Index| #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
                 pei_valid(l2i) && pei_valid(l1i) ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         ensures
-            forall|i: L2Index| #![trigger self.spec_resolve_mapping_2m_l2(l4i, l3i, i)] #![trigger self.spec_held_2m_l2(l4i, l3i, i)]
-                pei_valid(i) ==> self.spec_resolve_mapping_2m_l2(l4i, l3i, i) is None && self.spec_held_2m_l2(l4i, l3i, i) is None,
-            forall|i: L2Index, j: L1Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, i, j)] #![trigger self.spec_held_4k_l1(l4i, l3i, i, j)]
-                pei_valid(i) && pei_valid(j) ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, i, j) is None && self.spec_held_4k_l1(l4i, l3i, i, j) is None,
+            forall|i: L2Index| #![trigger self.spec_resolve_mapping_2m_l2(l4i, l3i, i)] #![trigger self.spec_nonempty_2m_l2(l4i, l3i, i)]
+                pei_valid(i) ==> self.spec_resolve_mapping_2m_l2(l4i, l3i, i) is None && self.spec_nonempty_2m_l2(l4i, l3i, i) is None,
+            forall|i: L2Index, j: L1Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, i, j)] #![trigger self.spec_nonempty_4k_l1(l4i, l3i, i, j)]
+                pei_valid(i) && pei_valid(j) ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, i, j) is None && self.spec_nonempty_4k_l1(l4i, l3i, i, j) is None,
     {
         reveal(WholePageTable::wf_mapping_2m); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_l2);
         assert(self.mapping_2m() == self.lower.mapping_2m && self.mapping_4k() == self.lower.mapping_4k);
         if self.spec_resolve_mapping_l3(l4i, l3i) is Some {
-            self.higher.spec_resolve_mapping_l4_some_implies_spec_held_l4_eq(l4i); self.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+            self.higher.spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq(l4i); self.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i);
             self.higher.wf_l4_at(l4i); self.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
         }
     }
@@ -498,8 +498,8 @@ impl WholePageTable {
             self.l3_links_l2_wf_at(self.higher.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
             self.tables_reachable_wf_l2_at(p);
             let rev = self.higher.l2_rev_map.view().spec_index(p);
-            self.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
-            self.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
+            self.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i);
+            self.higher.disjoint_l4_l3_implies_nonempty_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
             self.wf_window_locks_l2_entry_at(p, l2i);
         };
     }

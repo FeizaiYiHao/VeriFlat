@@ -8,13 +8,13 @@ use super::syscall_kill_process_walk_spec::KillScope;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_walk_spec::kill_scope_progress;
 #[cfg(feature = "split-crates")]
-use veriflat_map_4k::map_4k::reclaim_held_1g_page::remove_held_1g_mapping_without_free;
+use veriflat_map_4k::map_4k::reclaim_nonempty_1g_page::remove_nonempty_1g_mapping_without_free;
 #[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::map_4k::reclaim_held_1g_page::remove_held_1g_mapping_without_free;
+use crate::kernel::implementation::map_4k::reclaim_nonempty_1g_page::remove_nonempty_1g_mapping_without_free;
 #[cfg(feature = "split-crates")]
-use veriflat_map_4k::map_4k::remove_last_held_1g_mapping::remove_last_1g_mapping_to_global_pool;
+use veriflat_map_4k::map_4k::remove_last_nonempty_1g_mapping::remove_last_1g_mapping_to_global_pool;
 #[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::map_4k::remove_last_held_1g_mapping::remove_last_1g_mapping_to_global_pool;
+use crate::kernel::implementation::map_4k::remove_last_nonempty_1g_mapping::remove_last_1g_mapping_to_global_pool;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
 use veriflat_alloc_page::allocate_free_1g_page::allocate_free_1g_page_lemmas::kernel_inv_implies_container_allocator_1g_quota_bounded;
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
@@ -23,9 +23,9 @@ use crate::kernel::implementation::allocate_free_1g_page::allocate_free_1g_page_
 use super::syscall_kill_process_reclaim_scoped_1g_eof::*;
 
 verus! {
-/// Remove the final mapping of the 1G page `pg_ptr`, the held 1G leaf at `va` of the write-held page table `pagetable`, which lists no cpu stale and whose user root entries no longer resolve, clear the leaf, and push the page onto the write-held global pool of the 1G allocator `allc_ptr`
+/// Remove the final mapping of the 1G page `pg_ptr`, the non-empty 1G leaf at `va` of the write-held page table `pagetable`, which lists no cpu stale and whose user root entries no longer resolve, clear the leaf, and push the page onto the write-held global pool of the 1G allocator `allc_ptr`
 /// of its owner `owner`, crediting that allocator's write-held quota by one.
-fn kill_reclaim_last_held_1g_mapping_scoped_to_pool(
+fn kill_reclaim_last_nonempty_1g_mapping_scoped_to_pool(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, owner: RwLockContainerPtr,
     allc_ptr: RwLockPageAllocatorPtr, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(page_perm): Tracked<&LockPerm>, Tracked(pool_perm): Tracked<&LockPerm>,
     Tracked(quota_perm): Tracked<&LockPerm>,
@@ -39,8 +39,8 @@ fn kill_reclaim_last_held_1g_mapping_scoped_to_pool(
         old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None,
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.state() is WriteLock,
@@ -85,16 +85,16 @@ fn kill_reclaim_last_held_1g_mapping_scoped_to_pool(
             &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g() == old_c.mapping_1g().remove(va)
             &&& new_c.page_closure() == old_c.page_closure()
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
-            &&& new_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_l3(l4i, l3i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_nonempty_l3(l4i, l3i) == old_c.spec_nonempty_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_1g_l3(l4i, l3i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_nonempty_1g_l3(l4i, l3i) == old_c.spec_nonempty_1g_l3(l4i, l3i)
+            &&& new_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
             &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
         }),
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(pg_ptr)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread(),
@@ -133,23 +133,23 @@ fn kill_reclaim_last_held_1g_mapping_scoped_to_pool(
             Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(quota_perm));
         quota.value = quota.value + 1;
     }
-    pagetable_map_clear_held_1g_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, (l4i, l3i), Tracked(&mut *lctx), Tracked(pagetable_perm));
+    pagetable_map_clear_nonempty_1g_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, (l4i, l3i), Tracked(&mut *lctx), Tracked(pagetable_perm));
     proof {
         lctx.update_lock_id(KernelObjId::Page(pg_idx), old_page_lock_id, krnl.pg_arr.lock_id_by_index(pg_idx));
         assert(typed_lock_maps_inserted(old(lctx), lctx, KernelObjId::Page(pg_idx), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write })) by {
             map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
                 TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
-        assert(kill_reclaim_held_1g_page_scoped_eof_transition_framing(*old(krnl), *krnl, pagetable, va, pg_ptr, allc_ptr, node_addr)) by {
-            reveal(kill_reclaim_held_1g_page_scoped_eof_transition_framing);
+        assert(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing(*old(krnl), *krnl, pagetable, va, pg_ptr, allc_ptr, node_addr)) by {
+            reveal(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing);
         };
-        kill_reclaim_held_1g_page_scoped_eof(*old(krnl), *krnl, pagetable, va, pg_ptr, allc_ptr, node_addr, owner);
+        kill_reclaim_nonempty_1g_page_scoped_eof(*old(krnl), *krnl, pagetable, va, pg_ptr, allc_ptr, node_addr, owner);
     }
 }
 
-/// Free the 1G page `pg_ptr` whose last mapping is the held 1G leaf at `va` of the write-held page table `pagetable` of the target, which lists no cpu stale and whose user root entries no longer resolve: clear the leaf, push the page onto the global pool of its owner `owner`'s 1G
+/// Free the 1G page `pg_ptr` whose last mapping is the non-empty 1G leaf at `va` of the write-held page table `pagetable` of the target, which lists no cpu stale and whose user root entries no longer resolve: clear the leaf, push the page onto the global pool of its owner `owner`'s 1G
 /// allocator, credit that allocator's quota by one, and release the write-held page, in one step that extends the kill's partial trace. The killer held `entry_lctx`, aligned with the last snapshot, before it write-locked the page.
-fn kill_reclaim_last_held_1g_mapping_scoped(
+fn kill_reclaim_last_nonempty_1g_mapping_scoped(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, owner: RwLockContainerPtr,
     Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(page_perm): Tracked<LockPerm>, Ghost(stage): Ghost<KillStage>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
@@ -190,8 +190,8 @@ fn kill_reclaim_last_held_1g_mapping_scoped(
         old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None,
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         typed_lock_map_contains_mode(entry_lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.state() is WriteLock,
@@ -239,16 +239,16 @@ fn kill_reclaim_last_held_1g_mapping_scoped(
             &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g() == old_c.mapping_1g().remove(va)
             &&& new_c.page_closure() == old_c.page_closure()
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
-            &&& new_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_l3(l4i, l3i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_nonempty_l3(l4i, l3i) == old_c.spec_nonempty_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_1g_l3(l4i, l3i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_nonempty_1g_l3(l4i, l3i) == old_c.spec_nonempty_1g_l3(l4i, l3i)
+            &&& new_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
             &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
         }),
 {
     hide(Set::is_empty);
@@ -268,7 +268,7 @@ fn kill_reclaim_last_held_1g_mapping_scoped(
     let ghost before = steps.view();
     let Tracked(pool_perm) = krnl.wlock_allocator_global_pool_1g_ordered(allc_ptr, Tracked(&mut *lctx));
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_1g(allc_ptr, Tracked(&mut *lctx));
-    kill_reclaim_last_held_1g_mapping_scoped_to_pool(krnl, Tracked(&mut *lctx), pagetable, va, pg_ptr, owner, allc_ptr, Tracked(pagetable_perm), Tracked(&page_perm),
+    kill_reclaim_last_nonempty_1g_mapping_scoped_to_pool(krnl, Tracked(&mut *lctx), pagetable, va, pg_ptr, owner, allc_ptr, Tracked(pagetable_perm), Tracked(&page_perm),
         Tracked(&pool_perm), Tracked(&quota_perm));
     krnl.wunlock_allocator_quota_1g(allc_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
     krnl.wunlock_allocator_global_pool_1g(allc_ptr, Tracked(&mut *lctx), Tracked(pool_perm));
@@ -285,9 +285,9 @@ fn kill_reclaim_last_held_1g_mapping_scoped(
     }
 }
 
-/// Reclaim the 1G page `pg_ptr` of the held 1G leaf at `va` of the target's write-held page table `pagetable`, which lists no cpu stale and whose user root entries no longer resolve, and clear the leaf: drop the leaf's record from the page, or free the page behind its last mapping and
+/// Reclaim the 1G page `pg_ptr` of the non-empty 1G leaf at `va` of the target's write-held page table `pagetable`, which lists no cpu stale and whose user root entries no longer resolve, and clear the leaf: drop the leaf's record from the page, or free the page behind its last mapping and
 /// credit its 1G quota to its owner, the target's container or one of its ancestors, in one step that extends the kill's partial trace.
-pub(crate) fn kill_reclaim_held_1g_page_scoped(
+pub(crate) fn kill_reclaim_nonempty_1g_page_scoped(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, Tracked(pagetable_perm): Tracked<&LockPerm>,
     Ghost(stage): Ghost<KillStage>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
@@ -332,8 +332,8 @@ pub(crate) fn kill_reclaim_held_1g_page_scoped(
         forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.state() is WriteLock,
@@ -375,16 +375,16 @@ pub(crate) fn kill_reclaim_held_1g_page_scoped(
             &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g() == old_c.mapping_1g().remove(va)
             &&& new_c.page_closure() == old_c.page_closure()
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
-            &&& new_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_l3(l4i, l3i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_nonempty_l3(l4i, l3i) == old_c.spec_nonempty_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_1g_l3(l4i, l3i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_nonempty_1g_l3(l4i, l3i) == old_c.spec_nonempty_1g_l3(l4i, l3i)
+            &&& new_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
             &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
         }),
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
@@ -404,7 +404,7 @@ pub(crate) fn kill_reclaim_held_1g_page_scoped(
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
     if ref_count > 1 {
-        remove_held_1g_mapping_without_free(krnl, pagetable, va, pg_ptr, Tracked(&mut *lctx), Tracked(pagetable_perm), Tracked(&page_perm));
+        remove_nonempty_1g_mapping_without_free(krnl, pagetable, va, pg_ptr, Tracked(&mut *lctx), Tracked(pagetable_perm), Tracked(&page_perm));
         krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_perm));
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
@@ -418,7 +418,7 @@ pub(crate) fn kill_reclaim_held_1g_page_scoped(
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         }
     } else {
-        kill_reclaim_last_held_1g_mapping_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, pagetable, va, pg_ptr, owner,
+        kill_reclaim_last_nonempty_1g_mapping_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, pagetable, va, pg_ptr, owner,
             Tracked(pagetable_perm), Tracked(page_perm), Ghost(stage), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx), Ghost(entry_lctx));
     }
 }

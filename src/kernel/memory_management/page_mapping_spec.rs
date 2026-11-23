@@ -20,7 +20,7 @@ pub open spec fn mapped_4k_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
             forall|pt: RwLockPageTableRoot, va: VAddr|
                 #![trigger pg_arr.spec_index(p_i).view().view().mappings().contains((pt, va))]
                 pg_arr.spec_index(p_i).view().view().mappings().contains((pt, va)) ==> {
-                    let leaf = whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+                    let leaf = whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
                     &&& pt_mp.dom().contains(pt)
                     &&& va_4k_valid(va)
                     &&& leaf is Some
@@ -48,16 +48,16 @@ pub open spec fn mapped_4k_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
         pt_mp.dom().contains(pt)
             ==>
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-                #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
                 whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i
                     && pei_valid(l4i)
                     && pei_valid(l3i)
                     && pei_valid(l2i)
                     && pei_valid(l1i)
-                    && whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
-                    && !whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
+                    && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is Some
+                    && !whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
                     ==> {
-                        let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.addr);
+                        let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.addr);
                         &&& index_valid(NUM_PAGES, pg_idx)
                         &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
                         &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, spec_index2va((l4i, l3i, l2i, l1i))))
@@ -87,7 +87,7 @@ pub proof fn mapped_4k_page_pagetable_wf_page_at(
         pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k,
     ensures
         pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, va)) ==> {
-            let leaf = whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+            let leaf = whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
             &&& pt_mp.dom().contains(pt_ptr)
             &&& va_4k_valid(va)
             &&& leaf is Some
@@ -98,7 +98,7 @@ pub proof fn mapped_4k_page_pagetable_wf_page_at(
 
 /// A RAM user 4K L1 entry of `pt_ptr` with the kernel_present bit set (present bit set or clear) points at a valid `Mapped4k`
 /// page that lists `(pt_ptr, va)` in its mappings.
-pub proof fn mapped_4k_page_pagetable_wf_held_leaf_at(
+pub proof fn mapped_4k_page_pagetable_wf_nonempty_leaf_at(
     pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pg_arr: PageLockedArray, pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index,
     l1i: L1Index,
 )
@@ -111,10 +111,10 @@ pub proof fn mapped_4k_page_pagetable_wf_held_leaf_at(
             && pei_valid(l3i)
             && pei_valid(l2i)
             && pei_valid(l1i)
-            && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
-            && !whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
+            && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is Some
+            && !whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
             ==> ({
-                let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.addr);
+                let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.addr);
                 &&& index_valid(NUM_PAGES, pg_idx)
                 &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
                 &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, spec_index2va((l4i, l3i, l2i, l1i))))
@@ -131,7 +131,7 @@ pub open spec fn mapped_2m_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
             && pg_arr.spec_index(p_i).view().view().state == PageState::Mapped2m
             && pg_arr.spec_index(p_i).view().view().mappings().contains((pt, va))
             ==> {
-                let leaf = whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+                let leaf = whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
                 &&& pt_mp.dom().contains(pt)
                 &&& va_2m_valid(va)
                 &&& leaf is Some
@@ -154,15 +154,15 @@ pub open spec fn mapped_2m_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
         pt_mp.dom().contains(pt)
             ==>
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)]
+                #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)]
                 whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i
                     && pei_valid(l4i)
                     && pei_valid(l3i)
                     && pei_valid(l2i)
-                    && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i) is Some
-                    && !whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io
+                    && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i) is Some
+                    && !whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.perm.is_io
                     ==> {
-                        let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.addr);
+                        let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.addr);
                         &&& index_valid(NUM_PAGES, pg_idx)
                         &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped2m
                         &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, spec_index2va((l4i, l3i, l2i, 0))))
@@ -180,7 +180,7 @@ pub proof fn mapped_2m_page_pagetable_wf_page_at(
         pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped2m,
     ensures
         pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, va)) ==> {
-            let leaf = whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+            let leaf = whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
             &&& pt_mp.dom().contains(pt_ptr)
             &&& va_2m_valid(va)
             &&& leaf is Some
@@ -191,7 +191,7 @@ pub proof fn mapped_2m_page_pagetable_wf_page_at(
 
 /// A RAM user 2M L2 entry of `pt_ptr` with the kernel_present and PS bits set (present bit set or clear) points at a valid
 /// `Mapped2m` page that lists `(pt_ptr, va)` in its mappings.
-pub proof fn mapped_2m_page_pagetable_wf_held_leaf_at(
+pub proof fn mapped_2m_page_pagetable_wf_nonempty_leaf_at(
     pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pg_arr: PageLockedArray, pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index,
 )
     requires
@@ -202,10 +202,10 @@ pub proof fn mapped_2m_page_pagetable_wf_held_leaf_at(
             && pei_valid(l4i)
             && pei_valid(l3i)
             && pei_valid(l2i)
-            && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_2m_l2(l4i, l3i, l2i) is Some
-            && !whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io
+            && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_2m_l2(l4i, l3i, l2i) is Some
+            && !whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.perm.is_io
             ==> ({
-                let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_2m_l2(l4i, l3i, l2i)->0.addr);
+                let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.addr);
                 &&& index_valid(NUM_PAGES, pg_idx)
                 &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped2m
                 &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, spec_index2va((l4i, l3i, l2i, 0))))
@@ -222,7 +222,7 @@ pub open spec fn mapped_1g_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
             && pg_arr.spec_index(p_i).view().view().state == PageState::Mapped1g
             && pg_arr.spec_index(p_i).view().view().mappings().contains((pt, va))
             ==> {
-                let leaf = whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+                let leaf = whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
                 &&& pt_mp.dom().contains(pt)
                 &&& va_1g_valid(va)
                 &&& leaf is Some
@@ -244,13 +244,13 @@ pub open spec fn mapped_1g_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
         pt_mp.dom().contains(pt)
             ==>
             forall|l4i: L4Index, l3i: L3Index|
-                #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)]
+                #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_1g_l3(l4i, l3i)]
                 whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i
                     && pei_valid(l4i)
                     && pei_valid(l3i)
-                    && whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i) is Some
+                    && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_1g_l3(l4i, l3i) is Some
                     ==> {
-                        let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.addr);
+                        let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_1g_l3(l4i, l3i)->0.addr);
                         &&& index_valid(NUM_PAGES, pg_idx)
                         &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped1g
                         &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, spec_index2va((l4i, l3i, 0, 0))))
@@ -267,7 +267,7 @@ pub proof fn mapped_1g_page_pagetable_wf_page_at(
         pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped1g,
     ensures
         pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, va)) ==> {
-            let leaf = whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+            let leaf = whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
             &&& pt_mp.dom().contains(pt_ptr)
             &&& va_1g_valid(va)
             &&& leaf is Some
@@ -276,7 +276,7 @@ pub proof fn mapped_1g_page_pagetable_wf_page_at(
 { reveal(mapped_1g_page_pagetable_wf); }
 
 /// A user 1G L3 entry of `pt_ptr` with the kernel_present and PS bits set (present bit set or clear) points at a valid `Mapped1g` page that lists `(pt_ptr, va)` in its mappings.
-pub proof fn mapped_1g_page_pagetable_wf_held_leaf_at(
+pub proof fn mapped_1g_page_pagetable_wf_nonempty_leaf_at(
     pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pg_arr: PageLockedArray, pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index,
 )
     requires
@@ -286,9 +286,9 @@ pub proof fn mapped_1g_page_pagetable_wf_held_leaf_at(
             && whole_pagetable(pt_mp, pt_lower, pt_ptr).kernel_l4_end() <= l4i
             && pei_valid(l4i)
             && pei_valid(l3i)
-            && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i) is Some
+            && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_1g_l3(l4i, l3i) is Some
             ==> ({
-                let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i)->0.addr);
+                let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_nonempty_1g_l3(l4i, l3i)->0.addr);
                 &&& index_valid(NUM_PAGES, pg_idx)
                 &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped1g
                 &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, spec_index2va((l4i, l3i, 0, 0))))

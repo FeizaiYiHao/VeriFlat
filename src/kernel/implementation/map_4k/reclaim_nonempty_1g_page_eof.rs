@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Clears the record `(pagetable, va)` of a held 1G leaf from the page `pg_ptr`, which keeps other references, and clears that leaf; every other held entry of the table and every other kernel field is unchanged.
+/// Clears the record `(pagetable, va)` of a non-empty 1G leaf from the page `pg_ptr`, which keeps other references, and clears that leaf; every other non-empty entry of the table and every other kernel field is unchanged.
 #[verifier::opaque]
-pub(super) open spec fn remove_held_1g_mapping_without_free_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr) -> bool {
+pub(super) open spec fn remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr) -> bool {
     let pg_idx = page_ptr2page_index(pg_ptr);
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
@@ -37,18 +37,18 @@ pub(super) open spec fn remove_held_1g_mapping_without_free_eof_transition_frami
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == old_c.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index| #![trigger new_c.spec_held_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_held_l4(l4i) == old_c.spec_held_l4(l4i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& new_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
+    &&& forall|l4i: L4Index| #![trigger new_c.spec_nonempty_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_nonempty_l4(l4i) == old_c.spec_nonempty_l4(l4i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_nonempty_l3(l4i, l3i) == old_c.spec_nonempty_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_nonempty_1g_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (spec_v2l4index(va), spec_v2l3index(va)) ==> new_c.spec_nonempty_1g_l3(l4i, l3i) == old_c.spec_nonempty_1g_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& new_c.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
     &&& new_c.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& new_page.is_init()
@@ -63,15 +63,15 @@ pub(super) open spec fn remove_held_1g_mapping_without_free_eof_transition_frami
     &&& new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
-/// The mapped 4K page relation closes after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
-proof fn remove_held_1g_mapping_without_free_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+/// The mapped 4K page relation closes after dropping the non-empty 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_nonempty_1g_mapping_without_free_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
         pre.inv(),
-        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
@@ -83,7 +83,7 @@ proof fn remove_held_1g_mapping_without_free_eof_mapped_4k_pages(pre: KernelK, p
         post.subsystems_inv(),
     ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    reveal(remove_nonempty_1g_mapping_without_free_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
@@ -93,15 +93,15 @@ proof fn remove_held_1g_mapping_without_free_eof_mapped_4k_pages(pre: KernelK, p
     };
 }
 
-/// The mapped 2M page relation closes after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
-proof fn remove_held_1g_mapping_without_free_eof_mapped_2m_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+/// The mapped 2M page relation closes after dropping the non-empty 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_nonempty_1g_mapping_without_free_eof_mapped_2m_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
         pre.inv(),
-        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
@@ -113,7 +113,7 @@ proof fn remove_held_1g_mapping_without_free_eof_mapped_2m_pages(pre: KernelK, p
         post.subsystems_inv(),
     ensures mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    reveal(remove_nonempty_1g_mapping_without_free_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
@@ -123,15 +123,15 @@ proof fn remove_held_1g_mapping_without_free_eof_mapped_2m_pages(pre: KernelK, p
     };
 }
 
-/// The mapped 1G page relation closes after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
-proof fn remove_held_1g_mapping_without_free_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+/// The mapped 1G page relation closes after dropping the non-empty 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_nonempty_1g_mapping_without_free_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
         pre.inv(),
-        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
@@ -143,7 +143,7 @@ proof fn remove_held_1g_mapping_without_free_eof_mapped_1g_pages(pre: KernelK, p
         post.subsystems_inv(),
     ensures mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    reveal(remove_nonempty_1g_mapping_without_free_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
@@ -153,15 +153,15 @@ proof fn remove_held_1g_mapping_without_free_eof_mapped_1g_pages(pre: KernelK, p
     };
 }
 
-/// The page-table relations close after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
-proof fn remove_held_1g_mapping_without_free_eof_page_tables(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+/// The page-table relations close after dropping the non-empty 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_nonempty_1g_mapping_without_free_eof_page_tables(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
         pre.inv(),
-        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
@@ -178,25 +178,25 @@ proof fn remove_held_1g_mapping_without_free_eof_page_tables(pre: KernelK, post:
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
-    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    reveal(remove_nonempty_1g_mapping_without_free_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
-    remove_held_1g_mapping_without_free_eof_mapped_4k_pages(pre, post, pagetable, va, pg_ptr);
-    remove_held_1g_mapping_without_free_eof_mapped_2m_pages(pre, post, pagetable, va, pg_ptr);
-    remove_held_1g_mapping_without_free_eof_mapped_1g_pages(pre, post, pagetable, va, pg_ptr);
+    remove_nonempty_1g_mapping_without_free_eof_mapped_4k_pages(pre, post, pagetable, va, pg_ptr);
+    remove_nonempty_1g_mapping_without_free_eof_mapped_2m_pages(pre, post, pagetable, va, pg_ptr);
+    remove_nonempty_1g_mapping_without_free_eof_mapped_1g_pages(pre, post, pagetable, va, pg_ptr);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
 
-/// The memory-management invariant closes after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
-proof fn remove_held_1g_mapping_without_free_eof_memory_management_inv(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+/// The memory-management invariant closes after dropping the non-empty 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_nonempty_1g_mapping_without_free_eof_memory_management_inv(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
         pre.inv(),
-        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
         post.pg_arr.inv(),
@@ -209,7 +209,7 @@ proof fn remove_held_1g_mapping_without_free_eof_memory_management_inv(pre: Kern
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
     ensures post.memory_management_inv(),
 {
-    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    reveal(remove_nonempty_1g_mapping_without_free_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     let pg_idx = page_ptr2page_index(pg_ptr);
@@ -244,24 +244,24 @@ proof fn remove_held_1g_mapping_without_free_eof_memory_management_inv(pre: Kern
     assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, pg_idx); };
 }
 
-/// `remove_held_1g_mapping_without_free` EOF: the CPU TLB and paging-structure caches stay consistent after the held 1G leaf `va` of `pagetable` is cleared: it does not resolve and the table lists no CPU stale, so no TLB entry or cached directory entry names it.
-proof fn remove_held_1g_mapping_without_free_eof_cpu_caches(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+/// `remove_nonempty_1g_mapping_without_free` EOF: the CPU TLB and paging-structure caches stay consistent after the non-empty 1G leaf `va` of `pagetable` is cleared: it does not resolve and the table lists no CPU stale, so no TLB entry or cached directory entry names it.
+proof fn remove_nonempty_1g_mapping_without_free_eof_cpu_caches(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
         pre.inv(),
-        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
         pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None
-            || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present,
+            || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
     ensures
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
         structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
-    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    reveal(remove_nonempty_1g_mapping_without_free_eof_transition_framing);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g);
@@ -270,19 +270,19 @@ proof fn remove_held_1g_mapping_without_free_eof_cpu_caches(pre: KernelK, post: 
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
 }
 
-/// EOF closure of `remove_held_1g_mapping_without_free`: the held 1G leaf `va` and its record leave together, and no CPU caches the leaf because it does not resolve while the table lists no CPU stale.
-pub(super) proof fn remove_held_1g_mapping_without_free_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+/// EOF closure of `remove_nonempty_1g_mapping_without_free`: the non-empty 1G leaf `va` and its record leave together, and no CPU caches the leaf because it does not resolve while the table lists no CPU stale.
+pub(super) proof fn remove_nonempty_1g_mapping_without_free_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
         pre.inv(),
-        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        remove_nonempty_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
         pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None
-            || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present,
+            || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
         page_ptr_valid(pg_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
@@ -302,13 +302,13 @@ pub(super) proof fn remove_held_1g_mapping_without_free_eof(pre: KernelK, post: 
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
-    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    reveal(remove_nonempty_1g_mapping_without_free_eof_transition_framing);
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
     assert(post.subsystems_inv()) by { reveal(page_array_wf); reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
-    remove_held_1g_mapping_without_free_eof_page_tables(pre, post, pagetable, va, pg_ptr);
-    remove_held_1g_mapping_without_free_eof_memory_management_inv(pre, post, pagetable, va, pg_ptr);
+    remove_nonempty_1g_mapping_without_free_eof_page_tables(pre, post, pagetable, va, pg_ptr);
+    remove_nonempty_1g_mapping_without_free_eof_memory_management_inv(pre, post, pagetable, va, pg_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
-    remove_held_1g_mapping_without_free_eof_cpu_caches(pre, post, pagetable, va, pg_ptr);
+    remove_nonempty_1g_mapping_without_free_eof_cpu_caches(pre, post, pagetable, va, pg_ptr);
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     assert(new_c.user_view(LockStateU::Unlocked).mapping_1g =~= old_c.user_view(LockStateU::Unlocked).mapping_1g) by {

@@ -33,7 +33,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -53,7 +53,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -78,7 +78,7 @@ impl WholePageTable {
         requires
             pre.higher.wf_l4(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -100,7 +100,7 @@ impl WholePageTable {
             pre.higher.wf_l4(),
             pre.higher.disjoint_l4(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -124,7 +124,7 @@ impl WholePageTable {
         requires
             pre.higher.wf_l4(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -140,7 +140,7 @@ impl WholePageTable {
         requires
             pre.higher.wf_l4(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -161,7 +161,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -179,7 +179,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -208,7 +208,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -225,7 +225,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -241,7 +241,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -258,7 +258,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -275,7 +275,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -292,7 +292,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -309,7 +309,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -319,7 +319,7 @@ impl WholePageTable {
                 post.lower.l2_perms.dom().contains(p) ==> {
                     let (l4i, l3i) = post.higher.l2_rev_map.view().spec_index(p);
                     &&& post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                    &&& post.spec_held_l3(l4i, l3i) is Some && post.spec_held_l3(l4i, l3i)->0.addr == p
+                    &&& post.spec_nonempty_l3(l4i, l3i) is Some && post.spec_nonempty_l3(l4i, l3i)->0.addr == p
                 },
     {
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
@@ -332,7 +332,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -342,12 +342,12 @@ impl WholePageTable {
                 post.lower.l1_rev_map.dom().contains(p) ==> {
                     let (l4i, l3i, l2i) = post.lower.l1_rev_map.spec_index(p);
                     &&& post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                    &&& post.spec_held_l3(l4i, l3i) is Some
-                    &&& post.lower.l2_page(post.spec_held_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some
-                    &&& post.lower.l2_entry(post.spec_held_l3(l4i, l3i)->0.addr, l2i).addr == p
+                    &&& post.spec_nonempty_l3(l4i, l3i) is Some
+                    &&& post.lower.l2_page(post.spec_nonempty_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some
+                    &&& post.lower.l2_entry(post.spec_nonempty_l3(l4i, l3i)->0.addr, l2i).addr == p
                 },
     {
-        Self::create_entry_l4_eof_held_l3(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_nonempty_l3(pre, post, target_l4i, page_map_ptr);
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
         reveal(WholePageTable::tables_reachable_wf);
     }
@@ -357,7 +357,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -383,7 +383,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -409,7 +409,7 @@ impl WholePageTable {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
@@ -465,7 +465,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -502,7 +502,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -529,7 +529,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -574,7 +574,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -595,7 +595,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -615,7 +615,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -636,7 +636,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -669,7 +669,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -690,7 +690,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -712,7 +712,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -733,7 +733,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -754,7 +754,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -775,7 +775,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -786,7 +786,7 @@ impl WholePageTable {
                 post.lower.l2_perms.dom().contains(p) ==> {
                     let (l4i, l3i) = post.higher.l2_rev_map.view().spec_index(p);
                     &&& post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                    &&& post.spec_held_l3(l4i, l3i) is Some && post.spec_held_l3(l4i, l3i)->0.addr == p
+                    &&& post.spec_nonempty_l3(l4i, l3i) is Some && post.spec_nonempty_l3(l4i, l3i)->0.addr == p
                 },
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
@@ -801,7 +801,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -812,9 +812,9 @@ impl WholePageTable {
                 post.lower.l1_rev_map.dom().contains(p) ==> {
                     let (l4i, l3i, l2i) = post.lower.l1_rev_map.spec_index(p);
                     &&& post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                    &&& post.spec_held_l3(l4i, l3i) is Some
-                    &&& post.lower.l2_page(post.spec_held_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some
-                    &&& post.lower.l2_entry(post.spec_held_l3(l4i, l3i)->0.addr, l2i).addr == p
+                    &&& post.spec_nonempty_l3(l4i, l3i) is Some
+                    &&& post.lower.l2_page(post.spec_nonempty_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some
+                    &&& post.lower.l2_entry(post.spec_nonempty_l3(l4i, l3i)->0.addr, l2i).addr == p
                 },
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
@@ -833,7 +833,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -865,7 +865,7 @@ impl WholePageTable {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
@@ -1146,155 +1146,155 @@ impl WholePageTable {
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     { reveal(WholePageTable::create_entry_l2_eof_transition_framing); }
 
-    /// EOF closure of `create_entry_l4`: the new root entry holds the empty L3 page; the rest of the held chain is unchanged.
-    pub(super) proof fn create_entry_l4_eof_held_chain(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+    /// EOF closure of `create_entry_l4`: the new root entry holds the empty L3 page; the rest of the non-empty chain is unchanged.
+    pub(super) proof fn create_entry_l4_eof_nonempty_chain(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
-            forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
-            post.spec_held_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
+            forall|l4i: L4Index| #![trigger post.spec_nonempty_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_nonempty_l4(l4i) == pre.spec_nonempty_l4(l4i),
+            post.spec_nonempty_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_l3(l4i, l3i) == pre.spec_nonempty_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_nonempty_l2(l4i, l3i, l2i) == pre.spec_nonempty_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_nonempty_2m_l2(l4i, l3i, l2i) == pre.spec_nonempty_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_1g_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_1g_l3(l4i, l3i) == pre.spec_nonempty_1g_l3(l4i, l3i),
     {
-        Self::create_entry_l4_eof_held_l4(pre, post, target_l4i, page_map_ptr);
-        Self::create_entry_l4_eof_held_l3(pre, post, target_l4i, page_map_ptr);
-        Self::create_entry_l4_eof_held_1g(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_nonempty_l4(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_nonempty_l3(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_nonempty_1g(pre, post, target_l4i, page_map_ptr);
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
     }
 
     /// EOF closure of `create_entry_l4`: the new root entry holds the empty L3 page; every other root entry is held as before.
-    proof fn create_entry_l4_eof_held_l4(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l4_eof_nonempty_l4(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
-            forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
-            post.spec_held_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
+            forall|l4i: L4Index| #![trigger post.spec_nonempty_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_nonempty_l4(l4i) == pre.spec_nonempty_l4(l4i),
+            post.spec_nonempty_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
     { reveal(WholePageTable::create_entry_l4_eof_transition_framing); }
 
-    /// EOF closure of `create_entry_l4`: every held L3 entry is unchanged; the new L3 page holds none.
-    proof fn create_entry_l4_eof_held_l3(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+    /// EOF closure of `create_entry_l4`: every non-empty L3 entry is unchanged; the new L3 page holds none.
+    proof fn create_entry_l4_eof_nonempty_l3(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_l3(l4i, l3i) == pre.spec_nonempty_l3(l4i, l3i),
     {
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
     }
 
-    /// EOF closure of `create_entry_l4`: every held 1G leaf is unchanged; the new L3 page holds none.
-    proof fn create_entry_l4_eof_held_1g(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+    /// EOF closure of `create_entry_l4`: every non-empty 1G leaf is unchanged; the new L3 page holds none.
+    proof fn create_entry_l4_eof_nonempty_1g(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_held_l4(target_l4i) is None,
+            pre.spec_nonempty_l4(target_l4i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_1g_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_1g_l3(l4i, l3i) == pre.spec_nonempty_1g_l3(l4i, l3i),
     {
-        Self::create_entry_l4_eof_held_l4(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_nonempty_l4(pre, post, target_l4i, page_map_ptr);
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
     }
 
     /// EOF closure of `create_entry_l3`: the new L3 entry holds the empty L2 page; every other root and L3 entry is held as before.
-    proof fn create_entry_l3_eof_held_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
+    proof fn create_entry_l3_eof_nonempty_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
-            forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
-            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
+            forall|l4i: L4Index| #![trigger post.spec_nonempty_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_nonempty_l4(l4i) == pre.spec_nonempty_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_nonempty_l3(l4i, l3i) == pre.spec_nonempty_l3(l4i, l3i),
+            post.spec_nonempty_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableHigher::disjoint_l4);
     }
 
-    /// EOF closure of `create_entry_l3`: the new L3 entry holds the empty L2 page; the rest of the held chain is unchanged.
-    pub(super) proof fn create_entry_l3_eof_held_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
+    /// EOF closure of `create_entry_l3`: the new L3 entry holds the empty L2 page; the rest of the non-empty chain is unchanged.
+    pub(super) proof fn create_entry_l3_eof_nonempty_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
-            forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
-            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
+            forall|l4i: L4Index| #![trigger post.spec_nonempty_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_nonempty_l4(l4i) == pre.spec_nonempty_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_nonempty_l3(l4i, l3i) == pre.spec_nonempty_l3(l4i, l3i),
+            post.spec_nonempty_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_nonempty_l2(l4i, l3i, l2i) == pre.spec_nonempty_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_nonempty_2m_l2(l4i, l3i, l2i) == pre.spec_nonempty_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_1g_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_1g_l3(l4i, l3i) == pre.spec_nonempty_1g_l3(l4i, l3i),
     {
-        Self::create_entry_l3_eof_held_1g(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
-        Self::create_entry_l3_eof_held_l3(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_nonempty_1g(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_nonempty_l3(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
         reveal(WholePageTable::l3_links_l2_wf);
     }
 
-    /// EOF closure of `create_entry_l3`: every held 1G leaf is unchanged; the target entry held none and now links an L2 page.
-    proof fn create_entry_l3_eof_held_1g(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
+    /// EOF closure of `create_entry_l3`: every non-empty 1G leaf is unchanged; the target entry held none and now links an L2 page.
+    proof fn create_entry_l3_eof_nonempty_1g(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_nonempty_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_nonempty_1g_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_nonempty_1g_l3(l4i, l3i) == pre.spec_nonempty_1g_l3(l4i, l3i),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
-        assert(pre.spec_held_1g_l3(target_l4i, target_l3i) is None);
+        assert(pre.spec_nonempty_1g_l3(target_l4i, target_l3i) is None);
     }
 
-    /// EOF closure of `create_entry_l2`: the new L2 entry holds the empty L1 page; the rest of the held chain is unchanged.
-    pub(super) proof fn create_entry_l2_eof_held_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    /// EOF closure of `create_entry_l2`: the new L2 entry holds the empty L1 page; the rest of the non-empty chain is unchanged.
+    pub(super) proof fn create_entry_l2_eof_nonempty_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
@@ -1306,18 +1306,18 @@ impl WholePageTable {
             pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is None,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
         ensures
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (target_l4i, target_l3i, target_l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
-            post.spec_held_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: page_map_ptr,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (target_l4i, target_l3i, target_l2i) ==> post.spec_nonempty_l2(l4i, l3i, l2i) == pre.spec_nonempty_l2(l4i, l3i, l2i),
+            post.spec_nonempty_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: page_map_ptr,
                 perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_nonempty_2m_l2(l4i, l3i, l2i) == pre.spec_nonempty_2m_l2(l4i, l3i, l2i),
     {
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
-        broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
-        pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(target_l4i, target_l3i);
+        broadcast use PageTableHigher::disjoint_l4_l3_implies_nonempty_l3_addr_unique_at;
+        pre.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(target_l4i, target_l3i);
     }
 }
 } // verus!

@@ -52,9 +52,9 @@ pub open spec fn pci_bar_2m_chunk_of(bars: Seq<PciBarEntry>, addr: PAddr, f: Pci
 }
 
 /// Each page table's PCI function array records its present IO leaves. A recorded BAR mapping `(va, size)` of function `f` is a
-/// 4K or 2M user key of the table whose held leaf, hidden or not, is an IO leaf mapping a page of a BAR of `f` (4K) or a 2M chunk
+/// 4K or 2M user key of the table whose non-empty leaf, hidden or not, is an IO leaf mapping a page of a BAR of `f` (4K) or a 2M chunk
 /// of one BAR of `f` (2M); every present IO 4K or 2M user leaf is recorded under the function of its target, which the array
-/// holds; and every held IO 4K or 2M user leaf, hidden ones included, maps a BAR page or a 2M chunk of one BAR.
+/// holds; and every non-empty IO 4K or 2M user leaf, hidden ones included, maps a BAR page or a 2M chunk of one BAR.
 #[verifier::opaque]
 pub open spec fn pagetable_pci_mappings_wf(bars: Seq<PciBarEntry>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
     &&& forall|pt: RwLockPageTableRoot, f: PciBdf, m: PciBarMapping| #![trigger whole_pagetable(pt_mp, pt_lower, pt).higher.pci.view()[f].contains(m)]
@@ -62,13 +62,13 @@ pub open spec fn pagetable_pci_mappings_wf(bars: Seq<PciBarEntry>, pt_mp: PageTa
             let c = whole_pagetable(pt_mp, pt_lower, pt);
             &&& !(m.1 is SZ1g)
             &&& m.1 is SZ4k ==> va_4k_valid(m.0) && c.kernel_l4_end() <= spec_v2l4index(m.0)
-                && c.spec_held_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0)) is Some
-                && c.spec_held_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.perm.is_io
-                && pci_bar_function_of_page(bars, c.spec_held_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.addr) == Some(f)
+                && c.spec_nonempty_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0)) is Some
+                && c.spec_nonempty_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.perm.is_io
+                && pci_bar_function_of_page(bars, c.spec_nonempty_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.addr) == Some(f)
             &&& m.1 is SZ2m ==> va_2m_valid(m.0) && c.kernel_l4_end() <= spec_v2l4index(m.0)
-                && c.spec_held_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0)) is Some
-                && c.spec_held_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.perm.is_io
-                && pci_bar_2m_chunk_of(bars, c.spec_held_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.addr, f)
+                && c.spec_nonempty_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0)) is Some
+                && c.spec_nonempty_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.perm.is_io
+                && pci_bar_2m_chunk_of(bars, c.spec_nonempty_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.addr, f)
         }
     &&& forall|pt: RwLockPageTableRoot, va: VAddr| #![trigger whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().dom().contains(va)]
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().dom().contains(va) && whole_pagetable(pt_mp, pt_lower, pt).mapping_4k()[va].is_io ==> {
@@ -85,14 +85,14 @@ pub open spec fn pagetable_pci_mappings_wf(bars: Seq<PciBarEntry>, pt_mp: PageTa
             &&& whole_pagetable(pt_mp, pt_lower, pt).higher.pci.view()[f->0].contains((va, PageSize::SZ2m))
         }
     &&& forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-        #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-            && whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
-            ==> pci_bar_page(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.addr)
-    &&& forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)]
+            && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
+            ==> pci_bar_page(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.addr)
+    &&& forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)]
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-            && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io
-            ==> pci_bar_2m_chunk(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.addr)
+            && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.perm.is_io
+            ==> pci_bar_2m_chunk(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.addr)
 }
 
 /// Entry `i` of the BAR table is well formed.
@@ -117,7 +117,7 @@ pub proof fn pci_bar_pages_unavailable_wf_at(bars: Seq<PciBarEntry>, pg_arr: Pag
     ensures pci_bar_page(bars, page_index2page_ptr(i)) ==> pg_arr.spec_index(i).view().view().state is Unavailable,
 { reveal(pci_bar_pages_unavailable_wf); }
 
-/// The recorded BAR mapping `m` of function `f` in page table `pt` is a held IO leaf of `pt` at `m`'s key mapping a page (4K) or
+/// The recorded BAR mapping `m` of function `f` in page table `pt` is a non-empty IO leaf of `pt` at `m`'s key mapping a page (4K) or
 /// a 2M chunk (2M) of a BAR of `f`.
 pub proof fn pagetable_pci_mappings_wf_mapping_at(bars: Seq<PciBarEntry>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt: RwLockPageTableRoot, f: PciBdf, m: PciBarMapping)
     requires pagetable_pci_mappings_wf(bars, pt_mp, pt_lower),
@@ -126,13 +126,13 @@ pub proof fn pagetable_pci_mappings_wf_mapping_at(bars: Seq<PciBarEntry>, pt_mp:
             let c = whole_pagetable(pt_mp, pt_lower, pt);
             &&& !(m.1 is SZ1g)
             &&& m.1 is SZ4k ==> va_4k_valid(m.0) && c.kernel_l4_end() <= spec_v2l4index(m.0)
-                && c.spec_held_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0)) is Some
-                && c.spec_held_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.perm.is_io
-                && pci_bar_function_of_page(bars, c.spec_held_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.addr) == Some(f)
+                && c.spec_nonempty_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0)) is Some
+                && c.spec_nonempty_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.perm.is_io
+                && pci_bar_function_of_page(bars, c.spec_nonempty_4k_l1(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0), spec_v2l1index(m.0))->0.addr) == Some(f)
             &&& m.1 is SZ2m ==> va_2m_valid(m.0) && c.kernel_l4_end() <= spec_v2l4index(m.0)
-                && c.spec_held_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0)) is Some
-                && c.spec_held_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.perm.is_io
-                && pci_bar_2m_chunk_of(bars, c.spec_held_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.addr, f)
+                && c.spec_nonempty_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0)) is Some
+                && c.spec_nonempty_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.perm.is_io
+                && pci_bar_2m_chunk_of(bars, c.spec_nonempty_2m_l2(spec_v2l4index(m.0), spec_v2l3index(m.0), spec_v2l2index(m.0))->0.addr, f)
         },
 { reveal(pagetable_pci_mappings_wf); }
 
@@ -161,25 +161,25 @@ pub proof fn pagetable_pci_mappings_wf_present_2m_at(bars: Seq<PciBarEntry>, pt_
         },
 { reveal(pagetable_pci_mappings_wf); }
 
-/// The held IO 4K leaf `(l4i, l3i, l2i, l1i)` of page table `pt`, hidden or not, maps a BAR page.
-pub proof fn pagetable_pci_mappings_wf_held_4k_at(
+/// The non-empty IO 4K leaf `(l4i, l3i, l2i, l1i)` of page table `pt`, hidden or not, maps a BAR page.
+pub proof fn pagetable_pci_mappings_wf_nonempty_4k_at(
     bars: Seq<PciBarEntry>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index,
 )
     requires pagetable_pci_mappings_wf(bars, pt_mp, pt_lower),
     ensures
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-            && whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
-            ==> pci_bar_page(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.addr),
+            && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
+            ==> pci_bar_page(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)->0.addr),
 { reveal(pagetable_pci_mappings_wf); }
 
-/// The held IO 2M leaf `(l4i, l3i, l2i)` of page table `pt`, hidden or not, maps a 2M chunk of one BAR.
-pub proof fn pagetable_pci_mappings_wf_held_2m_at(
+/// The non-empty IO 2M leaf `(l4i, l3i, l2i)` of page table `pt`, hidden or not, maps a 2M chunk of one BAR.
+pub proof fn pagetable_pci_mappings_wf_nonempty_2m_at(
     bars: Seq<PciBarEntry>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index,
 )
     requires pagetable_pci_mappings_wf(bars, pt_mp, pt_lower),
     ensures
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-            && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io
-            ==> pci_bar_2m_chunk(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.addr),
+            && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.perm.is_io
+            ==> pci_bar_2m_chunk(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_nonempty_2m_l2(l4i, l3i, l2i)->0.addr),
 { reveal(pagetable_pci_mappings_wf); }
 }

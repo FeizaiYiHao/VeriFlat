@@ -3,8 +3,8 @@ use crate::*;
 
 verus! {
 /// Hides the L1 page that the window of `va`, whose L2 page is `l2_ptr`, links in the window half of `pagetable`: only that
-/// window's L2 entry changes, still held and naming the same page but no longer resolving; the stale-CPU map, every mapping,
-/// every held leaf, and every other table and kernel field are unchanged.
+/// window's L2 entry changes, still non-empty and naming the same page but no longer resolving; the stale-CPU map, every mapping,
+/// every non-empty leaf, and every other table and kernel field are unchanged.
 #[verifier::opaque]
 pub(super) open spec fn hide_empty_l1_in_window_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr) -> bool {
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
@@ -22,16 +22,16 @@ pub(super) open spec fn hide_empty_l1_in_window_eof_transition_framing(pre: Kern
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (l2_ptr, target.2) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
     &&& new_c.lower.l2_entry(l2_ptr, target.2).addr == old_c.lower.l2_entry(l2_ptr, target.2).addr
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& new_c.spec_held_l2(target.0, target.1, target.2) == Some(new_c.lower.l2_entry(l2_ptr, target.2))
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& new_c.spec_nonempty_l2(target.0, target.1, target.2) == Some(new_c.lower.l2_entry(l2_ptr, target.2))
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_resolve_mapping_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target
             ==> new_c.spec_resolve_mapping_l2(l4i, l3i, l2i) == old_c.spec_resolve_mapping_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
 }
 
 /// The paging-structure caches stay inside the table: the hidden entry is still held with its address and lists every CPU stale.
@@ -53,7 +53,7 @@ proof fn hide_empty_l1_in_window_eof_structure_cache(pre: KernelK, post: KernelK
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     spec_va_4k_index_roundtrip_at(va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3);
-    old_c.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2);
+    old_c.spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2);
     reveal(structure_cache_wf);
 }
 
@@ -78,12 +78,12 @@ pub(super) proof fn hide_empty_l1_in_window_eof_hidden_l1_empty(pre: KernelK, po
     let (l4i, l3i, l2i) = (spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2);
     spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, spec_va2index(va).3);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
-    c.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(l4i, l3i, l2i); c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+    c.spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq(l4i, l3i, l2i); c.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i);
     let d = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     assert forall|l1i: L1Index| #![trigger pei_valid(l1i)] pei_valid(l1i) implies !d.lower.l1_page(l2_ptr, l2i).spec_index(l1i).perm.kernel_present by {
         reveal(WholePageTable::wf_mapping_4k); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i);
-        assert(c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) && d.spec_held_4k_l1(l4i, l3i, l2i, l1i) == c.spec_held_4k_l1(l4i, l3i, l2i, l1i));
-        assert(d.spec_held_l3(l4i, l3i) == c.spec_held_l3(l4i, l3i) && d.spec_held_l2(l4i, l3i, l2i) is Some);
+        assert(c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) && d.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i));
+        assert(d.spec_nonempty_l3(l4i, l3i) == c.spec_nonempty_l3(l4i, l3i) && d.spec_nonempty_l2(l4i, l3i, l2i) is Some);
     };
 }
 
@@ -95,7 +95,7 @@ proof fn hide_empty_l1_in_window_eof_pci_mappings(pre: KernelK, post: KernelK, p
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 { reveal(hide_empty_l1_in_window_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
 
-/// Every 4K page record still names a held leaf: the window held no 4K leaf and every other entry resolves as before.
+/// Every 4K page record still names a non-empty leaf: the window held no 4K leaf and every other entry resolves as before.
 proof fn hide_empty_l1_in_window_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
         pre.inv(),
@@ -240,8 +240,8 @@ pub(super) proof fn hide_empty_l1_in_window_eof_held_windows(pre: KernelK, post:
 }
 
 /// Hides the L1 page that the window of `va`, whose L2 page is `l2_ptr`, links in the window half of the write-held `pagetable`:
-/// only that window's L2 entry changes, still held and naming the same page but no longer resolving, and the payload backup
-/// follows the window half; the stale-CPU map, every mapping, every held leaf, every higher half, and every other table and
+/// only that window's L2 entry changes, still non-empty and naming the same page but no longer resolving, and the payload backup
+/// follows the window half; the stale-CPU map, every mapping, every non-empty leaf, every higher half, and every other table and
 /// kernel field are unchanged.
 #[verifier::opaque]
 pub(super) open spec fn hide_empty_l1_in_window_wlocked_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr) -> bool {
@@ -269,16 +269,16 @@ pub(super) open spec fn hide_empty_l1_in_window_wlocked_eof_transition_framing(p
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_page(p).entry_lock(i).l1()]
         old_c.lower.l2_perms.dom().contains(p) && (p, i) != (l2_ptr, target.2) ==> new_c.lower.l2_page(p).entry_lock(i).l1() == old_c.lower.l2_page(p).entry_lock(i).l1()
     &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom()
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& new_c.spec_held_l2(target.0, target.1, target.2) == Some(new_c.lower.l2_entry(l2_ptr, target.2))
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target ==> new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& new_c.spec_nonempty_l2(target.0, target.1, target.2) == Some(new_c.lower.l2_entry(l2_ptr, target.2))
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_resolve_mapping_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != target
             ==> new_c.spec_resolve_mapping_l2(l4i, l3i, l2i) == old_c.spec_resolve_mapping_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
 }
 
 /// The paging-structure caches stay inside the table: the hidden entry is still held with its address and lists every CPU stale.
@@ -300,7 +300,7 @@ proof fn hide_empty_l1_in_window_wlocked_eof_structure_cache(pre: KernelK, post:
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     spec_va_4k_index_roundtrip_at(va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3);
-    old_c.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2);
+    old_c.spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2);
     reveal(structure_cache_wf);
 }
 
@@ -318,7 +318,7 @@ pub(super) proof fn hide_empty_l1_in_window_wlocked_eof_hidden_l1_tables(pre: Ke
 }
 
 /// The window of `va` maps no 4K page before the hide, so its L1 page holds no leaf before or after it.
-pub(super) proof fn hide_empty_l1_in_window_wlocked_eof_no_held_4k(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
+pub(super) proof fn hide_empty_l1_in_window_wlocked_eof_no_nonempty_4k(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
         pre.inv(),
         hide_empty_l1_in_window_wlocked_eof_transition_framing(pre, post, pagetable, va, l2_ptr),
@@ -329,16 +329,16 @@ pub(super) proof fn hide_empty_l1_in_window_wlocked_eof_no_held_4k(pre: KernelK,
         forall|l1i: L1Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i)))]
             pei_valid(l1i) ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i))),
     ensures
-        forall|l1i: L1Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i)]
+        forall|l1i: L1Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i)]
             pei_valid(l1i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i) is None
-                && whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i) is None,
+                && whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i) is None,
 {
     reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing);
     let c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let (l4i, l3i, l2i) = (spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2);
     spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, spec_va2index(va).3);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
-    c.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(l4i, l3i, l2i); c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+    c.spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq(l4i, l3i, l2i); c.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i);
     reveal(WholePageTable::wf_mapping_4k);
 }
 
@@ -358,7 +358,7 @@ proof fn hide_empty_l1_in_window_wlocked_eof_pci_ownership(pre: KernelK, post: K
     ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 { reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing); reveal(pci_function_ownership_wf); }
 
-/// Every 4K page record still names a held leaf: the window held no 4K leaf and every other entry resolves as before.
+/// Every 4K page record still names a non-empty leaf: the window held no 4K leaf and every other entry resolves as before.
 proof fn hide_empty_l1_in_window_wlocked_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr)
     requires
         pre.inv(),

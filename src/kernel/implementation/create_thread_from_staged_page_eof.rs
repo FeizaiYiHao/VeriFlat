@@ -130,7 +130,7 @@ proof fn create_thread_from_staged_page_eof_process_emptied_tables_wf(pre: Kerne
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 { reveal(process_emptied_tables_wf); }
 
-/// The owning process was creating or running and now runs and no table changes, so every live process keeps its held
+/// The owning process was creating or running and now runs and no table changes, so every live process keeps its non-empty
 /// user roots resolvable.
 proof fn create_thread_from_staged_page_eof_hidden_roots(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr)
     requires

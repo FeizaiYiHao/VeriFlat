@@ -53,18 +53,18 @@ pub fn pagetable_map_update_pci_mapping(
             let new_c = whole_pagetable(*final(pagetable_map), *pt_lower, pagetable_ptr);
             &&& new_c.kernel_l4_end() == old_c.kernel_l4_end() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g()
-            &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_held_l4(l4i)] new_c.higher.spec_held_l4(l4i) == old_c.higher.spec_held_l4(l4i)
+            &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_nonempty_l4(l4i)] new_c.higher.spec_nonempty_l4(l4i) == old_c.higher.spec_nonempty_l4(l4i)
             &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_resolve_mapping_l4(l4i)] new_c.higher.spec_resolve_mapping_l4(l4i) == old_c.higher.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_held_l3(l4i, l3i)] new_c.higher.spec_held_l3(l4i, l3i) == old_c.higher.spec_held_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_nonempty_l3(l4i, l3i)] new_c.higher.spec_nonempty_l3(l4i, l3i) == old_c.higher.spec_nonempty_l3(l4i, l3i)
             &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_resolve_mapping_l3(l4i, l3i)]
                 new_c.higher.spec_resolve_mapping_l3(l4i, l3i) == old_c.higher.spec_resolve_mapping_l3(l4i, l3i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_held_1g_l3(l4i, l3i)] new_c.higher.spec_held_1g_l3(l4i, l3i) == old_c.higher.spec_held_1g_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_nonempty_1g_l3(l4i, l3i)] new_c.higher.spec_nonempty_1g_l3(l4i, l3i) == old_c.higher.spec_nonempty_1g_l3(l4i, l3i)
             &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i)]
                 new_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i) == old_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)] new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)] new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)] new_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)] new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+            &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+                new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
             &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
         }),

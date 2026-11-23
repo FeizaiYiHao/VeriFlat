@@ -28,16 +28,16 @@ pub(super) open spec fn map_owned_2m_page_eof_transition_framing(pre: KernelK, p
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_pt.lower.l2_owner(p, i)] new_pt.lower.l2_owner(p, i) == old_pt.lower.l2_owner(p, i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_resolve_mapping_l2(l4i, l3i, l2i)]
         pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_resolve_mapping_l2(l4i, l3i, l2i) == old_pt.spec_resolve_mapping_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_held_l2(l4i, l3i, l2i)]
-        old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_held_l2(l4i, l3i, l2i) == old_pt.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_held_2m_l2(l4i, l3i, l2i)]
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_nonempty_l2(l4i, l3i, l2i) == old_pt.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_pt.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_pt.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_pt.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_nonempty_2m_l2(l4i, l3i, l2i)]
         old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
-            ==> new_pt.spec_held_2m_l2(l4i, l3i, l2i) == old_pt.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& new_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
-    &&& new_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
-    &&& !new_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io
+            ==> new_pt.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_pt.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& new_pt.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
+    &&& new_pt.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == pg_ptr
+    &&& !new_pt.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& new_page.is_init()
     &&& new_page.locking_thread() == old_page.locking_thread()
@@ -186,10 +186,10 @@ proof fn map_owned_2m_page_eof_page_mappings_2m(pre: KernelK, post: KernelK, pg_
 {
     reveal(map_owned_2m_page_eof_transition_framing);
     let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
-    assert(old_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None) by {
+    assert(old_pt.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None) by {
         reveal(KernelK::default_pagetable_wf); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); spec_va_2m_valid_index_roundtrip(va);
         old_pt.wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
-        old_pt.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(spec_v2l4index(va), spec_v2l3index(va));
+        old_pt.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(spec_v2l4index(va), spec_v2l3index(va));
     };
     broadcast use {spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip};
     page_ptr_valid_imply_page_index_valid(); reveal(KernelK::default_pagetable_wf);
@@ -277,7 +277,7 @@ proof fn map_owned_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
         let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
-        assert(old_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None) by {
+        assert(old_pt.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None) by {
             pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); spec_va_2m_valid_index_roundtrip(va);
             old_pt.wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
         };
@@ -491,8 +491,8 @@ pub(super) proof fn map_owned_2m_page_eof_window_frames(pre: KernelK, post: Kern
         implies new_pt.window_view(w).lock_state == old_pt.window_view(w).lock_state && new_pt.window_view(w).stale_cpus == old_pt.window_view(w).stale_cpus
             && (old_pt.window_view(w).l1_table is None ==> new_pt.window_view(w).l1_table is None) by {
         spec_va_2m_valid_index_roundtrip(w.va);
-        old_pt.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(spec_v2l4index(w.va), spec_v2l3index(w.va));
-        assert(new_pt.spec_held_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) == old_pt.spec_held_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)));
+        old_pt.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(spec_v2l4index(w.va), spec_v2l3index(w.va));
+        assert(new_pt.spec_nonempty_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) == old_pt.spec_nonempty_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)));
     };
 }
 } // verus!

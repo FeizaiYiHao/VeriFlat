@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
-use super::reclaim_held_2m_page::reclaim_last_lock_2m_cache_with_room;
+use super::reclaim_nonempty_2m_page::reclaim_last_lock_2m_cache_with_room;
 #[cfg(verus_keep_ghost)]
 use super::unmap_2m_reclaim_in_window_eof::*;
 
@@ -521,8 +521,8 @@ pub fn reclaim_unmapped_2m_page_in_window(
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_2m_at(indices.0, indices.1, indices.2);
-        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(indices.0, indices.1, indices.2);
-        mapped_2m_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, indices.0, indices.1, indices.2);
+        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq(indices.0, indices.1, indices.2);
+        mapped_2m_page_pagetable_wf_nonempty_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, indices.0, indices.1, indices.2);
     }
     let (pg_ptr, l2_ptr) = reclaim_unmapped_2m_page_and_l2_ptr(krnl, pagetable, va, (indices.0, indices.1, indices.2), Tracked(&*lctx), pagetable_perm);
     let pg_idx = page_ptr2page_index(pg_ptr);

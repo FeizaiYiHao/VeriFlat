@@ -61,7 +61,7 @@ fn mmap_2m_window_l2_word(krnl: &KernelK, pagetable_ptr: RwLockPageTableRoot, va
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
         pagetable_hidden_l1_only_when_locked_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-        table.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(spec_v2l4index(va), spec_v2l3index(va));
+        table.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(spec_v2l4index(va), spec_v2l3index(va));
     }
     let indices = va2index(va);
     let pt = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);

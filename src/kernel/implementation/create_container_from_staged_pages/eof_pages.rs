@@ -395,7 +395,7 @@ pub(super) proof fn publish_staged_container_root_eof_existing_container_page_st
     hide(Seq::contains);
     publish_staged_container_root_eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, ctn_ptr);
     let container_index = page_ptr2page_index(ctn_ptr);
-    assert(page_index2page_ptr(container_index) == ctn_ptr);
+    assert(page_index2page_ptr(container_index) == ctn_ptr) by (nonlinear_arith) requires page_ptr_2m_valid(ctn_ptr), container_index == page_ptr2page_index(ctn_ptr);
     publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -1121,7 +1121,7 @@ pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_4
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq, whole_pagetable_is_empty_implies_no_held_4k;
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq, whole_pagetable_is_empty_implies_no_nonempty_4k;
         reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
         assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).cr3() == l4_page);
@@ -1162,7 +1162,7 @@ pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_2
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq, whole_pagetable_is_empty_implies_no_held_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq, whole_pagetable_is_empty_implies_no_nonempty_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     };
 }
@@ -1201,7 +1201,7 @@ pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_1
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq, whole_pagetable_is_empty_implies_no_held_1g; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf);
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq, whole_pagetable_is_empty_implies_no_nonempty_1g; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     };
 }
