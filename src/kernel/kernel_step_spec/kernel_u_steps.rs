@@ -233,6 +233,55 @@ pub open spec fn kernel_u_rebalance_pull_changed(old_u: KernelU, new_u: KernelU,
     })
 }
 
+/// Cpu `c` serves container `ctn`: it is owned by `ctn` and not Off.
+pub open spec fn cpu_serves_container(u: KernelU, ctn: RwLockContainerPtr, c: CpuId) -> bool {
+    index_valid(NUM_CPUS, c) && u.cpu_array[c as int].owning_container == ctn && !(u.cpu_array[c as int].state is Off)
+}
+
+/// The lowest index at or above `from`, other than `own`, whose cpu does not serve `ctn`.
+pub open spec fn first_orphan_shard(u: KernelU, ctn: RwLockContainerPtr, from: int, own: CpuId) -> Option<CpuId>
+    decreases NUM_CPUS - from,
+{
+    if from < 0 || from >= NUM_CPUS { None }
+    else if from != own as int && !cpu_serves_container(u, ctn, from as CpuId) { Some(from as CpuId) }
+    else { first_orphan_shard(u, ctn, from + 1, own) }
+}
+
+/// The first orphan shard of `ctn` at or after `cursor`, wrapping around to shard 0, other than `own`.
+pub open spec fn orphan_victim(u: KernelU, ctn: RwLockContainerPtr, cursor: CpuId, own: CpuId) -> Option<CpuId> {
+    match first_orphan_shard(u, ctn, cursor as int, own) { Some(v) => Some(v), None => first_orphan_shard(u, ctn, 0, own) }
+}
+
+/// The non-Off cpu `cpu_id` takes the live head `thread` of shard `victim`, whose cpu does not serve the cpu's
+/// container, onto the tail of shard `cpu_id`.
+#[verifier::opaque]
+pub open spec fn kernel_u_orphan_pull_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let container = old_u.container_map.spec_index(cpu.owning_container);
+    let queues = container.scheduler;
+    let t = old_u.thread_map.spec_index(thread);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& index_valid(NUM_CPUS, victim)
+    &&& victim != cpu_id
+    &&& !(cpu.state is Off)
+    &&& old_u.container_map.dom().contains(cpu.owning_container)
+    &&& !cpu_serves_container(old_u, cpu.owning_container, victim)
+    &&& queues[victim as int].len() > 0
+    &&& queues[victim as int][0] == thread
+    &&& old_u.thread_map.dom().contains(thread)
+    &&& !t.killed
+    &&& t.state == (ThreadState::SCHEDULED { cpu_id: victim })
+    &&& t.owning_container == cpu.owning_container
+    &&& new_u == (KernelU {
+        container_map: old_u.container_map.insert(cpu.owning_container, ContainerU {
+            scheduler: queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thread)),
+            ..container
+        }),
+        thread_map: old_u.thread_map.insert(thread, ThreadU { state: ThreadState::SCHEDULED { cpu_id }, ..t }),
+        ..old_u
+    })
+}
+
 /// The live thread running on `cpu_id` blocks on the live endpoint at `ep_idx` and the CPU goes idle.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_block_changed(

@@ -1,0 +1,117 @@
+use vstd::prelude::*;
+use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::rebalance_pull_spec::rebalance_orphan_pull_eof_transition_framing;
+
+verus! {
+proof fn rebalance_orphan_pull_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, victim: CpuId, thrd_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        rebalance_orphan_pull_eof_transition_framing(pre, post, cpu_id, sched_ptr, victim, thrd_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, victim),
+        victim != cpu_id,
+        pre.sched_mp.dom().contains(sched_ptr),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        pre.sched_mp.spec_index(sched_ptr).shard(victim).queue.view().len() > 0,
+        pre.sched_mp.spec_index(sched_ptr).shard(victim).queue.view()[0] == thrd_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: victim }),
+        !pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(thrd_ptr),
+        !pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.map().dom().contains(pre.thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr()),
+    ensures container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp),
+{
+    reveal(rebalance_orphan_pull_eof_transition_framing);
+    let queue = pre.sched_mp.spec_index(sched_ptr).shard(victim).queue;
+    assert(queue.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
+    reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
+    seq_push_implies_contains::<RwLockThreadPtr>(); seq_skip_one_implies_contains_and_index_shift::<RwLockThreadPtr>();
+}
+
+proof fn rebalance_orphan_pull_eof_thread_endpoint_ref_counter(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, victim: CpuId, thrd_ptr: RwLockThreadPtr)
+    requires
+        thread_endpoint_ref_counter_wf(pre.thrd_mp, pre.ep_mp),
+        rebalance_orphan_pull_eof_transition_framing(pre, post, cpu_id, sched_ptr, victim, thrd_ptr),
+    ensures thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp),
+{ reveal(rebalance_orphan_pull_eof_transition_framing); thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thrd_mp, post.thrd_mp, pre.ep_mp, post.ep_mp); }
+
+proof fn rebalance_orphan_pull_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, victim: CpuId, thrd_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        rebalance_orphan_pull_eof_transition_framing(pre, post, cpu_id, sched_ptr, victim, thrd_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, victim),
+        victim != cpu_id,
+        pre.sched_mp.dom().contains(sched_ptr),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        pre.sched_mp.spec_index(sched_ptr).shard(victim).queue.view().len() > 0,
+        pre.sched_mp.spec_index(sched_ptr).shard(victim).queue.view()[0] == thrd_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: victim }),
+        !pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(thrd_ptr),
+        !pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.map().dom().contains(pre.thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr()),
+    ensures post.process_management_inv(),
+{
+    reveal(rebalance_orphan_pull_eof_transition_framing);
+    assert(post.process_management_inv()) by {
+        rebalance_orphan_pull_eof_container_thread_scheduler(pre, post, cpu_id, sched_ptr, victim, thrd_ptr);
+        assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thrd_mp, post.thrd_mp, pre.cpu_arr, post.cpu_arr); };
+        assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
+        assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp); };
+        assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
+        rebalance_orphan_pull_eof_thread_endpoint_ref_counter(pre, post, cpu_id, sched_ptr, victim, thrd_ptr);
+        assert(thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp, pre.ep_mp, post.ep_mp); };
+        assert(thread_caller_callee_wf(post.thrd_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thrd_mp, post.thrd_mp); };
+        assert(thread_dangling_chain_end_wf(post.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp); };
+        assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
+    };
+}
+
+pub(super) proof fn rebalance_orphan_pull_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, victim: CpuId, thrd_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        rebalance_orphan_pull_eof_transition_framing(pre, post, cpu_id, sched_ptr, victim, thrd_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, victim),
+        victim != cpu_id,
+        pre.sched_mp.dom().contains(sched_ptr),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        pre.sched_mp.spec_index(sched_ptr).shard(victim).queue.view().len() > 0,
+        pre.sched_mp.spec_index(sched_ptr).shard(victim).queue.view()[0] == thrd_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: victim }),
+        !pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(thrd_ptr),
+        !pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.map().dom().contains(pre.thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr()),
+        post.thrd_mp.perms_wf(),
+        post.thrd_mp.spec_index(thrd_ptr).view().inv(),
+        scheduler_perms_wf(post.sched_mp),
+    ensures
+        post.inv(),
+        ({
+            let queues = scheduler_shards_of(pre.sched_mp.spec_index(sched_ptr));
+            scheduler_shards_of(post.sched_mp.spec_index(sched_ptr)) == queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thrd_ptr))
+        }),
+{
+    hide(Seq::contains);
+    reveal(rebalance_orphan_pull_eof_transition_framing);
+    let queues = scheduler_shards_of(pre.sched_mp.spec_index(sched_ptr));
+    assert(scheduler_shards_of(post.sched_mp.spec_index(sched_ptr)) =~= queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thrd_ptr))) by { reveal(scheduler_shards_of); };
+    assert(post.subsystems_inv()) by {
+        assert(thread_perms_wf(post.thrd_mp)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
+        };
+        reveal(KernelK::default_pagetable_wf);
+    };
+    assert(post.memory_management_inv()) by {
+        assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
+        assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+        assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+        thread_staged_4k_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_2m_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp);
+        container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp);
+        container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp);
+    };
+    rebalance_orphan_pull_eof_process_management_inv(pre, post, cpu_id, sched_ptr, victim, thrd_ptr);
+}
+}

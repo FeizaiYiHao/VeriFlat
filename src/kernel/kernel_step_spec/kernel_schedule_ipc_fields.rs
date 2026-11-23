@@ -223,6 +223,60 @@ pub open spec fn kernel_rebalance_pull_fields(pre: &KernelK, post: &KernelK, cpu
 }
 
 #[verifier::opaque]
+/// The non-Off cpu `cpu_id` takes the live head `thread` of shard `victim`, whose cpu is not a non-Off cpu of the
+/// cpu's container, onto the tail of shard `cpu_id`; every lock, the cpu sets' included, is released again.
+pub open spec fn kernel_orphan_pull_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr) -> bool {
+    let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
+    let victim_cpu = pre.cpu_arr.spec_index(victim).value.view().view();
+    let queues = scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler));
+    let t = pre.thrd_mp.spec_index(thread);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& index_valid(NUM_CPUS, victim)
+    &&& victim != cpu_id
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, thrd_mp: post.thrd_mp, sched_mp: post.sched_mp, cpu_set_mp: post.cpu_set_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& !(cpu.state is Off)
+    &&& pre.ctn_mp.dom().contains(cpu.owning_container)
+    &&& !(victim_cpu.owning_container == cpu.owning_container && !(victim_cpu.state is Off))
+    &&& queues[victim as int].len() > 0
+    &&& queues[victim as int][0] == thread
+    &&& pre.thrd_mp.dom().contains(thread)
+    &&& t.locking_thread() is None
+    &&& !t.being_killed()
+    &&& t.view().state == (ThreadState::SCHEDULED { cpu_id: victim })
+    &&& t.view().owning_container == cpu.owning_container
+    &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
+        index_valid(NUM_CPUS, i) ==> {
+            &&& post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
+            &&& post.cpu_arr.spec_index(i).value.view().view() == pre.cpu_arr.spec_index(i).value.view().view()
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
+        }
+    &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
+    &&& forall|s: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(s)]
+        pre.cpu_set_mp.dom().contains(s) ==> {
+            &&& post.cpu_set_mp.spec_index(s).locking_thread() == pre.cpu_set_mp.spec_index(s).locking_thread()
+            &&& post.cpu_set_mp.spec_index(s).being_killed() == pre.cpu_set_mp.spec_index(s).being_killed()
+        }
+    &&& forall|s: RwLockSchedulerPtr| #![trigger post.sched_mp.spec_index(s)]
+        post.sched_mp.dom().contains(s) ==> {
+            let q = scheduler_shards_of(pre.sched_mp.spec_index(s));
+            scheduler_shards_of(post.sched_mp.spec_index(s)) == if s == pre.ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler {
+                q.update(victim as int, q[victim as int].skip(1)).update(cpu_id as int, q[cpu_id as int].push(thread))
+            } else { q }
+        }
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
+        pre.thrd_mp.dom().contains(p) ==> {
+            &&& post.thrd_mp.spec_index(p).locking_thread() == pre.thrd_mp.spec_index(p).locking_thread()
+            &&& post.thrd_mp.spec_index(p).being_killed() == pre.thrd_mp.spec_index(p).being_killed()
+            &&& post.thrd_mp.spec_index(p).view() == if p == thread {
+                Thread { state: ThreadState::SCHEDULED { cpu_id }, ..pre.thrd_mp.spec_index(p).view() }
+            } else { pre.thrd_mp.spec_index(p).view() }
+        }
+}
+
+#[verifier::opaque]
 /// The live thread running on `cpu_id` blocks on the live endpoint at `ep_idx`, the CPU goes
 /// idle, and at most the `(cpu_id, KERNEL_DEFAULT_PCID)` TLB entry is flushed.
 pub open spec fn kernel_ipc_block_fields(

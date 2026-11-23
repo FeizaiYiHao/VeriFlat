@@ -635,6 +635,7 @@ pub fn scheduler_map_move_shard_head(sched_mp: &mut SchedulerUnLockedMap, sched_
                 &&& shard_after.locking_thread() == shard_before.locking_thread()
             },
         old(sched_mp).spec_index(sched_ptr).shard(from).queue.map().dom().contains(ret),
+        !old(sched_mp).spec_index(sched_ptr).shard(to).queue.map().dom().contains(ret),
         old(sched_mp).spec_index(sched_ptr).shard(from).queue.map().spec_index(ret) == old(sched_mp).spec_index(sched_ptr).shard(from).queue.view()[0],
         final(sched_mp).spec_index(sched_ptr).shard(from).queue.view() == old(sched_mp).spec_index(sched_ptr).shard(from).queue.view().skip(1),
         final(sched_mp).spec_index(sched_ptr).shard(from).queue.map() == old(sched_mp).spec_index(sched_ptr).shard(from).queue.map().remove(ret),

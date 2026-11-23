@@ -457,6 +457,42 @@ pub(super) proof fn kernel_rebalance_pull_fields_implies_u_step(pre: &KernelK, p
     };
 }
 
+pub(super) proof fn kernel_orphan_pull_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr)
+    requires
+        container_scheduler_wf(post.ctn_mp, post.sched_mp),
+        container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
+        kernel_orphan_pull_fields(pre, post, cpu_id, victim, thread),
+    ensures
+        kernel_u_orphan_pull_changed(kernel_k_user_projection(*pre), kernel_k_user_projection(*post), cpu_id, victim, thread),
+{
+    hide(kernel_k_user_projection);
+    reveal(kernel_u_orphan_pull_changed); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    let pre_u = kernel_k_user_projection(*pre);
+    let post_u = kernel_k_user_projection(*post);
+    assert(kernel_u_orphan_pull_changed(pre_u, post_u, cpu_id, victim, thread)) by {
+        reveal(kernel_orphan_pull_fields); kernel_cpu_user_projection_at(pre, cpu_id); kernel_cpu_user_projection_at(pre, victim);
+        if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
+        if pre.thrd_mp.dom().contains(thread) { kernel_thread_user_projection_at(pre, thread); }
+        let cpu = pre_u.cpu_array[cpu_id as int];
+        let container = pre_u.container_map.spec_index(cpu.owning_container);
+        let queues = container.scheduler;
+        assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, i as usize); kernel_cpu_user_projection_at(post, i as usize); } });
+        assert(post_u.endpoint_map == pre_u.endpoint_map && post_u.process_map == pre_u.process_map) by {
+            reveal(kernel_k_to_kernel_u); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post); kernel_process_maps_unchanged_implies_u_process_map(pre, post);
+        };
+        assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, ContainerU {
+            scheduler: queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thread)), ..container
+        }), c => {
+            if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); }
+            if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); container_cpu_set_wf_container_at(post.ctn_mp, post.cpu_set_mp, c); }
+            reveal(container_scheduler_wf);
+        });
+        assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread, ThreadU {
+            state: ThreadState::SCHEDULED { cpu_id }, ..pre_u.thread_map.spec_index(thread)
+        }), t => { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
+    };
+}
+
 /// Write-locking or unlocking a process's page table and IOMMU table, changing the root table and the IOTLB, replacing
 /// one thread's progress, and changing the process's K-only state changes exactly those parts of the complete projection.
 pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_step(

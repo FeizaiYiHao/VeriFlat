@@ -420,6 +420,45 @@ shard other than `cpu_id` whose queue is non-empty.
 Stutters (`Nothing`, no U step): the cpu is not Idle; `Q[cpu_id]` is
 non-empty; every other shard is empty; the head `Q[v][0]` is killed.
 
+### Orphan pull: rebalance_orphan_pull — one step
+
+Entry `rebalance_orphan_pull(cpu_id, cursor) -> RebalanceResult` is run by the
+trap layer on a non-Off cpu: on a running cpu before `schedule_from_running` on
+every 16th timer tick from user mode, and on an idle cpu once after
+`rebalance_pull` returns `Nothing`, before it halts. The trap layer keeps a
+per-cpu cursor and advances it by one modulo `NUM_CPUS` after every call; the
+model sees the cursor as an argument. It is not a syscall: no `Caller`, and `C`
+is `cpu.owning_container`. A cpu `c` serves `C` when it is owned by `C` and not
+Off (`cpu_serves_container`); shard `c` is an orphan shard when `c` does not
+serve `C`. The victim `v = orphan_victim(u, C, cursor, cpu_id)` is the first
+orphan shard other than `cpu_id` at or after `cursor`, wrapping around to shard
+0 (`first_orphan_shard`); a cursor at or past `NUM_CPUS` scans from 0.
+
+- U locks acquired and released in the step: `cpu`, `C`'s cpu set (read unless
+  marked, on running and idle cpus alike: a set its container's killer marked
+  returns `Nothing`, and a reader waiting on a slot the killer holds sees the
+  mark and gives up), and the moved thread. Non-U: shards `cpu_id` and `v` of `C`'s
+  scheduler, the lower index first. The victim is decided from the cpu-set data
+  under that lock.
+
+**Step** (`orphan_pull_step_pre`, `orphan_pull_step`)
+
+- Pre: `!(cpu.state is Off)`, `C` present, `v is Some`, `Q[v]` non-empty,
+  `t = Q[v][0]` present, `!t.killed`, `t.state == SCHEDULED { v }`, owned by
+  `C`; `Unlocked(cpu)`, `Unlocked(t)`.
+- Effect (`kernel_u_orphan_pull_changed`): `Q[v] = Q[v].skip(1)`,
+  `Q[cpu_id] = Q[cpu_id].push(t)`, `t.state = SCHEDULED { cpu_id }`; nothing
+  else changes. The own shard may be non-empty: `t` joins its tail.
+- Result: `orphan_pull_syscall_result(u, cpu_id, cursor)` is `Pulled { t }`
+  exactly when `!cpu.killed`, the cpu is not Off, `C`'s cpu set is not marked,
+  `v is Some`, `Q[v]` is non-empty, and its head is not killed;
+  `orphan_pull_syscall_trace` records whether it pulled.
+
+Stutters (`Nothing`, no U step): the cpu is killed; `C`'s cpu set is marked (an
+idle cpu of a dying container, which owns no thread); every other shard's cpu
+serves `C`; `Q[v]` is empty; its head is killed. One call moves at most one
+thread.
+
 ## 4d. pci_attach_dma — one step
 
 Status: conforms with anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167).
@@ -1500,6 +1539,7 @@ function that share a 4K page are mapped together.
 | `cpu_offline_check` (trap-layer entry, before every `syscall_schedule`) | §4b |
 | `cpu_online_resume` (trap-layer loop entry of an Off cpu, `wait_until_online`) | §4b |
 | `rebalance_pull` (trap-layer entry of an Idle cpu after `syscall_schedule` returns Idle) | §4c |
+| `rebalance_orphan_pull` (trap-layer entry of a non-Off cpu: every 16th user-mode tick, and in the idle loop after `rebalance_pull` returns Nothing) | §4c |
 | `syscall_new_thread`, `syscall_new_thread_with_endpoint` | §5 |
 | `syscall_new_endpoint` | §5a |
 | `syscall_mmap_4k` | §6 |
@@ -1848,8 +1888,15 @@ The boot-side checks of this boundary are listed in `Methodology.md`.
    new_container's root thread); a cross-container IPC wake goes to the peer's
    `last_cpu` shard; an Idle cpu pulls only the head of the lowest other
    non-empty shard of its container and stutters on a killed head. Shards of
-   Off or unowned cpus may hold threads; they drain only through
-   `rebalance_pull`.
+   Off or unowned cpus (orphan shards) may hold threads: a cpu that went Off
+   leaves its queue there, and a cross-container wake can target an Off or
+   foreign `last_cpu`. The periodic orphan pull drains them (2026-11-23, §4c):
+   every non-Off cpu of the container, busy ones on every 16th user-mode tick
+   and idle ones on every idle pass that pulled nothing, moves one live head of
+   the next orphan shard after its rotating cursor to the tail of its own shard.
+   A thread on an orphan shard therefore runs once its container has a non-Off
+   cpu, except while its head is killed (until the kill completes) or the
+   container never keeps a cpu online.
 6. PCI devices (2026-10-08; ownership revised 2026-11-19, §15): the root
    table is one lock over the context entries and the ghost owners; it never
    crosses a step boundary, so it is not U-visible. A process's owned functions

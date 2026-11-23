@@ -160,7 +160,8 @@ impl KernelK {
         self.wlock_thread_unless_killed(thrd_ptr, Tracked(&mut *lctx))
     }
 
-    /// Locks a SCHEDULED thread of the held cpu's container under its write-held scheduler (schedule next, rebalance pull).
+    /// Locks a SCHEDULED thread of the held cpu's container under its write-held scheduler (schedule next, rebalance and
+    /// orphan pull); the cpu's current process and thread and cpu sets may be held too.
     pub fn wlock_scheduled_thread_unless_killed(&mut self, thrd_ptr: RwLockThreadPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
         requires
             old(self).inv(),
@@ -187,13 +188,12 @@ impl KernelK {
                 &&& forall|held: (RwLockSchedulerPtr, CpuId)| #![trigger old(lctx).scheduler_lock_map().dom().contains(held)]
                     old(lctx).scheduler_lock_map().dom().contains(held) ==> held.0 == sched_ptr
                 &&& typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (sched_ptr, thread.state->SCHEDULED_cpu_id), TypedLockMode::Write)
-                &&& old(lctx).process_lock_map().dom() =~= match cpu.current_process { Some(ptr) => set![ptr], None => Set::empty() }
-                &&& old(lctx).thread_lock_map().dom() =~= match cpu.current_thread { Some(ptr) => set![ptr], None => Set::empty() }
+                &&& old(lctx).process_lock_map().dom().subset_of(match cpu.current_process { Some(ptr) => set![ptr], None => Set::empty() })
+                &&& old(lctx).thread_lock_map().dom().subset_of(match cpu.current_thread { Some(ptr) => set![ptr], None => Set::empty() })
                 &&& old(lctx).page_lock_map().dom().is_empty()
                 &&& old(lctx).container_lock_map().dom().is_empty()
                 &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
                 &&& old(lctx).endpoint_lock_map().dom().is_empty()
-                &&& old(lctx).cpu_set_lock_map().dom().is_empty()
                 &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
                 &&& old(lctx).pagetable_lock_map().dom().is_empty()
                 &&& old(lctx).iommu_table_lock_map().dom().is_empty()
