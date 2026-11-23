@@ -743,6 +743,57 @@ impl KernelSteps {
         };
         self.end_kernel_step_raw(krnl, lctx);
     }
+
+    pub proof fn end_kernel_step_orphan_pull(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr)
+        requires
+            krnl.inv(),
+            lctx.kernel_view_locking_state() is Release,
+            kernel_orphan_pull_fields(&old(self).snapshot_k(), krnl, cpu_id, victim, thread),
+        ensures
+            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
+            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
+            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
+            final(self).snapshot_k() == *krnl,
+            kernel_u_orphan_pull_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, victim, thread),
+            {
+                let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
+                let cpu = old_u.cpu_array[cpu_id as int];
+                let queues = old_u.container_map.spec_index(cpu.owning_container).scheduler;
+                let t = old_u.thread_map.spec_index(thread);
+                &&& index_valid(NUM_CPUS, cpu_id)
+                &&& index_valid(NUM_CPUS, victim)
+                &&& victim != cpu_id
+                &&& cpu.lock_state is Unlocked
+                &&& !(cpu.state is Off)
+                &&& old_u.container_map.dom().contains(cpu.owning_container)
+                &&& !cpu_serves_container(old_u, cpu.owning_container, victim)
+                &&& queues[victim as int].len() > 0
+                &&& queues[victim as int][0] == thread
+                &&& old_u.thread_map.dom().contains(thread)
+                &&& t.lock_state is Unlocked
+                &&& !t.killed
+                &&& t.state == (ThreadState::SCHEDULED { cpu_id: victim })
+                &&& t.owning_container == cpu.owning_container
+            },
+    {
+        hide(kernel_k_user_projection);
+        reveal(kernel_u_orphan_pull_changed);
+        use_type_invariant(&*self);
+        assert({
+            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
+            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
+            &&& pre_u.thread_map.spec_index(thread).lock_state is Unlocked
+        }) by {
+            reveal(kernel_orphan_pull_fields); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id); kernel_thread_projection_at(&self.snapshot_k(), thread);
+        };
+        assert(kernel_u_orphan_pull_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, victim, thread)) by {
+            kernel_orphan_pull_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, victim, thread);
+            reveal(kernel_k_to_kernel_u);
+        };
+        self.end_kernel_step_raw(krnl, lctx);
+    }
 }
 
 /// An index below the length of a kept prefix keeps its recorded step.

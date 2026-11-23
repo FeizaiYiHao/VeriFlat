@@ -308,6 +308,9 @@ impl KernelK {
             final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
             final(self).cpu_set_mp.perms_wf(),
             final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr) == old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr),
+            forall|c: RwLockContainerPtr| #![trigger final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
+                old(self).ctn_mp.dom().contains(c) && old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set != cpu_set_ptr
+                    ==> final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set) == old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set),
             runlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr), old(lctx).thread_id()),
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr)),
     {
