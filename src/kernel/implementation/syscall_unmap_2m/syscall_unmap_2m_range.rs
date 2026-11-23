@@ -555,11 +555,15 @@ fn flush_unmap_2m_range_tlbs(
             let va = range.start;
             assert(spec_va_2m_valid(va) ==> spec_va_4k_valid(va)) by (bit_vector);
         }
-        flush_pagetable_tlbs_va_range(krnl, pagetable, cr3, pcid, range.start, range.len, true, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
-        proof { unmap_2m_tlb_va_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
+        let Ghost(snaps) = flush_pagetable_tlbs_va_range(krnl, pagetable, cr3, pcid, range.start, range.len, true, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
+        proof {
+            unmap_4k_tlb_va_flush_steps_from_k(steps.view(), before.len() as int, snaps, &entry, &entry_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, range.start, range.len, true, snaps.len() as int);
+            unmap_2m_tlb_va_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
     } else {
-        flush_pagetable_tlbs::<false>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
-        proof { unmap_2m_tlb_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
+        let Ghost(snaps) = flush_pagetable_tlbs::<false>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
+        proof {
+            unmap_4k_tlb_flush_steps_from_k(steps.view(), before.len() as int, snaps, &entry, &entry_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, pcid, snaps.len() as int);
+            unmap_2m_tlb_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
     }
 }
 }

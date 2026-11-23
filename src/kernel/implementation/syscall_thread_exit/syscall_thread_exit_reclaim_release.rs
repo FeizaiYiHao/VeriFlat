@@ -218,8 +218,9 @@ pub(super) fn thread_exit_reclaim_flush(
     let ghost entry_flush_k = *krnl;
     let ghost entry_flush_lctx = *lctx;
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
+    let Ghost(snaps) = flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
     proof {
+        unmap_4k_tlb_flush_steps_from_k(steps.view(), flush_before.len() as int, snaps, &entry_flush_k, &entry_flush_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, pcid, snaps.len() as int);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_flush_step_pre_from_k(&entry_flush_k, &entry_flush_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, pcid);
             thread_exit_trace_from_tlb_flush(&*steps, flush_before, start, pre, kernel_k_to_kernel_u(entry_flush_k), cpu_id, thrd_ptr, prc_ptr, ctn_ptr, pcid);

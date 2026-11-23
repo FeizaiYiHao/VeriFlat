@@ -438,11 +438,17 @@ fn flush_unmap_4k_range_tlbs(
     let ghost prc_ptr = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
     let ghost ctn_ptr = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
     if range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_4K {
-        flush_pagetable_tlbs_va_range(krnl, pagetable, cr3, pcid, range.start, range.len, false, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
-        proof { unmap_4k_tlb_va_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
+        let Ghost(snaps) = flush_pagetable_tlbs_va_range(krnl, pagetable, cr3, pcid, range.start, range.len, false, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
+        proof {
+            unmap_4k_tlb_va_flush_steps_from_k(steps.view(), before.len() as int, snaps, &entry, &entry_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, range.start, range.len, false, snaps.len() as int);
+            unmap_4k_tlb_va_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+        }
     } else {
-        flush_pagetable_tlbs::<false>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
-        proof { unmap_4k_tlb_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
+        let Ghost(snaps) = flush_pagetable_tlbs::<false>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
+        proof {
+            unmap_4k_tlb_flush_steps_from_k(steps.view(), before.len() as int, snaps, &entry, &entry_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, pcid, snaps.len() as int);
+            unmap_4k_tlb_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+        }
     }
 }
 

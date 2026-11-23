@@ -66,7 +66,7 @@ pub mod unmap_iommu_4k_reclaim_one;
 pub mod flush_iommu_tlb;
 mod flush_iommu_tlb_eof;
 pub mod unmap_4k_spec;
-mod unmap_4k_trace;
+pub mod unmap_4k_trace;
 pub mod map_iommu_4k_spec;
 pub mod map_iommu_4k;
 mod map_iommu_4k_eof;
