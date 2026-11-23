@@ -4,7 +4,7 @@ use vstd::prelude::*;
 
 use veriflat_alloc_page::allocate_free_4k_page::allocate_free_4k_impl_base::allocate_free_4k_page;
 use veriflat_kernel_core::*;
-use veriflat_alloc_page::free_4k_page::{drain_4k_cache_batch, refund_unmap_4k_quota, kill_container_quota_fold};
+use veriflat_alloc_page::free_4k_page::{drain_4k_cache_batch, refund_unmap_4k_quota, refund_unmap_4k_quota_trace, kill_container_quota_fold};
 use veriflat_alloc_page::free_2m_page::drain_2m_cache_batch;
 use veriflat_alloc_page::merge_2m::merge_2m_quota_folds::allocator_free_page_ptrs_wf_implies_free_count_fold_bounded;
 

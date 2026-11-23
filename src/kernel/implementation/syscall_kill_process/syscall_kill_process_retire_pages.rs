@@ -18,6 +18,10 @@ use super::syscall_kill_process_retire_pages_eof::kill_retire_table_page_eof;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_state_lemma::mapped_1g_page_pagetable_wf_table_at;
 
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_4k_page::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_4k_page::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
 verus! {
 /// Retire every table page below the root of the empty zombie target's write-held page table and, once a scan finds that
 /// root alone, of its write-held IOMMU table, one step per page, to the caches of their owner, the killer's container;
@@ -156,8 +160,9 @@ pub(crate) fn kill_retire_structure_pages(
         kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Retire, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
-    refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+    let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
     proof {
+        refund_unmap_4k_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
         vstd::assert_seqs_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view(), entry_thread.indirect_free_quota_pending_4k.view());
         kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, prc_ptr, thrd_ptr, target, KillStage::Retire,
             entry_thread.owning_container, scope);
