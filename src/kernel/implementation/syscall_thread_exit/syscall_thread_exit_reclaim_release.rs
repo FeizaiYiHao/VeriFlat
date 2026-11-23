@@ -456,8 +456,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     reclaim_held_leaves(krnl, pagetable, thrd_ptr, cpu_id, &mut indirect_4k, &mut direct_4k, &mut indirect_2m, &mut direct_2m, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx),
         Tracked(&mut *steps), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm));
     let ghost reclaimed_k = *krnl;
-    proof { assert(entry_lctx.container_lock_map().dom().contains(ctn_ptr) && entry_lctx.process_lock_map().dom().contains(prc_ptr)
-        && entry_lctx.cpu_lock_map().dom().contains(cpu_id) && lctx.pagetable_lock_map().dom().contains(pagetable)); }
     let ghost (refund_4k_before, refund_4k_k, refund_4k_lctx) = (steps.view(), *krnl, *lctx);
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect_4k, &mut direct_4k, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
@@ -490,7 +488,9 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr);
         };
         thread_exit_trace_from_refund(&*steps, refund_1g_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr);
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable));
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable)) by {
+            assert(lctx.pagetable_lock_map().dom().contains(pagetable));
+        };
     }
 }
 

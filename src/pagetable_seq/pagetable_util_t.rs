@@ -513,7 +513,12 @@ impl KernelK {
         let pagetable = self.pt_mp.borrow_mut_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(table_perm));
         pagetable.higher.table_stale_cpus = Ghost(table_stale_cpus_after(update, pagetable.higher.table_stale_cpus.view()));
         proof {
-            assert(table_stale_cpus_update_eof_transition_framing(*old(self), *self, root)) by { reveal(table_stale_cpus_update_eof_transition_framing); };
+            assert(table_stale_cpus_update_eof_transition_framing(*old(self), *self, root)) by {
+                assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k()
+                    && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m()
+                    && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g());
+                reveal(table_stale_cpus_update_eof_transition_framing);
+            };
             table_stale_cpus_update_eof(*old(self), *self, root, update);
             assert(typed_lock_maps_aligned(self, lctx)) by {
                 reveal(table_stale_cpus_update_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
