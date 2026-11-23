@@ -471,7 +471,7 @@ proof fn exit_reclaim_implies_enabled(u: KernelU, c: CpuId)
             }),
             iommu_root_table: IommuRootTableU {
                 owners: if functions == Set::<PciBdf>::empty() { table.owners } else { pci_owners_released(table.owners, functions) },
-                attached: if pr.iommu_table is Some { thread_exit_detached_attached(table, functions) } else { table.attached },
+                attached: if pr.iommu_table is Some { pci_functions_detached_attached(table, functions) } else { table.attached },
             },
             iommu_tlb: if pr.iommu_table is Some && pr.iommu_table->Some_0.did is Some {
                 u.iommu_tlb.insert(pr.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })

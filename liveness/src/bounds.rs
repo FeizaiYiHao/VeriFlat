@@ -4,7 +4,7 @@
 //! complete trace specs bound their length, which the theorems read out.
 //!
 //! `thread_exit` (round 13): the trace spec carries the bound its exec contract fixes at entry,
-//! `thread_exit_step_bound(k, cpu_id) = thread_exit_reclaim_step_bound() + 40 + 34 * thread_exit_entry_call_depth(k, cpu_id)`,
+//! `thread_exit_step_bound(k, cpu_id) = process_tables_step_bound() + 40 + 34 * thread_exit_entry_call_depth(k, cpu_id)`,
 //! so the theorem only reads it out.
 //!
 //! `kill_process`: the table-phase steps are bounded by the kernel relative to the retired targets; the other steps stay
@@ -51,7 +51,7 @@ proof fn kill_process_len_implies_phase_counts(t: Seq<KernelStep>, c: CpuId)
 pub proof fn kill_process_syscall_trace_implies_len_bounded(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, c: CpuId, child_index: usize)
     requires kill_process_syscall_trace(trace, pre, post, c, child_index, true),
     ensures
-        trace.len() <= 2 + kill_process_target_step_bound() * kill_process_retire_count(trace.drop_last(), c) + kill_process_other_count(trace.drop_last(), c),
+        trace.len() <= 2 + process_tables_step_bound() * kill_process_retire_count(trace.drop_last(), c) + kill_process_other_count(trace.drop_last(), c),
 {
     reveal(kill_process_syscall_trace); reveal(kill_process_partial_trace);
     kill_process_len_implies_phase_counts(trace.drop_last(), c);

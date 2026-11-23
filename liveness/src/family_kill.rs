@@ -71,13 +71,11 @@ pub open spec fn kill_tables_held(u: KernelU, c: CpuId) -> bool {
     &&& t.pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: c })
 }
 
-/// The target's page table keeps no user 4K mapping, 2M or 1G mapping, or window lock.
+/// The target's page table keeps no 4K, 2M or 1G mapping and no window lock.
 pub open spec fn kill_table_cleared(u: KernelU, c: CpuId) -> bool {
     let pt = u.process_map[kill_target(u, c)].pagetable->Some_0;
-    &&& process_user_4k_unmapped(u, pt)
-    &&& pt.mapping_2m.dom() == Set::<VAddr>::empty()
-    &&& pt.mapping_1g.dom() == Set::<VAddr>::empty()
-    &&& pt.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+    &&& pt.mapping_4k == Map::<VAddr, MapEntry>::empty() && pt.mapping_2m == Map::<VAddr, MapEntry>::empty()
+    &&& pt.mapping_1g == Map::<VAddr, MapEntry>::empty() && pt.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
 }
 
 /// What killer `c` holds: its cpu's process, unmarked, its thread, and the target; every process on its walk is marked
