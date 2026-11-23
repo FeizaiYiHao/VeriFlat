@@ -332,17 +332,14 @@ pub(super) proof fn thread_exit_lock_pcid_allocator_step_pre_from_k(
             let thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
             &&& thread.owning_container == ctn_ptr
             &&& thread.caller is None
-            &&& thread.syscall_progress.view() is Some
             &&& forall|j: int| #![trigger thread.endpoint_descriptors.view()[j]] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> thread.endpoint_descriptors.view()[j] is None
-            &&& if process.owned_threads.view().len() == 1 {
-                &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie)
-                &&& process.quota_4k == 0
-                &&& process.quota_2m == 0
-                &&& process.quota_1g == 0
-                &&& thread.quota_4k == 0
-                &&& thread.quota_2m == 0
-                &&& thread.quota_1g == 0
-            } else { thread.syscall_progress.view() matches Some(SyscallProgress::ThreadExit { .. }) }
+            &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie)
+            &&& process.quota_4k == 0
+            &&& process.quota_2m == 0
+            &&& process.quota_1g == 0
+            &&& thread.quota_4k == 0
+            &&& thread.quota_2m == 0
+            &&& thread.quota_1g == 0
         },
     ensures
         thread_exit_lock_pcid_allocator_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
@@ -509,9 +506,9 @@ pub(super) proof fn thread_exit_unown_step_from_k(
         iommu_table is Some || pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() != Set::<PciBdf>::empty() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
     kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
-    kernel_pagetable_user_4k_unmapped_projection_at(pre, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
+    kernel_process_projection_at(pre, prc_ptr);
     let table = kernel_k_to_kernel_u(*pre).process_map[prc_ptr].pagetable->Some_0;
-    assert(table.mapping_2m.dom() =~= Set::<VAddr>::empty()); assert(table.mapping_1g.dom() =~= Set::<VAddr>::empty());
+    assert(table.mapping_4k =~= Map::empty() && table.mapping_2m =~= Map::empty() && table.mapping_1g =~= Map::empty() && table.pagetable_window_locks =~= Map::empty());
     kernel_pci_functions_released_implies_u_step(pre, post, post_lctx, cpu_id, prc_ptr, pagetable, iommu_table, detached);
     reveal(thread_exit_unown_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unown_step);
 }
@@ -1171,14 +1168,14 @@ pub(super) proof fn thread_exit_refund_step_from_u(pre: KernelU, post: KernelU, 
     ensures thread_exit_refund_step(pre, post, cpu_id),
 { reveal(thread_exit_refund_step); }
 
-/// The finish step pushed after the partial trace that starts at `start`, with at most `thread_exit_reclaim_step_bound()`
+/// The finish step pushed after the partial trace that starts at `start`, with at most `process_tables_step_bound()`
 /// reclaim steps and fewer than `bound` steps, completes the trace of an exit with at most `bound` steps.
 pub(super) proof fn thread_exit_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, bound: nat)
     requires
         0 <= start <= before.len(),
         before.len() - start + 1 <= bound,
         thread_exit_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id),
-        thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
+        thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) <= process_tables_step_bound(),
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         thread_exit_finish_step_pre(finish_pre, cpu_id),
         thread_exit_finish_step(finish_pre, post, cpu_id),

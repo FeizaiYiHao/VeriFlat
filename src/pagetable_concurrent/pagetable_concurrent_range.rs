@@ -174,8 +174,7 @@ impl WholePageTable {
     {
         let first = spec_va2index(range.start);
         let last = range.view()[range.len - 1];
-        range.wf_implies_view_index_is_start_plus_offset();
-        assert(range.view()[0] == range.start && last == spec_va_add_range(range.start, (range.len - 1) as usize));
+        assert(range.view()[0] == range.start && last == spec_va_add_range(range.start, (range.len - 1) as usize)) by { range.wf_implies_view_index_is_start_plus_offset(); };
         spec_va_4k_valid_index_roundtrip(range.start);
         spec_va_4k_valid_index_roundtrip(last);
         assert forall|w: WindowVa| #![trigger va_range_2m_windows(range).contains(w)] va_range_2m_windows(range).contains(w)
@@ -186,7 +185,6 @@ impl WholePageTable {
             spec_index2va_2m_valid(idx.0, idx.1, idx.2);
             if x <= range.start {
                 spec_index2va_le_implies_4k_indices_lex_le(idx, first);
-                assert(self.lower.mapping_4k.dom().contains(range.view()[0]));
                 self.wf_mapping_4k_at(first.0, first.1, first.2, first.3);
             } else {
                 if last < x { spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(last), idx); }
@@ -195,8 +193,7 @@ impl WholePageTable {
                 let page = ((x - range.start) / 4096) as int;
                 assert(range.start + page * 4096 == x && 0 <= page < range.len) by (nonlinear_arith)
                     requires x % 4096 == 0, range.start % 4096 == 0, range.start < x, x <= range.start + (range.len - 1) * 4096, page == (x - range.start) / 4096;
-                assert(range.view()[page] == spec_va_add_range(range.start, page as usize));
-                assert(self.lower.mapping_4k.dom().contains(range.view()[page]));
+                assert(range.view()[page] == spec_va_add_range(range.start, page as usize)) by { range.wf_implies_view_index_is_start_plus_offset(); };
                 self.wf_mapping_4k_at(idx.0, idx.1, idx.2, 0);
             }
         };
@@ -217,9 +214,8 @@ impl WholePageTable {
         let cover = range.covering_4k_range();
         let first = spec_va2index(range.start);
         let last = cover.view()[cover.len - 1];
-        range.wf_implies_view_index_is_start_plus_offset(); cover.wf_implies_view_index_is_start_plus_offset();
         assert(range.len * 512 <= usize::MAX / 4096 && (range.len * 512) * 4096 == range.len * 0x200000) by (nonlinear_arith) requires range.len <= usize::MAX / 0x200000;
-        assert(last == spec_va_add_range(range.start, (cover.len - 1) as usize));
+        assert(last == spec_va_add_range(range.start, (cover.len - 1) as usize)) by { cover.wf_implies_view_index_is_start_plus_offset(); };
         spec_va_4k_valid_index_roundtrip(last);
         spec_va_2m_valid_index_roundtrip(range.start);
         assert forall|w: WindowVa| #![trigger va_range_2m_windows(cover).contains(w)] va_range_2m_windows(cover).contains(w)
@@ -236,8 +232,7 @@ impl WholePageTable {
             let page = ((x - range.start) / 0x200000) as int;
             assert(range.start + page * 0x200000 == x && 0 <= page < range.len) by (nonlinear_arith)
                 requires x % 0x200000 == 0, range.start % 0x200000 == 0, range.start <= x, x <= range.start + (range.len * 512 - 1) * 4096, page == (x - range.start) / 0x200000;
-            assert(range.view()[page] == spec_va_add_range_2m(range.start, page as usize));
-            assert(self.lower.mapping_2m.dom().contains(range.view()[page]));
+            assert(range.view()[page] == spec_va_add_range_2m(range.start, page as usize)) by { range.wf_implies_view_index_is_start_plus_offset(); };
             self.wf_mapping_2m_at(idx.0, idx.1, idx.2);
         };
     }
@@ -833,17 +828,30 @@ impl PageTableHigher {
             let va = va_add_range(range_start, i);
             proof { assert(va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); }; }
             let (l4i, l3i, l2i, l1i) = va2index(va);
-            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); }; spec_v2l4index_monotonic(range_start, va); }; }
+            proof {
+                assert(self.kernel_l4_end <= l4i) by {
+                    assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); };
+                    spec_v2l4index_monotonic(range_start, va);
+                };
+            }
             let resolved = self.resolve_mapping_4k_l1(Tracked(lower), l4i, l3i, l2i, l1i);
             if resolved.2.is_none() {
-                proof { assert(!lower.mapping_4k.dom().contains(range.view().spec_index(i as int))) by { range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }
+                proof {
+                    assert(!lower.mapping_4k.dom().contains(range.view().spec_index(i as int))) by {
+                        range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
+                    };
+                }
                 return (false, false);
             }
             let entry = resolved.2.unwrap();
             if !entry.present {
                 proof {
-                    assert(!c.spec_mapping_4k_va_range_present(range)) by { range.wf_implies_view_index_is_start_plus_offset(); assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; };
-                    assert(!lower.mapping_4k.spec_index(range.view().spec_index(i as int)).present) by { range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
+                    assert(!c.spec_mapping_4k_va_range_present(range)) by {
+                        range.wf_implies_view_index_is_start_plus_offset(); assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
+                    };
+                    assert(!lower.mapping_4k.spec_index(range.view().spec_index(i as int)).present) by {
+                        range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
+                    };
                 }
                 return (false, false);
             }
@@ -940,7 +948,12 @@ impl PageTableHigher {
             let va = va_add_range(range_start, i);
             proof { assert(va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); }; }
             let (l4i, l3i, l2i, l1i) = va2index(va);
-            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); }; spec_v2l4index_monotonic(range_start, va); }; }
+            proof {
+                assert(self.kernel_l4_end <= l4i) by {
+                    assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); };
+                    spec_v2l4index_monotonic(range_start, va);
+                };
+            }
             let resolved = self.resolve_mapping_4k_l1(Tracked(lower), l4i, l3i, l2i, l1i);
             match resolved.1 {
                 PageTableErrorCode::NoError | PageTableErrorCode::EntryTakenBy4k | PageTableErrorCode::EntryTakenBy1g | PageTableErrorCode::EntryTakenBy2m => {

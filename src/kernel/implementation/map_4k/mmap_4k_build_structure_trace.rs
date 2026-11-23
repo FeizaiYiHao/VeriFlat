@@ -48,7 +48,8 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
         pei_valid(lo) && pei_valid(hi) && lo <= hi,
         level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(
+                |i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
                 else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
         !(level is L2) ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) }),
@@ -64,8 +65,11 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
 {
     reveal(mmap_4k_directory_step_pre); reveal(mmap_4k_directory_step); reveal(kernel_thread_quota_4k_changed);
     broadcast use spec_index2va_2m_valid, Set::lemma_map_by_contains;
-    spec_va_4k_index_roundtrip_at(spec_index2va((l4i, l3i, lo, 0usize)), l4i, l3i, lo, 0usize);
-    if pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill { assert(va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) })); }
+    if pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill {
+        assert(va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) })) by {
+            spec_va_4k_index_roundtrip_at(spec_index2va((l4i, l3i, lo, 0usize)), l4i, l3i, lo, 0usize);
+        };
+    }
     if write_held { kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }
     else { kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
@@ -115,7 +119,8 @@ pub(super) proof fn mmap_2m_directory_step_from_k(pre: &KernelK, post: &KernelK,
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_2m_progress_after_directory(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
         level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(
+                |i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
                 else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
         pei_valid(lo) && pei_valid(hi) && lo <= hi,

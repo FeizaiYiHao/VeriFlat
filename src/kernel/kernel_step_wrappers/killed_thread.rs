@@ -171,7 +171,8 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                thread_map: pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] }) .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map[dangling_ptr] }),
+                thread_map: pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] }) .insert(dangling_ptr,
+                    ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map[dangling_ptr] }),
                 endpoint_map: match endpoint { Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::Unlocked, ..pre.endpoint_map[e] }), None => pre.endpoint_map },
                 ..pre
             })

@@ -320,7 +320,8 @@ pub proof fn kernel_process_zombified_implies_u_container_map(pre: &KernelK, pos
         if pre.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c);
             if c == ctn_ptr {
-                assert_sets_equal!(PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.view()), PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.view()).insert(process.pcid));
+                assert_sets_equal!(PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.view()),
+                    PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.view()).insert(process.pcid));
             } else {
                 let a = pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator;
                 assert(pre.pcid_allc_mp.dom().contains(a) && a != allc_ptr) by { reveal(container_pcid_allocator_wf); };

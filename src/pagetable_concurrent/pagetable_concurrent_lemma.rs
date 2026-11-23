@@ -304,6 +304,27 @@ impl WholePageTable {
             },
     { reveal(WholePageTable::wf_window_locks); }
 
+    /// The L2 page of the existing window `(l4i, l3i)` is held, its reverse-map entry is `(l4i, l3i)`, and window `l2i` of it
+    /// has a lock entry.
+    pub proof fn wf_window_locks_window_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+        requires
+            self.wf(),
+            self.kernel_l4_end() <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
+            self.window_exists(l4i, l3i),
+        ensures
+            self.lower.l2_perms.dom().contains(self.window_l2_page(l4i, l3i)),
+            self.higher.l2_rev_map.view().spec_index(self.window_l2_page(l4i, l3i)) == (l4i, l3i),
+            self.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }),
+    {
+        let p = self.window_l2_page(l4i, l3i);
+        let rev = self.higher.l2_rev_map.view().spec_index(p);
+        self.higher.wf_l4_at(l4i); self.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i); self.tables_reachable_wf_l2_at(p);
+        self.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); self.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
+        self.wf_window_locks_l2_entry_at(p, l2i);
+    }
+
     /// Distinct resolving L2 paths name distinct L1 pages.
     pub broadcast proof fn disjoint_l2_implies_resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)
         requires

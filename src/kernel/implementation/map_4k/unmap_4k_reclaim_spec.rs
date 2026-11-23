@@ -43,8 +43,7 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_table.spec_held_2m_l2(l4i, l3i, l2i)]
         old_table.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
             ==> new_table.spec_held_2m_l2(l4i, l3i, l2i) == old_table.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& post.pt_mp.spec_index(pagetable).view().higher
-        == pre.pt_mp.spec_index(pagetable).view().higher
+    &&& post.pt_mp.spec_index(pagetable).view().higher == pre.pt_mp.spec_index(pagetable).view().higher
     &&& post.pt_mp.spec_index(pagetable).view().lower_backup == if pre.pt_mp.spec_index(pagetable).wlocked() { Ghost(post.pt_lower.view().spec_index(pagetable)) } else { pre.pt_mp.spec_index(pagetable).view().lower_backup }
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex|
@@ -91,7 +90,8 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& new_counter == old_counter + 1
     &&& new_thread.view().free_quota_pending_4k_at_depth(depth) == new_counter
     &&& new_thread.view().direct_free_quota_pending_4k.view() == old_thread.view().direct_free_quota_pending_4k.view() + if depth == old_thread.view().container_depth { 1int } else { 0int }
-    &&& new_thread.view().indirect_free_quota_pending_4k.view() == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_4k.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_4k.view() }
+    &&& new_thread.view().indirect_free_quota_pending_4k.view()
+        == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_4k.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_4k.view() }
     &&& forall|t: RwLockThreadPtr|
         #![trigger pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_2m]
         #![trigger post.thrd_mp.spec_index(t).view().direct_free_quota_pending_2m]

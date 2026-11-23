@@ -68,7 +68,9 @@ pub proof fn kernel_pcid_allocator_lock_mode_changed_implies_u_step(before: &Ker
     kernel_thread_map_unchanged_implies_u_thread_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
-/// After a TLB flush recorded at `snap`, page-table ghost changes keeping lock states, mappings, window locks with `cpu_id` releasing its read hold on `ctn_ptr`'s cpu set (`pre`) drop that reader; then changing only `thrd_ptr`'s syscall progress (`post`) also sets that progress.
+/// After a TLB flush recorded at `snap`, page-table ghost changes keeping lock states, mappings, window locks with `cpu_id` releasing
+/// its read hold on `ctn_ptr`'s cpu set (`pre`) drop that reader; then changing only `thrd_ptr`'s syscall progress (`post`) also sets
+/// that progress.
 pub proof fn kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_implies_u_step(
     snap: &KernelK, pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, thrd_ptr: RwLockThreadPtr,
 )
@@ -168,7 +170,8 @@ impl KernelK {
             old(steps).snapshot_u().container_map.dom().contains(ctn_ptr),
             kernel_k_to_kernel_u(*old(self)) == (KernelU {
                 cpu_tlb: old(self).cpu_tlb.view(),
-                container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old(steps).snapshot_u().container_map[ctn_ptr].cpu_set_lock.with_reader(old(lctx).cpu_id()), ..old(steps).snapshot_u().container_map[ctn_ptr] }),
+                container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr,
+                    ContainerU { cpu_set_lock: old(steps).snapshot_u().container_map[ctn_ptr].cpu_set_lock.with_reader(old(lctx).cpu_id()), ..old(steps).snapshot_u().container_map[ctn_ptr] }),
                 ..old(steps).snapshot_u()
             }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),

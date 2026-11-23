@@ -138,7 +138,9 @@ pub(super) fn thread_exit_finish_lock_page_and_cache(
     let ghost pcid_k = *krnl;
     proof {
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); page_ptr_valid_imply_page_index_valid();
-        assert(page_ptr_valid(thrd_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(thrd_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by { thread_pages_wf_at(krnl.thrd_mp, krnl.pg_arr, thrd_ptr); };
+        assert(page_ptr_valid(thrd_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(thrd_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by {
+            thread_pages_wf_at(krnl.thrd_mp, krnl.pg_arr, thrd_ptr);
+        };
     }
     let pg_idx = page_ptr2page_index(thrd_ptr);
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
@@ -178,7 +180,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         page_ptr_valid(thrd_ptr),
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
-        thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
+        thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= process_tables_step_bound(),
         old(steps).view().len() - start + 1 <= bound,
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &finish_lctx),
         typed_lock_map_contains_mode(finish_lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -303,7 +305,9 @@ pub(super) fn thread_exit_finish_destroy_and_record(
     let ghost flushed = krnl.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush;
     proof {
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&KernelK { pcid_allc_mp: finish_k.pcid_allc_mp, ..*old(krnl) }, &KernelK { pcid_allc_mp: finish_k.pcid_allc_mp, ..*krnl })) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&KernelK { pcid_allc_mp: finish_k.pcid_allc_mp, ..*old(krnl) }, &KernelK { pcid_allc_mp: finish_k.pcid_allc_mp, ..*krnl })) by {
+            reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+        };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&finish_k, &KernelK { pcid_allc_mp: finish_k.pcid_allc_mp, ..*krnl })) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr);
     }

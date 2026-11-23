@@ -43,7 +43,6 @@ pub(super) open spec fn unmap_4k_range_eol_loop_framing(pre: KernelK, cur: Kerne
         &&& c.window_view(w).stale_cpus is None
         &&& c.mapping_2m().dom().contains(w.va) == e.mapping_2m().dom().contains(w.va)
         &&& e.mapping_2m().dom().contains(w.va) ==> c.mapping_2m().spec_index(w.va) == e.mapping_2m().spec_index(w.va)
-        &&& pei_valid(spec_v2l2index(w.va))
         &&& !e.lower.l2_entry_hides_l1(e.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
             ==> !c.lower.l2_entry_hides_l1(c.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
     }
@@ -108,6 +107,7 @@ pub(super) proof fn unmap_4k_range_eol_step(pre: KernelK, mid: KernelK, post: Ke
     i: usize, pt_lock_id: usize)
     requires
         unmap_4k_range_eol_loop_framing(pre, mid, pre_lctx, pagetable, thrd_ptr, cpu_id, range, mid_indirect, mid_direct, i, pt_lock_id),
+        forall|w: WindowVa| #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((pagetable, w))] pre_lctx.pagetable_window_lock_map().dom().contains((pagetable, w)) ==> pei_valid(spec_v2l2index(w.va)),
         held_locks_order_below(&mid, mid_lctx, ALLOCATOR_CACHE_4K_MAJOR),
         mid_lctx.page_lock_map().dom().is_empty(),
         typed_lock_maps_unchanged(pre_lctx, mid_lctx),
@@ -172,6 +172,7 @@ pub(super) proof fn unmap_4k_range_eol_exit(pre: KernelK, cur: KernelK, pre_lctx
     requires
         unmap_4k_range_eol_loop_framing(pre, cur, pre_lctx, pagetable, thrd_ptr, cpu_id, range, indirect, direct, range.len, pt_lock_id),
         cpu_id == pre_lctx.cpu_id(),
+        forall|w: WindowVa| #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((pagetable, w))] pre_lctx.pagetable_window_lock_map().dom().contains((pagetable, w)) ==> pei_valid(spec_v2l2index(w.va)),
     ensures
         index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> cur.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view(),
         cur.cpu_op.view().view()[cpu_id as int] == pre.cpu_op.view().view()[cpu_id as int],

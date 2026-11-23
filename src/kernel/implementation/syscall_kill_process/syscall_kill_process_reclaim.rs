@@ -44,7 +44,7 @@ pub(crate) fn kill_reclaim_target(
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
         scope is Subtree
             ==> kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id)
-                <= kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + kill_process_target_step_bound(),
+                <= kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + process_tables_step_bound(),
         kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + 1 <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *final(chain_perms)),
         parent == if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] },
