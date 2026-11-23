@@ -181,6 +181,14 @@ impl PageTableHigher {
         }
     }
 
+    /// Every non-empty user root entry, and every non-empty L3 entry under one, resolves: none is hidden.
+    pub open spec fn no_hidden_user_l4_l3_entries(&self) -> bool {
+        &&& forall|l4i: L4Index| #![trigger self.spec_nonempty_l4(l4i)]
+            self.kernel_l4_end <= l4i && pei_valid(l4i) && self.spec_nonempty_l4(l4i) is Some ==> self.spec_resolve_mapping_l4(l4i) is Some
+        &&& forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_nonempty_l3(l4i, l3i)]
+            self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && self.spec_nonempty_l3(l4i, l3i) is Some ==> self.spec_resolve_mapping_l3(l4i, l3i) is Some
+    }
+
     /// 1G leaf `(l4i, l3i)` under a non-empty root entry while its kernel_present bit is set, present or hidden.
     pub open spec fn spec_nonempty_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
         recommends

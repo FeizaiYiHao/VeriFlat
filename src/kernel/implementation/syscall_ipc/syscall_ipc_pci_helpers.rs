@@ -414,29 +414,13 @@ verus! {
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), sender_pt).lower.hidden_l1_tables_in_locked_windows(),
             old(krnl).pt_mp.spec_index(sender_pt).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger old(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l4(l4i)]
-                old(krnl).pt_mp.spec_index(sender_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l4(l4i) is Some
-                    ==> old(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_resolve_mapping_l4(l4i) is Some,
-            !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger old(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l3(l4i, l3i)]
-                old(krnl).pt_mp.spec_index(sender_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l3(l4i, l3i) is Some
-                    ==> old(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
+                && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> old(krnl).pt_mp.spec_index(sender_pt).view().higher.no_hidden_user_l4_l3_entries(),
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), receiver_pt).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), receiver_pt).leaves_present(),
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), receiver_pt).lower.hidden_l1_tables_in_locked_windows(),
             old(krnl).pt_mp.spec_index(receiver_pt).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger old(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l4(l4i)]
-                old(krnl).pt_mp.spec_index(receiver_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l4(l4i) is Some
-                    ==> old(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_resolve_mapping_l4(l4i) is Some,
-            !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger old(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l3(l4i, l3i)]
-                old(krnl).pt_mp.spec_index(receiver_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l3(l4i, l3i) is Some
-                    ==> old(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
+                && !(old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> old(krnl).pt_mp.spec_index(receiver_pt).view().higher.no_hidden_user_l4_l3_entries(),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
@@ -492,29 +476,13 @@ verus! {
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), sender_pt).lower.hidden_l1_tables_in_locked_windows(),
             final(krnl).pt_mp.spec_index(sender_pt).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger final(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l4(l4i)]
-                final(krnl).pt_mp.spec_index(sender_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l4(l4i) is Some
-                    ==> final(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_resolve_mapping_l4(l4i) is Some,
-            !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger final(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l3(l4i, l3i)]
-                final(krnl).pt_mp.spec_index(sender_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_nonempty_l3(l4i, l3i) is Some
-                    ==> final(krnl).pt_mp.spec_index(sender_pt).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
+                && !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(sender_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> final(krnl).pt_mp.spec_index(sender_pt).view().higher.no_hidden_user_l4_l3_entries(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), receiver_pt).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), receiver_pt).leaves_present(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), receiver_pt).lower.hidden_l1_tables_in_locked_windows(),
             final(krnl).pt_mp.spec_index(receiver_pt).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger final(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l4(l4i)]
-                final(krnl).pt_mp.spec_index(receiver_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l4(l4i) is Some
-                    ==> final(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_resolve_mapping_l4(l4i) is Some,
-            !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger final(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l3(l4i, l3i)]
-                final(krnl).pt_mp.spec_index(receiver_pt).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_nonempty_l3(l4i, l3i) is Some
-                    ==> final(krnl).pt_mp.spec_index(receiver_pt).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
+                && !(final(krnl).prc_mp.spec_index(final(krnl).pt_mp.spec_index(receiver_pt).view().higher.proc_ptr).view().state.view() is Zombie) ==> final(krnl).pt_mp.spec_index(receiver_pt).view().higher.no_hidden_user_l4_l3_entries(),
             *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, irt: final(krnl).irt, iommu_tlb: final(krnl).iommu_tlb, it_mp: final(krnl).it_mp, ..*old(krnl) }),
             final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
             forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)] old(krnl).pt_mp.dom().contains(p) && p != sender_pt && p != receiver_pt
