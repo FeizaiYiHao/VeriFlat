@@ -90,11 +90,11 @@ pub(super) fn thread_exit_reclaim(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
-        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + thread_exit_reclaim_step_bound(),
+        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + process_tables_step_bound(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
         thread_exit_reclaim_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id)
-            <= thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + thread_exit_reclaim_step_bound(),
+            <= thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + process_tables_step_bound(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),

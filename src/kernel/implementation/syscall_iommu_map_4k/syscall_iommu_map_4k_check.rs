@@ -58,7 +58,8 @@ fn iommu_map_4k_unlock_rejected(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_1g(),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks
+            == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
         pagetable_lock_perm.state() is ReadLock,
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
@@ -379,11 +380,9 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
         krnl.lock_pagetable_range_existing_windows::<false>(pagetable_ptr, &va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx))
     } else { Tracked(Map::tracked_empty()) };
     proof {
-        iova_range.wf_implies_view_index_is_start_plus_offset(); va_range.wf_implies_view_index_is_start_plus_offset();
-        assert(krnl.it_mp.spec_index(iommu_table_ptr).view() == old(krnl).it_mp.spec_index(iommu_table_ptr).view() && krnl.it_mp.spec_index(iommu_table_ptr).view().leaves_present());
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k());
-        assert(krnl.pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view());
-        assert(iova_range == spec_va_range_4k(iova, range) && va_range == spec_va_range_4k(va, range));
+        assert(iova_range == spec_va_range_4k(iova, range) && va_range == spec_va_range_4k(va, range)) by {
+            iova_range.wf_implies_view_index_is_start_plus_offset(); va_range.wf_implies_view_index_is_start_plus_offset();
+        };
     }
     let ret = if !user_range {
         proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::Error); }

@@ -16,34 +16,6 @@ use veriflat_map_4k::map_4k::hide_user_l4_entries_trace::hide_user_l4_entries_hi
 use crate::kernel::implementation::map_4k::hide_user_l4_entries_trace::hide_user_l4_entries_hide_step_from_k;
 
 verus! {
-/// The killer on `cpu_id` holds its cpu, its process `prc_ptr`, and itself `thrd_ptr`, and its progress records a
-/// kill of the marked, write-locked `target` at `stage` in `scope`, whose victim container, if any, is write-locked. The
-/// target lies in its cpu's container in a subtree kill, and in the victim container, below its cpu's container, in a
-/// container kill.
-pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, scope: KillScope)
-    requires
-        index_valid(NUM_CPUS, cpu_id),
-        u.cpu_array[cpu_id as int].lock_state is WriteLocked,
-        u.cpu_array[cpu_id as int].current_process == Some(prc_ptr),
-        u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
-        u.process_map.dom().contains(prc_ptr),
-        u.process_map[prc_ptr].lock_state is WriteLocked,
-        u.thread_map.dom().contains(thrd_ptr),
-        u.thread_map[thrd_ptr].lock_state is WriteLocked,
-        u.thread_map[thrd_ptr].syscall_progress == kill_scope_progress(scope, target, stage),
-        u.process_map.dom().contains(target),
-        u.process_map[target].lock_state is WriteLocked,
-        u.process_map[target].killed,
-        scope matches KillScope::Container { container } ==> u.container_map.dom().contains(container) && u.container_map[container].lock_state is WriteLocked,
-        scope is Subtree ==> u.process_map[target].owning_container == u.cpu_array[cpu_id as int].owning_container,
-        scope matches KillScope::Container { container } ==> u.process_map[target].owning_container == container && u.container_map[container].uppertree_seq.contains(u.cpu_array[cpu_id as int].owning_container),
-    ensures
-        kill_process_step_pre(u, cpu_id),
-        kill_killer(u, cpu_id) == thrd_ptr,
-        kill_target(u, cpu_id) == target,
-        kill_stage(u, cpu_id) == stage,
-{ reveal(kill_process_step_pre); }
-
 /// The killer on `cpu_id` write-holding its cpu, its process `prc_ptr`, itself `thrd_ptr`, the marked `target`, and
 /// the victim container of `scope`, if any, with its progress recording the kill of `target` at `stage` in `scope`,
 /// satisfies the kill's step precondition on `krnl`. The target lies in its cpu's container in a subtree kill, and in
@@ -83,7 +55,7 @@ pub(crate) proof fn kill_step_pre_from_k(
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thrd_ptr, None);
     kernel_cpu_projection_at(krnl, cpu_id); kernel_process_projection_at(krnl, target);
     if let KillScope::Container { container } = scope { krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container); kernel_container_projection_at(krnl, container); }
-    kill_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, target, stage, scope);
+    reveal(kill_process_step_pre);
 }
 
 /// A cpu that is not running or is marked by a killer makes the kill return CpuIdle.
@@ -409,20 +381,15 @@ pub(crate) proof fn kill_reclaim_pre_from_k(
     }
 }
 
-/// With no present user 4K leaf at or above the kernel L4 end of the live target's page table on `krnl`, and no 2M or 1G
-/// mapping or window lock in it, the target's projected page table has no user 4K mapping, 2M or 1G mapping, or window lock.
+/// With no 4K, 2M or 1G mapping and no window lock in the live target's page table on `krnl`, the target's projected
+/// page table has no 4K, 2M or 1G mapping and no window lock.
 pub(crate) proof fn kill_table_unmapped_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.inv(),
         krnl.prc_mp.dom().contains(target),
         !krnl.prc_mp.spec_index(target).view().zombie,
         krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-            #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i
-                && krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().higher.kernel_l4_end <= l4i
-                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-                ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
@@ -430,15 +397,13 @@ pub(crate) proof fn kill_table_unmapped_pre_from_k(krnl: &KernelK, target: RwLoc
         kernel_k_to_kernel_u(*krnl).process_map[target].pagetable is Some,
         ({
             let pagetable = kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0;
-            &&& process_user_4k_unmapped(kernel_k_to_kernel_u(*krnl), pagetable)
-            &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
-            &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
-            &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+            &&& pagetable.mapping_4k == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_2m == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_1g == Map::<VAddr, MapEntry>::empty()
+            &&& pagetable.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
         }),
 {
-    kernel_pagetable_user_4k_unmapped_projection_at(krnl, target); kernel_process_projection_at(krnl, target);
+    kernel_process_projection_at(krnl, target);
     let pagetable = kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0;
-    assert(pagetable.mapping_2m.dom() =~= Set::<VAddr>::empty()); assert(pagetable.mapping_1g.dom() =~= Set::<VAddr>::empty());
+    assert(pagetable.mapping_4k =~= Map::empty() && pagetable.mapping_2m =~= Map::empty() && pagetable.mapping_1g =~= Map::empty() && pagetable.pagetable_window_locks =~= Map::empty());
 }
 
 /// With no 4K leaf in the live target's IOMMU table on `krnl`, its projected IOMMU table has no 4K mapping.
@@ -861,7 +826,7 @@ pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu
         kill_process_step_pre(post, cpu_id),
         kill_target(post, cpu_id) == target,
         kill_process_reclaim_step_pre(post, cpu_id, KillStage::Reclaim { flushed: true }),
-        post.process_map[target].iommu_table is Some ==> post.process_map[target].iommu_table->Some_0.lock_state is WriteLocked,
+        post.process_map[target].iommu_table->Some_0.lock_state is WriteLocked,
         pre.process_map.dom().contains(target),
         pre.process_map[target].iommu_table is Some,
         pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(iova),
@@ -929,10 +894,10 @@ pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, c
         kill_target(pre, cpu_id) == target,
         kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Quota { returned: PageSize::SZ1g }),
         pre.process_map[target].iommu_table is Some ==> pre.process_map[target].iommu_table->Some_0.lock_state is WriteLocked,
-        process_user_4k_unmapped(pre, pre.process_map[target].pagetable->Some_0),
-        pre.process_map[target].pagetable->Some_0.mapping_2m.dom() == Set::<VAddr>::empty(),
-        pre.process_map[target].pagetable->Some_0.mapping_1g.dom() == Set::<VAddr>::empty(),
-        pre.process_map[target].pagetable->Some_0.pagetable_window_locks.dom() == Set::<WindowVa>::empty(),
+        pre.process_map[target].pagetable->Some_0.mapping_4k == Map::<VAddr, MapEntry>::empty(),
+        pre.process_map[target].pagetable->Some_0.mapping_2m == Map::<VAddr, MapEntry>::empty(),
+        pre.process_map[target].pagetable->Some_0.mapping_1g == Map::<VAddr, MapEntry>::empty(),
+        pre.process_map[target].pagetable->Some_0.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty(),
         pre.process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
         pre.process_map[target].iommu_table is Some ==> process_iommu_4k_unmapped(pre.process_map[target].iommu_table->Some_0),
         post == (KernelU {
@@ -1337,12 +1302,12 @@ pub(crate) proof fn kill_refund_step_from_u(pre: KernelU, post: KernelU, cpu_id:
 { reveal(kill_process_refund_step); }
 
 /// The finish step pushed after the partial trace that starts at `start`, in which each retired target accounts for at most
-/// `kill_process_target_step_bound()` table-phase steps, completes the trace of a kill.
+/// `process_tables_step_bound()` table-phase steps, completes the trace of a kill.
 pub(crate) proof fn kill_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)
     requires
         0 <= start <= before.len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, KillTraceCtx::Process { child_index }),
-        kill_process_table_count(before.subrange(start, before.len() as int), cpu_id) <= kill_process_target_step_bound() * kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id),
+        kill_process_table_count(before.subrange(start, before.len() as int), cpu_id) <= process_tables_step_bound() * kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id),
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         kill_process_finish_step_pre(finish_pre, cpu_id),
         kill_process_finish_step(finish_pre, post, cpu_id),
@@ -1420,6 +1385,7 @@ pub(crate) proof fn steps_extended_implies_kill_process_retire_count_monotone(be
     ensures kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id) <= kill_process_retire_count(after.subrange(start, after.len() as int), cpu_id),
     decreases after.len() - before.len(),
 {
+    hide(kill_process_retire_step);
     reveal(kernel_steps_prefix_unchanged);
     if after.len() == before.len() { assert(after.subrange(start, after.len() as int) =~= before.subrange(start, before.len() as int)); }
     else {

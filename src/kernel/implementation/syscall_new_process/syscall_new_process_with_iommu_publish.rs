@@ -94,12 +94,16 @@ pub(super) fn publish_staged_process_with_iommu(
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(l4_pg_ptr), TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_table_pg_ptr), TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_l4_pg_ptr), TypedLockMode::Write),
-        process_page_lock_perm.view().state() is WriteLock && process_page_lock_perm.view().thread_id() == old(lctx).thread_id() && process_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().locking_thread()->Write_lock_id,
-        pagetable_page_lock_perm.view().state() is WriteLock && pagetable_page_lock_perm.view().thread_id() == old(lctx).thread_id() && pagetable_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().locking_thread()->Write_lock_id,
-        l4_page_lock_perm.view().state() is WriteLock && l4_page_lock_perm.view().thread_id() == old(lctx).thread_id() && l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().locking_thread()->Write_lock_id,
+        process_page_lock_perm.view().state() is WriteLock && process_page_lock_perm.view().thread_id() == old(lctx).thread_id()
+            && process_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().locking_thread()->Write_lock_id,
+        pagetable_page_lock_perm.view().state() is WriteLock && pagetable_page_lock_perm.view().thread_id() == old(lctx).thread_id()
+            && pagetable_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().locking_thread()->Write_lock_id,
+        l4_page_lock_perm.view().state() is WriteLock && l4_page_lock_perm.view().thread_id() == old(lctx).thread_id()
+            && l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().locking_thread()->Write_lock_id,
         iommu_table_page_lock_perm.view().state() is WriteLock && iommu_table_page_lock_perm.view().thread_id() == old(lctx).thread_id()
             && iommu_table_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().locking_thread()->Write_lock_id,
-        iommu_l4_page_lock_perm.view().state() is WriteLock && iommu_l4_page_lock_perm.view().thread_id() == old(lctx).thread_id() && iommu_l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().locking_thread()->Write_lock_id,
+        iommu_l4_page_lock_perm.view().state() is WriteLock && iommu_l4_page_lock_perm.view().thread_id() == old(lctx).thread_id()
+            && iommu_l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().locking_thread()->Write_lock_id,
         old(lctx).page_lock_map().dom() == set![page_ptr2page_index(process_pg_ptr), page_ptr2page_index(pagetable_pg_ptr), page_ptr2page_index(l4_pg_ptr), page_ptr2page_index(iommu_table_pg_ptr), page_ptr2page_index(iommu_l4_pg_ptr)],
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
@@ -238,8 +242,10 @@ pub(super) fn publish_staged_process_with_iommu(
         };
         assert(page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(pagetable_pg_ptr) && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(l4_pg_ptr)
             && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)
-            && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(l4_pg_ptr) && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)
-            && page_ptr2page_index(l4_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(l4_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr) && page_ptr2page_index(iommu_table_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)) by {
+            && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(l4_pg_ptr) && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr)
+                && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)
+            && page_ptr2page_index(l4_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(l4_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)
+                && page_ptr2page_index(iommu_table_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)) by {
             page_ptr2page_index_neq(process_pg_ptr, pagetable_pg_ptr);
             page_ptr2page_index_neq(process_pg_ptr, l4_pg_ptr);
             page_ptr2page_index_neq(process_pg_ptr, iommu_table_pg_ptr);
@@ -271,8 +277,10 @@ pub(super) fn publish_staged_process_with_iommu(
         target_pagetable_ptr, Some(iommu_table_ptr), source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(ep_idx),
     );
     proof {
-        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().higher.proc_ptr
-            == parent_ptr) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr); };
+        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().higher.proc_ptr == parent_ptr) by {
+            process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr);
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
+        };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end) by {
             krnl.default_pagetable_wf_at(target_pagetable_ptr); old(krnl).default_pagetable_wf_at(source_pagetable_ptr);
         };

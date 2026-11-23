@@ -93,10 +93,7 @@ proof fn lock_window_eof_window_locks(pre: WholePageTable, post: WholePageTable,
     broadcast use {PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip};
     let va = spec_index2va((l4i, l3i, l2i, 0));
     assert(spec_v2l4index(va) == l4i && spec_v2l3index(va) == l3i && spec_v2l2index(va) == l2i) by { spec_index2va_injective(); };
-    let p = pre.window_l2_page(l4i, l3i);
-    assert(pre.lower.l2_perms.dom().contains(p)) by { pre.higher.wf_l4_at(l4i); pre.l3_links_l2_wf_at(pre.spec_resolve_mapping_l4(l4i)->0.addr, l3i); };
-    let rev = pre.higher.l2_rev_map.view().spec_index(p);
-    assert(rev == (l4i, l3i)) by { pre.tables_reachable_wf_l2_at(p); pre.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1); };
+    pre.wf_window_locks_window_at(l4i, l3i, l2i);
     reveal(WholePageTable::wf_window_locks);
 }
 
@@ -139,11 +136,7 @@ proof fn unlock_window_eof_window_locks(pre: WholePageTable, post: WholePageTabl
         post.wf_window_locks(),
 {
     broadcast use {PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip};
-    let p = pre.window_l2_page(l4i, l3i);
-    assert(pre.lower.l2_perms.dom().contains(p)) by { pre.higher.wf_l4_at(l4i); pre.l3_links_l2_wf_at(pre.spec_resolve_mapping_l4(l4i)->0.addr, l3i); };
-    let rev = pre.higher.l2_rev_map.view().spec_index(p);
-    assert(rev == (l4i, l3i)) by { pre.tables_reachable_wf_l2_at(p); pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); pre.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1); };
-    pre.wf_window_locks_l2_entry_at(p, l2i);
+    pre.wf_window_locks_window_at(l4i, l3i, l2i);
     spec_index2va_injective();
     reveal(WholePageTable::wf_window_locks);
 }

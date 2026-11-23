@@ -79,7 +79,8 @@ pub open spec fn unmap_4k_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool 
 pub open spec fn unmap_4k_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let locked = KernelU {
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: old_u.container_map.spec_index(thread.owning_container).cpu_set_lock.with_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
+        container_map: old_u.container_map.insert(thread.owning_container,
+            ContainerU { cpu_set_lock: old_u.container_map.spec_index(thread.owning_container).cpu_set_lock.with_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     };
     new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
@@ -93,7 +94,8 @@ pub open spec fn unmap_4k_tlb_va_flush_step(old_u: KernelU, new_u: KernelU, cpu_
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let pcid = old_u.process_map.spec_index(thread.owning_proc).pcid;
     let locked = KernelU {
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: old_u.container_map.spec_index(thread.owning_container).cpu_set_lock.with_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
+        container_map: old_u.container_map.insert(thread.owning_container,
+            ContainerU { cpu_set_lock: old_u.container_map.spec_index(thread.owning_container).cpu_set_lock.with_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     };
     new_u == locked || ({

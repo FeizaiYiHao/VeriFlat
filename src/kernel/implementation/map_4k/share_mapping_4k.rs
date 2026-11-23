@@ -1027,8 +1027,7 @@ pub fn share_mapping_4k_build_and_share(
                     ==> !post.lower.l2_entry_hides_l1(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
             },
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).higher == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).higher,
-        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).higher
-            == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).higher,
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).higher == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).higher,
         forall|w: WindowVa, v: VAddr|
             #![trigger old(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, w)), whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v)]
             old(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {

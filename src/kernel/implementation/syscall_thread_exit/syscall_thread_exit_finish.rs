@@ -24,7 +24,7 @@ pub(super) fn thread_exit_finish(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
-        thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
+        thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= process_tables_step_bound(),
         old(steps).view().len() - start + 3 <= bound,
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom() =~= set![ctn_ptr],
@@ -140,7 +140,6 @@ pub(super) fn thread_exit_finish(
             kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
             finish_lctx = *lctx;
-            assert((KernelK { pcid_allc_mp: krnl.pcid_allc_mp, ..*krnl }) == *krnl);
             if last { krnl.pcid_allc_mp.typed_lock_map_aligned_write_at(lctx.pcid_allocator_lock_map(), lctx.thread_id(), pcid_allc_ptr); }
         }
     }
