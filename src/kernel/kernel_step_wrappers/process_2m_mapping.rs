@@ -16,8 +16,8 @@ pub proof fn kernel_io_4k_mapping_implies_pci_bar_page_at(k: KernelK, pt: RwLock
     let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
     pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_4k_valid_index_roundtrip(v);
     c.wf_mapping_4k_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-    c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-    pagetable_pci_mappings_wf_held_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+    c.spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+    pagetable_pci_mappings_wf_nonempty_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
 }
 
 /// `default_pagetable_wf`, `pagetable_lower_wf` and `pagetable_pci_mappings_wf` at the 2M mapping `v` of page table `pt`: an IO 2M
@@ -33,8 +33,8 @@ pub proof fn kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k: KernelK, pt: Rw
     let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
     pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_2m_valid_index_roundtrip(v);
     c.wf_mapping_2m_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-    c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-    pagetable_pci_mappings_wf_held_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+    c.spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+    pagetable_pci_mappings_wf_nonempty_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
 }
 
 /// A changed 2M leaf of `prc_ptr`'s pagetable changes the user view.
@@ -481,7 +481,7 @@ pub proof fn kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rloc
     spec_va_2m_valid_index_roundtrip(va);
     table.higher.wf_l4_at(idx.0);
     table.l3_links_l2_wf_at(table.spec_resolve_mapping_l4(idx.0)->0.addr, idx.1);
-    table.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(idx.0, idx.1);
+    table.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(idx.0, idx.1);
     table.wf_l2_at(table.window_l2_page(idx.0, idx.1), idx.2);
     table.higher.wf_mapping_1g_at(idx.0, idx.1);
     reveal(WholePageTable::wf_mapping_4k);

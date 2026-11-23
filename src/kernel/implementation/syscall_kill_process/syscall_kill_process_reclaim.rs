@@ -165,7 +165,7 @@ pub(crate) fn kill_retire_zombie(
 }
 
 /// Reclaim the empty live target: write-lock its page table with every cpu listed stale, hide every user root entry, flush
-/// its PCID from every cpu once, release its PCI functions while write-locking its IOMMU table, reclaim the page of every held
+/// its PCID from every cpu once, release its PCI functions while write-locking its IOMMU table, reclaim the page of every non-empty
 /// leaf, reclaim the page of every IOMMU 4K leaf, refunding the quota of the freed pages, return the target's quota of every
 /// size, unlock its tables, and make it a zombie.
 pub(crate) fn kill_reclaim_live(
@@ -248,7 +248,7 @@ pub(crate) fn kill_reclaim_live(
         Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(&pagetable_perm), Ghost(entry_pt), cr3, pcid, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     let Tracked(iommu_perm) = kill_reclaim_unown_functions(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms),
         Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(&pagetable_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-    kill_reclaim_held_leaves(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
+    kill_reclaim_nonempty_leaves(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(&pagetable_perm), Tracked(&iommu_perm), Ghost(entry_pt), target_container == thread_container,
         Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     let ghost held_pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);

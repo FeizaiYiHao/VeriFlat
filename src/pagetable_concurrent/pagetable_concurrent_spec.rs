@@ -13,7 +13,7 @@ use super::l2_page_map::*;
 /// path of the L3 entry that holds it; `kernel_entries` are the root's kernel L4 entries `[0, kernel_l4_end)`.
 ///
 /// A directory entry with the kernel_present bit set and the present bit clear is hidden: page walks and every
-/// `spec_resolve_mapping_*` stop there, while the table still holds the page below it (`spec_held_*`).
+/// `spec_resolve_mapping_*` stop there, while the table still holds the page below it (`spec_nonempty_*`).
 /// `table_stale_cpus` lists the CPUs that may still cache paging-structure entries of the hidden user half; a
 /// kernel-level invariant governs it.
 pub struct PageTableHigher {
@@ -159,38 +159,46 @@ impl PageTableHigher {
     }
 
     /// User root entry `l4i` while it links an L3 page, present or hidden.
-    pub open spec fn spec_held_l4(&self, l4i: L4Index) -> Option<PageEntry>
+    pub open spec fn spec_nonempty_l4(&self, l4i: L4Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
     {
         if self.l4_entry(l4i).perm.present || self.l4_entry(l4i).perm.kernel_present { Some(self.l4_entry(l4i)) } else { None }
     }
 
-    /// Non-huge L3 entry `(l4i, l3i)` under a held root entry while it links an L2 page, present or hidden.
-    pub open spec fn spec_held_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
+    /// Non-huge L3 entry `(l4i, l3i)` under a non-empty root entry while it links an L2 page, present or hidden.
+    pub open spec fn spec_nonempty_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
     {
-        if self.spec_held_l4(l4i) is Some
-            && (self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.present || self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.kernel_present)
-            && self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.ps == false {
-            Some(self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i))
+        if self.spec_nonempty_l4(l4i) is Some
+            && (self.l3_entry(self.spec_nonempty_l4(l4i)->0.addr, l3i).perm.present || self.l3_entry(self.spec_nonempty_l4(l4i)->0.addr, l3i).perm.kernel_present)
+            && self.l3_entry(self.spec_nonempty_l4(l4i)->0.addr, l3i).perm.ps == false {
+            Some(self.l3_entry(self.spec_nonempty_l4(l4i)->0.addr, l3i))
         } else {
             None
         }
     }
 
-    /// 1G leaf `(l4i, l3i)` under a held root entry while its kernel_present bit is set, present or hidden.
-    pub open spec fn spec_held_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
+    /// Every non-empty user root entry, and every non-empty L3 entry under one, resolves: none is hidden.
+    pub open spec fn no_hidden_user_l4_l3_entries(&self) -> bool {
+        &&& forall|l4i: L4Index| #![trigger self.spec_nonempty_l4(l4i)]
+            self.kernel_l4_end <= l4i && pei_valid(l4i) && self.spec_nonempty_l4(l4i) is Some ==> self.spec_resolve_mapping_l4(l4i) is Some
+        &&& forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_nonempty_l3(l4i, l3i)]
+            self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && self.spec_nonempty_l3(l4i, l3i) is Some ==> self.spec_resolve_mapping_l3(l4i, l3i) is Some
+    }
+
+    /// 1G leaf `(l4i, l3i)` under a non-empty root entry while its kernel_present bit is set, present or hidden.
+    pub open spec fn spec_nonempty_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
     {
-        if self.spec_held_l4(l4i) is Some
-            && self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.ps
-            && self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.kernel_present {
-            Some(self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i))
+        if self.spec_nonempty_l4(l4i) is Some
+            && self.l3_entry(self.spec_nonempty_l4(l4i)->0.addr, l3i).perm.ps
+            && self.l3_entry(self.spec_nonempty_l4(l4i)->0.addr, l3i).perm.kernel_present {
+            Some(self.l3_entry(self.spec_nonempty_l4(l4i)->0.addr, l3i))
         } else {
             None
         }
@@ -301,7 +309,7 @@ impl PageTableHigher {
             self.l3_tables.view().dom().contains(p) ==> {
                 let l4i = self.l3_rev_map.view().spec_index(p);
                 &&& self.kernel_l4_end <= l4i && pei_valid(l4i)
-                &&& self.spec_held_l4(l4i) is Some && self.spec_held_l4(l4i)->0.addr == p
+                &&& self.spec_nonempty_l4(l4i) is Some && self.spec_nonempty_l4(l4i)->0.addr == p
             }
     }
 
@@ -467,51 +475,51 @@ impl WholePageTable {
     #[verifier::inline]
     pub open spec fn spec_resolve_mapping_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_resolve_mapping_l3(l4i, l3i) }
     #[verifier::inline]
-    pub open spec fn spec_held_l4(&self, l4i: L4Index) -> Option<PageEntry> { self.higher.spec_held_l4(l4i) }
+    pub open spec fn spec_nonempty_l4(&self, l4i: L4Index) -> Option<PageEntry> { self.higher.spec_nonempty_l4(l4i) }
     #[verifier::inline]
-    pub open spec fn spec_held_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_held_l3(l4i, l3i) }
+    pub open spec fn spec_nonempty_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_nonempty_l3(l4i, l3i) }
     #[verifier::inline]
-    pub open spec fn spec_held_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_held_1g_l3(l4i, l3i) }
+    pub open spec fn spec_nonempty_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_nonempty_1g_l3(l4i, l3i) }
 
-    /// L2 entry `(l4i, l3i, l2i)` under a held L3 entry while it owns an L1 page, linked or hidden.
-    pub open spec fn spec_held_l2(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> Option<PageEntry>
+    /// L2 entry `(l4i, l3i, l2i)` under a non-empty L3 entry while it owns an L1 page, linked or hidden.
+    pub open spec fn spec_nonempty_l2(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
     {
-        if self.spec_held_l3(l4i, l3i) is Some && self.lower.l2_page(self.spec_held_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some {
-            Some(self.lower.l2_entry(self.spec_held_l3(l4i, l3i)->0.addr, l2i))
+        if self.spec_nonempty_l3(l4i, l3i) is Some && self.lower.l2_page(self.spec_nonempty_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some {
+            Some(self.lower.l2_entry(self.spec_nonempty_l3(l4i, l3i)->0.addr, l2i))
         } else {
             None
         }
     }
 
-    /// Kernel-present 4K leaf `(l4i, l3i, l2i, l1i)` of an L1 page held by a held L2 entry.
-    pub open spec fn spec_held_4k_l1(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index) -> Option<PageEntry>
+    /// Kernel-present 4K leaf `(l4i, l3i, l2i, l1i)` of an L1 page held by a non-empty L2 entry.
+    pub open spec fn spec_nonempty_4k_l1(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
             pei_valid(l1i),
     {
-        if self.spec_held_l2(l4i, l3i, l2i) is Some && self.lower.l1_page(self.spec_held_l3(l4i, l3i)->0.addr, l2i).spec_index(l1i).perm.kernel_present {
-            Some(self.lower.l1_page(self.spec_held_l3(l4i, l3i)->0.addr, l2i).spec_index(l1i))
+        if self.spec_nonempty_l2(l4i, l3i, l2i) is Some && self.lower.l1_page(self.spec_nonempty_l3(l4i, l3i)->0.addr, l2i).spec_index(l1i).perm.kernel_present {
+            Some(self.lower.l1_page(self.spec_nonempty_l3(l4i, l3i)->0.addr, l2i).spec_index(l1i))
         } else {
             None
         }
     }
 
-    /// Kernel-present 2M leaf `(l4i, l3i, l2i)` of an L2 page held by a held L3 entry.
-    pub open spec fn spec_held_2m_l2(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> Option<PageEntry>
+    /// Kernel-present 2M leaf `(l4i, l3i, l2i)` of an L2 page held by a non-empty L3 entry.
+    pub open spec fn spec_nonempty_2m_l2(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
     {
-        if self.spec_held_l3(l4i, l3i) is Some && self.lower.l2_entry(self.spec_held_l3(l4i, l3i)->0.addr, l2i).perm.kernel_present
-            && self.lower.l2_entry(self.spec_held_l3(l4i, l3i)->0.addr, l2i).perm.ps {
-            Some(self.lower.l2_entry(self.spec_held_l3(l4i, l3i)->0.addr, l2i))
+        if self.spec_nonempty_l3(l4i, l3i) is Some && self.lower.l2_entry(self.spec_nonempty_l3(l4i, l3i)->0.addr, l2i).perm.kernel_present
+            && self.lower.l2_entry(self.spec_nonempty_l3(l4i, l3i)->0.addr, l2i).perm.ps {
+            Some(self.lower.l2_entry(self.spec_nonempty_l3(l4i, l3i)->0.addr, l2i))
         } else {
             None
         }
@@ -761,7 +769,7 @@ impl WholePageTable {
     }
 
     /// Every L2 page is held by the user L3 entry at the path its reverse map records; every L1 page is owned, linked or
-    /// hidden, by the L2 entry at the held path its reverse map records.
+    /// hidden, by the L2 entry at the non-empty path its reverse map records.
     #[verifier::opaque]
     pub open spec fn tables_reachable_wf(&self) -> bool {
         &&& forall|p: PageMapPtr|
@@ -769,16 +777,16 @@ impl WholePageTable {
             self.lower.l2_perms.dom().contains(p) ==> {
                 let (l4i, l3i) = self.higher.l2_rev_map.view().spec_index(p);
                 &&& self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                &&& self.spec_held_l3(l4i, l3i) is Some && self.spec_held_l3(l4i, l3i)->0.addr == p
+                &&& self.spec_nonempty_l3(l4i, l3i) is Some && self.spec_nonempty_l3(l4i, l3i)->0.addr == p
             }
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l1_rev_map.dom().contains(p)]
             self.lower.l1_rev_map.dom().contains(p) ==> {
                 let (l4i, l3i, l2i) = self.lower.l1_rev_map.spec_index(p);
                 &&& self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                &&& self.spec_held_l3(l4i, l3i) is Some
-                &&& self.lower.l2_page(self.spec_held_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some
-                &&& self.lower.l2_entry(self.spec_held_l3(l4i, l3i)->0.addr, l2i).addr == p
+                &&& self.spec_nonempty_l3(l4i, l3i) is Some
+                &&& self.lower.l2_page(self.spec_nonempty_l3(l4i, l3i)->0.addr).entry_lock(l2i).l1() is Some
+                &&& self.lower.l2_entry(self.spec_nonempty_l3(l4i, l3i)->0.addr, l2i).addr == p
             }
     }
 
@@ -882,40 +890,40 @@ impl WholePageTable {
     }
 }
 
-/// An empty table (`is_empty`) has no held 4K leaf at or above `kernel_l4_end`.
-pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_4k(wpt: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
+/// An empty table (`is_empty`) has no non-empty 4K leaf at or above `kernel_l4_end`.
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_nonempty_4k(wpt: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
     requires
         wpt.is_empty(),
         wpt.kernel_l4_end() <= l4i,
         pei_valid(l4i),
     ensures
-        #[trigger] wpt.spec_held_4k_l1(l4i, l3i, l2i, l1i) is None,
+        #[trigger] wpt.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) is None,
 {
     assert(wpt.higher.l4_table.view().spec_index(wpt.cr3()).value().spec_index(l4i).is_empty());
-    assert(wpt.spec_held_l3(l4i, l3i) is None);
-    assert(wpt.spec_held_l2(l4i, l3i, l2i) is None);
+    assert(wpt.spec_nonempty_l3(l4i, l3i) is None);
+    assert(wpt.spec_nonempty_l2(l4i, l3i, l2i) is None);
 }
 
-/// An empty table (`is_empty`) has no held 2M leaf at or above `kernel_l4_end`.
-pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_2m(wpt: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+/// An empty table (`is_empty`) has no non-empty 2M leaf at or above `kernel_l4_end`.
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_nonempty_2m(wpt: WholePageTable, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         wpt.is_empty(),
         wpt.kernel_l4_end() <= l4i,
         pei_valid(l4i),
     ensures
-        #[trigger] wpt.spec_held_2m_l2(l4i, l3i, l2i) is None,
+        #[trigger] wpt.spec_nonempty_2m_l2(l4i, l3i, l2i) is None,
 {
     assert(wpt.higher.l4_table.view().spec_index(wpt.cr3()).value().spec_index(l4i).is_empty());
-    assert(wpt.spec_held_l3(l4i, l3i) is None);
+    assert(wpt.spec_nonempty_l3(l4i, l3i) is None);
 }
 
-/// An empty table (`is_empty`) has no held 1G leaf at or above `kernel_l4_end`.
-pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_1g(wpt: WholePageTable, l4i: L4Index, l3i: L3Index)
+/// An empty table (`is_empty`) has no non-empty 1G leaf at or above `kernel_l4_end`.
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_nonempty_1g(wpt: WholePageTable, l4i: L4Index, l3i: L3Index)
     requires
         wpt.is_empty(),
         wpt.kernel_l4_end() <= l4i,
         pei_valid(l4i),
     ensures
-        #[trigger] wpt.spec_held_1g_l3(l4i, l3i) is None,
+        #[trigger] wpt.spec_nonempty_1g_l3(l4i, l3i) is None,
 { assert(wpt.higher.l4_table.view().spec_index(wpt.cr3()).value().spec_index(l4i).is_empty()); }
 } // verus!

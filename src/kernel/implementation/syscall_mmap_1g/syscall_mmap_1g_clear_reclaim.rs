@@ -53,18 +53,18 @@ pub(super) fn mmap_1g_reclaim_range(
         hc.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         hc.lower.hidden_l1_tables_in_locked_windows(),
         forall|p: PageMapPtr, i: L2Index| #![trigger hc.lower.l2_owner(p, i)] hc.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> hc.lower.l2_owner(p, i) is None,
-        forall|l4i: L4Index| #![trigger hc.spec_held_l4(l4i)] hc.kernel_l4_end() <= l4i && pei_valid(l4i) && hc.spec_held_l4(l4i) is Some ==> hc.spec_resolve_mapping_l4(l4i) is Some,
-        forall|l4i: L4Index, l3i: L3Index| #![trigger hc.spec_held_l3(l4i, l3i)]
-            hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && hc.spec_held_l3(l4i, l3i) is Some
+        forall|l4i: L4Index| #![trigger hc.spec_nonempty_l4(l4i)] hc.kernel_l4_end() <= l4i && pei_valid(l4i) && hc.spec_nonempty_l4(l4i) is Some ==> hc.spec_resolve_mapping_l4(l4i) is Some,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger hc.spec_nonempty_l3(l4i, l3i)]
+            hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && hc.spec_nonempty_l3(l4i, l3i) is Some
             ==> hc.spec_resolve_mapping_l3(l4i, l3i) is Some || range.view().contains(spec_index2va((l4i, l3i, 0, 0))),
         range.wf(),
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
             let l4i = spec_v2l4index(range.view()[j]);
             let l3i = spec_v2l3index(range.view()[j]);
             &&& hc.spec_resolve_mapping_l3(l4i, l3i) is None
-            &&& hc.spec_held_1g_l3(l4i, l3i) is None
-            &&& forall|i: L2Index| #![trigger hc.spec_held_2m_l2(l4i, l3i, i)] pei_valid(i) ==> hc.spec_held_2m_l2(l4i, l3i, i) is None
-            &&& forall|i: L2Index, i1: L1Index| #![trigger hc.spec_held_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> hc.spec_held_4k_l1(l4i, l3i, i, i1) is None
+            &&& hc.spec_nonempty_1g_l3(l4i, l3i) is None
+            &&& forall|i: L2Index| #![trigger hc.spec_nonempty_2m_l2(l4i, l3i, i)] pei_valid(i) ==> hc.spec_nonempty_2m_l2(l4i, l3i, i) is None
+            &&& forall|i: L2Index, i1: L1Index| #![trigger hc.spec_nonempty_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> hc.spec_nonempty_4k_l1(l4i, l3i, i, i1) is None
         },
     ensures
         final(steps).snapshot_k() == *final(krnl),
@@ -106,12 +106,12 @@ pub(super) fn mmap_1g_reclaim_range(
             &&& c.mapping_4k() == hc.mapping_4k() && c.mapping_2m() == hc.mapping_2m() && c.mapping_1g() == hc.mapping_1g()
             &&& c.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
             &&& c.lower.hidden_l1_tables_in_locked_windows()
-            &&& forall|l4i: L4Index| #![trigger c.spec_held_l4(l4i)] #![trigger c.spec_resolve_mapping_l4(l4i)]
-                hc.kernel_l4_end() <= l4i && pei_valid(l4i) ==> c.spec_held_l4(l4i) == hc.spec_held_l4(l4i) && c.spec_resolve_mapping_l4(l4i) == hc.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger c.spec_held_l3(l4i, l3i)]
-                c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && c.spec_held_l3(l4i, l3i) is Some ==> c.spec_resolve_mapping_l3(l4i, l3i) is Some
+            &&& forall|l4i: L4Index| #![trigger c.spec_nonempty_l4(l4i)] #![trigger c.spec_resolve_mapping_l4(l4i)]
+                hc.kernel_l4_end() <= l4i && pei_valid(l4i) ==> c.spec_nonempty_l4(l4i) == hc.spec_nonempty_l4(l4i) && c.spec_resolve_mapping_l4(l4i) == hc.spec_resolve_mapping_l4(l4i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger c.spec_nonempty_l3(l4i, l3i)]
+                c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && c.spec_nonempty_l3(l4i, l3i) is Some ==> c.spec_resolve_mapping_l3(l4i, l3i) is Some
             &&& forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len
-                ==> c.spec_held_l3(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])) is None && c.spec_held_1g_l3(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])) is None
+                ==> c.spec_nonempty_l3(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])) is None && c.spec_nonempty_1g_l3(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])) is None
         }),
 {
     proof { broadcast use spec_va_1g_valid_index_roundtrip; }
@@ -145,9 +145,9 @@ pub(super) fn mmap_1g_reclaim_range(
             old(krnl).pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..hc.higher }),
             hc.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
             hc.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-            forall|l4i: L4Index| #![trigger hc.spec_held_l4(l4i)] hc.kernel_l4_end() <= l4i && pei_valid(l4i) && hc.spec_held_l4(l4i) is Some ==> hc.spec_resolve_mapping_l4(l4i) is Some,
-            forall|l4i: L4Index, l3i: L3Index| #![trigger hc.spec_held_l3(l4i, l3i)]
-                hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && hc.spec_held_l3(l4i, l3i) is Some
+            forall|l4i: L4Index| #![trigger hc.spec_nonempty_l4(l4i)] hc.kernel_l4_end() <= l4i && pei_valid(l4i) && hc.spec_nonempty_l4(l4i) is Some ==> hc.spec_resolve_mapping_l4(l4i) is Some,
+            forall|l4i: L4Index, l3i: L3Index| #![trigger hc.spec_nonempty_l3(l4i, l3i)]
+                hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && hc.spec_nonempty_l3(l4i, l3i) is Some
                 ==> hc.spec_resolve_mapping_l3(l4i, l3i) is Some || range.view().contains(spec_index2va((l4i, l3i, 0, 0))),
             range.wf(),
             j <= range.len,
@@ -155,9 +155,9 @@ pub(super) fn mmap_1g_reclaim_range(
                 let l4i = spec_v2l4index(range.view()[k]);
                 let l3i = spec_v2l3index(range.view()[k]);
                 &&& hc.spec_resolve_mapping_l3(l4i, l3i) is None
-                &&& hc.spec_held_1g_l3(l4i, l3i) is None
-                &&& forall|i: L2Index| #![trigger hc.spec_held_2m_l2(l4i, l3i, i)] pei_valid(i) ==> hc.spec_held_2m_l2(l4i, l3i, i) is None
-                &&& forall|i: L2Index, i1: L1Index| #![trigger hc.spec_held_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> hc.spec_held_4k_l1(l4i, l3i, i, i1) is None
+                &&& hc.spec_nonempty_1g_l3(l4i, l3i) is None
+                &&& forall|i: L2Index| #![trigger hc.spec_nonempty_2m_l2(l4i, l3i, i)] pei_valid(i) ==> hc.spec_nonempty_2m_l2(l4i, l3i, i) is None
+                &&& forall|i: L2Index, i1: L1Index| #![trigger hc.spec_nonempty_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> hc.spec_nonempty_4k_l1(l4i, l3i, i, i1) is None
             },
             steps.snapshot_k() == *krnl,
             old(steps).view().len() <= steps.view().len() <= old(steps).view().len() + 513 * j,
@@ -199,17 +199,17 @@ pub(super) fn mmap_1g_reclaim_range(
                 &&& c.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
                 &&& c.lower.hidden_l1_tables_in_locked_windows()
                 &&& forall|p: PageMapPtr, i: L2Index| #![trigger c.lower.l2_owner(p, i)] c.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> c.lower.l2_owner(p, i) is None
-                &&& forall|l4i: L4Index| #![trigger c.spec_held_l4(l4i)] #![trigger c.spec_resolve_mapping_l4(l4i)]
-                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) ==> c.spec_held_l4(l4i) == hc.spec_held_l4(l4i) && c.spec_resolve_mapping_l4(l4i) == hc.spec_resolve_mapping_l4(l4i)
-                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger c.spec_held_l3(l4i, l3i)]
-                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> c.spec_held_l3(l4i, l3i) == hc.spec_held_l3(l4i, l3i) || c.spec_held_l3(l4i, l3i) is None
-                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger c.spec_held_1g_l3(l4i, l3i)]
-                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> c.spec_held_1g_l3(l4i, l3i) == hc.spec_held_1g_l3(l4i, l3i)
-                &&& forall|l4i: L4Index, l3i: L3Index, i: L2Index| #![trigger c.spec_held_2m_l2(l4i, l3i, i)]
-                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(i) ==> c.spec_held_2m_l2(l4i, l3i, i) == hc.spec_held_2m_l2(l4i, l3i, i)
-                &&& forall|l4i: L4Index, l3i: L3Index, i: L2Index, i1: L1Index| #![trigger c.spec_held_4k_l1(l4i, l3i, i, i1)]
-                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(i) && pei_valid(i1) ==> c.spec_held_4k_l1(l4i, l3i, i, i1) == hc.spec_held_4k_l1(l4i, l3i, i, i1)
-                &&& forall|k: int| #![trigger range.view()[k]] 0 <= k < j ==> c.spec_held_l3(spec_v2l4index(range.view()[k]), spec_v2l3index(range.view()[k])) is None
+                &&& forall|l4i: L4Index| #![trigger c.spec_nonempty_l4(l4i)] #![trigger c.spec_resolve_mapping_l4(l4i)]
+                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) ==> c.spec_nonempty_l4(l4i) == hc.spec_nonempty_l4(l4i) && c.spec_resolve_mapping_l4(l4i) == hc.spec_resolve_mapping_l4(l4i)
+                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger c.spec_nonempty_l3(l4i, l3i)]
+                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> c.spec_nonempty_l3(l4i, l3i) == hc.spec_nonempty_l3(l4i, l3i) || c.spec_nonempty_l3(l4i, l3i) is None
+                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger c.spec_nonempty_1g_l3(l4i, l3i)]
+                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> c.spec_nonempty_1g_l3(l4i, l3i) == hc.spec_nonempty_1g_l3(l4i, l3i)
+                &&& forall|l4i: L4Index, l3i: L3Index, i: L2Index| #![trigger c.spec_nonempty_2m_l2(l4i, l3i, i)]
+                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(i) ==> c.spec_nonempty_2m_l2(l4i, l3i, i) == hc.spec_nonempty_2m_l2(l4i, l3i, i)
+                &&& forall|l4i: L4Index, l3i: L3Index, i: L2Index, i1: L1Index| #![trigger c.spec_nonempty_4k_l1(l4i, l3i, i, i1)]
+                    hc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(i) && pei_valid(i1) ==> c.spec_nonempty_4k_l1(l4i, l3i, i, i1) == hc.spec_nonempty_4k_l1(l4i, l3i, i, i1)
+                &&& forall|k: int| #![trigger range.view()[k]] 0 <= k < j ==> c.spec_nonempty_l3(spec_v2l4index(range.view()[k]), spec_v2l3index(range.view()[k])) is None
             }),
         decreases range.len - j,
     {
@@ -222,8 +222,8 @@ pub(super) fn mmap_1g_reclaim_range(
             krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         }
         let table = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-        let l3 = match table.higher.get_held_entry_l4(l4i) {
-            Some(l4_entry) => table.higher.get_held_entry_l3(l4i, l3i, &l4_entry),
+        let l3 = match table.higher.get_nonempty_entry_l4(l4i) {
+            Some(l4_entry) => table.higher.get_nonempty_entry_l3(l4i, l3i, &l4_entry),
             None => None,
         };
         if let Some(l3_entry) = l3 {
@@ -231,8 +231,8 @@ pub(super) fn mmap_1g_reclaim_range(
                 let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
                 assert(c.spec_resolve_mapping_l3(l4i, l3i) is None) by {
                     if c.spec_resolve_mapping_l3(l4i, l3i) is Some {
-                        c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); c.higher.spec_resolve_mapping_l4_some_implies_spec_held_l4_eq(l4i);
-                        hc.higher.spec_resolve_mapping_l4_some_implies_spec_held_l4_eq(l4i);
+                        c.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(l4i, l3i); c.higher.spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq(l4i);
+                        hc.higher.spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq(l4i);
                     }
                 };
             }
@@ -242,7 +242,7 @@ pub(super) fn mmap_1g_reclaim_range(
         j = j + 1;
     }
     proof {
-        broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
+        broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq;
         spec_index2va_injective();
     }
 }
@@ -289,10 +289,10 @@ fn mmap_1g_reclaim_slot(
             &&& c.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
             &&& c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger c.lower.l2_owner(p, i)] c.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> c.lower.l2_owner(p, i) is None
-            &&& c.spec_held_l3(l4i, l3i) == Some(*l3_entry)
+            &&& c.spec_nonempty_l3(l4i, l3i) == Some(*l3_entry)
             &&& c.spec_resolve_mapping_l3(l4i, l3i) is None
-            &&& forall|i: L2Index| #![trigger c.spec_held_2m_l2(l4i, l3i, i)] pei_valid(i) ==> c.spec_held_2m_l2(l4i, l3i, i) is None
-            &&& forall|i: L2Index, i1: L1Index| #![trigger c.spec_held_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> c.spec_held_4k_l1(l4i, l3i, i, i1) is None
+            &&& forall|i: L2Index| #![trigger c.spec_nonempty_2m_l2(l4i, l3i, i)] pei_valid(i) ==> c.spec_nonempty_2m_l2(l4i, l3i, i) is None
+            &&& forall|i: L2Index, i1: L1Index| #![trigger c.spec_nonempty_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> c.spec_nonempty_4k_l1(l4i, l3i, i, i1) is None
         }),
     ensures
         final(steps).snapshot_k() == *final(krnl),
@@ -336,17 +336,17 @@ fn mmap_1g_reclaim_slot(
             &&& new_c.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
             &&& new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> new_c.lower.l2_owner(p, i) is None
-            &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] #![trigger new_c.spec_resolve_mapping_l4(i4)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4) && new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
-            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != (l4i, l3i) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
-            &&& new_c.spec_held_l3(l4i, l3i) is None
-            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
-            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_2m_l2(i4, i3, i2)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_2m_l2(i4, i3, i2) == old_c.spec_held_2m_l2(i4, i3, i2)
-            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_held_4k_l1(i4, i3, i2, i1)]
-                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_held_4k_l1(i4, i3, i2, i1) == old_c.spec_held_4k_l1(i4, i3, i2, i1)
+            &&& forall|i4: L4Index| #![trigger new_c.spec_nonempty_l4(i4)] #![trigger new_c.spec_resolve_mapping_l4(i4)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_nonempty_l4(i4) == old_c.spec_nonempty_l4(i4) && new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != (l4i, l3i) ==> new_c.spec_nonempty_l3(i4, i3) == old_c.spec_nonempty_l3(i4, i3)
+            &&& new_c.spec_nonempty_l3(l4i, l3i) is None
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_1g_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_nonempty_1g_l3(i4, i3) == old_c.spec_nonempty_1g_l3(i4, i3)
+            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_2m_l2(i4, i3, i2)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_2m_l2(i4, i3, i2) == old_c.spec_nonempty_2m_l2(i4, i3, i2)
+            &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_nonempty_4k_l1(i4, i3, i2, i1)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_nonempty_4k_l1(i4, i3, i2, i1) == old_c.spec_nonempty_4k_l1(i4, i3, i2, i1)
         }),
 {
     let ghost oc = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
@@ -379,9 +379,9 @@ fn mmap_1g_reclaim_slot(
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap1g { range, mapped: 0, directory: false, hidden: true, flushed: true }),
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
             oc.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i),
-            oc.spec_held_l3(l4i, l3i) == Some(*l3_entry),
-            forall|i: L2Index| #![trigger oc.spec_held_2m_l2(l4i, l3i, i)] pei_valid(i) ==> oc.spec_held_2m_l2(l4i, l3i, i) is None,
-            forall|i: L2Index, i1: L1Index| #![trigger oc.spec_held_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> oc.spec_held_4k_l1(l4i, l3i, i, i1) is None,
+            oc.spec_nonempty_l3(l4i, l3i) == Some(*l3_entry),
+            forall|i: L2Index| #![trigger oc.spec_nonempty_2m_l2(l4i, l3i, i)] pei_valid(i) ==> oc.spec_nonempty_2m_l2(l4i, l3i, i) is None,
+            forall|i: L2Index, i1: L1Index| #![trigger oc.spec_nonempty_4k_l1(l4i, l3i, i, i1)] pei_valid(i) && pei_valid(i1) ==> oc.spec_nonempty_4k_l1(l4i, l3i, i, i1) is None,
             steps.snapshot_k() == *krnl,
             old(steps).view().len() <= steps.view().len() <= old(steps).view().len() + l2i,
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
@@ -423,18 +423,18 @@ fn mmap_1g_reclaim_slot(
                 &&& c.lower.hidden_l1_tables_in_locked_windows()
                 &&& forall|p: PageMapPtr, i: L2Index| #![trigger c.lower.l2_owner(p, i)] c.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> c.lower.l2_owner(p, i) is None
                 &&& c.spec_resolve_mapping_l3(l4i, l3i) is None
-                &&& forall|i4: L4Index| #![trigger c.spec_held_l4(i4)] #![trigger c.spec_resolve_mapping_l4(i4)]
-                    oc.kernel_l4_end() <= i4 && pei_valid(i4) ==> c.spec_held_l4(i4) == oc.spec_held_l4(i4) && c.spec_resolve_mapping_l4(i4) == oc.spec_resolve_mapping_l4(i4)
-                &&& forall|i4: L4Index, i3: L3Index| #![trigger c.spec_held_l3(i4, i3)]
-                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> c.spec_held_l3(i4, i3) == oc.spec_held_l3(i4, i3)
-                &&& forall|i4: L4Index, i3: L3Index| #![trigger c.spec_held_1g_l3(i4, i3)]
-                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> c.spec_held_1g_l3(i4, i3) == oc.spec_held_1g_l3(i4, i3)
-                &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger c.spec_held_2m_l2(i4, i3, i2)]
-                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> c.spec_held_2m_l2(i4, i3, i2) == oc.spec_held_2m_l2(i4, i3, i2)
-                &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger c.spec_held_4k_l1(i4, i3, i2, i1)]
-                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> c.spec_held_4k_l1(i4, i3, i2, i1) == oc.spec_held_4k_l1(i4, i3, i2, i1)
-                &&& forall|i: L2Index| #![trigger c.spec_held_l2(l4i, l3i, i)] #![trigger c.lower.l2_page(l2_ptr).entry_lock(i).l1()]
-                    0 <= i < l2i ==> c.spec_held_l2(l4i, l3i, i) is None && c.lower.l2_page(l2_ptr).entry_lock(i).l1() is None
+                &&& forall|i4: L4Index| #![trigger c.spec_nonempty_l4(i4)] #![trigger c.spec_resolve_mapping_l4(i4)]
+                    oc.kernel_l4_end() <= i4 && pei_valid(i4) ==> c.spec_nonempty_l4(i4) == oc.spec_nonempty_l4(i4) && c.spec_resolve_mapping_l4(i4) == oc.spec_resolve_mapping_l4(i4)
+                &&& forall|i4: L4Index, i3: L3Index| #![trigger c.spec_nonempty_l3(i4, i3)]
+                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> c.spec_nonempty_l3(i4, i3) == oc.spec_nonempty_l3(i4, i3)
+                &&& forall|i4: L4Index, i3: L3Index| #![trigger c.spec_nonempty_1g_l3(i4, i3)]
+                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> c.spec_nonempty_1g_l3(i4, i3) == oc.spec_nonempty_1g_l3(i4, i3)
+                &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger c.spec_nonempty_2m_l2(i4, i3, i2)]
+                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> c.spec_nonempty_2m_l2(i4, i3, i2) == oc.spec_nonempty_2m_l2(i4, i3, i2)
+                &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger c.spec_nonempty_4k_l1(i4, i3, i2, i1)]
+                    oc.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> c.spec_nonempty_4k_l1(i4, i3, i2, i1) == oc.spec_nonempty_4k_l1(i4, i3, i2, i1)
+                &&& forall|i: L2Index| #![trigger c.spec_nonempty_l2(l4i, l3i, i)] #![trigger c.lower.l2_page(l2_ptr).entry_lock(i).l1()]
+                    0 <= i < l2i ==> c.spec_nonempty_l2(l4i, l3i, i) is None && c.lower.l2_page(l2_ptr).entry_lock(i).l1() is None
             }),
             l2i <= 512,
         decreases 512 - l2i,
@@ -445,7 +445,7 @@ fn mmap_1g_reclaim_slot(
         }
         proof {
             let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-            c.higher.wf_l4_at(l4i); c.l3_links_l2_wf_at(c.spec_held_l4(l4i)->0.addr, l3i);
+            c.higher.wf_l4_at(l4i); c.l3_links_l2_wf_at(c.spec_nonempty_l4(l4i)->0.addr, l3i);
         }
         let table = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
         let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);

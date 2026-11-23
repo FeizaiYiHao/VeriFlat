@@ -98,12 +98,12 @@ pub open spec fn cpu_tlb_within_may_cache_u(u: KernelU, cpu_id: CpuId, pcid: Pci
 /// `entry` is the translation of the present 4K leaf at `va` of `table`: one entry of
 /// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
 pub open spec fn tlb_4k_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable, va: VAddr) -> bool {
-    let held = table.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+    let nonempty = table.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
     let leaf = table.spec_resolve_mapping_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
     &&& va_4k_valid(va)
     &&& table.kernel_l4_end() <= spec_v2l4index(va)
-    &&& held is Some
-    &&& spec_tlb_entry_equal_to_page_entry(entry, held->0)
+    &&& nonempty is Some
+    &&& spec_tlb_entry_equal_to_page_entry(entry, nonempty->0)
     &&& leaf is Some
     &&& leaf->0.perm.present
 }
@@ -111,12 +111,12 @@ pub open spec fn tlb_4k_entry_present_in_pagetable(entry: TLBEntry, table: Whole
 /// `entry` is the translation of the present 2M leaf at `va` of `table`: one entry of
 /// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
 pub open spec fn tlb_2m_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable, va: VAddr) -> bool {
-    let held = table.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+    let nonempty = table.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
     let leaf = table.spec_resolve_mapping_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
     &&& va_2m_valid(va)
     &&& table.kernel_l4_end() <= spec_v2l4index(va)
-    &&& held is Some
-    &&& spec_tlb_entry_equal_to_page_entry(entry, held->0)
+    &&& nonempty is Some
+    &&& spec_tlb_entry_equal_to_page_entry(entry, nonempty->0)
     &&& leaf is Some
     &&& leaf->0.perm.present
 }
@@ -124,12 +124,12 @@ pub open spec fn tlb_2m_entry_present_in_pagetable(entry: TLBEntry, table: Whole
 /// `entry` is the translation of the present 1G leaf at `va` of `table`: one entry of
 /// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
 pub open spec fn tlb_1g_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable, va: VAddr) -> bool {
-    let held = table.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+    let nonempty = table.spec_nonempty_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
     let leaf = table.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
     &&& va_1g_valid(va)
     &&& table.kernel_l4_end() <= spec_v2l4index(va)
-    &&& held is Some
-    &&& spec_tlb_entry_equal_to_page_entry(entry, held->0)
+    &&& nonempty is Some
+    &&& spec_tlb_entry_equal_to_page_entry(entry, nonempty->0)
     &&& leaf is Some
     &&& leaf->0.perm.present
 }

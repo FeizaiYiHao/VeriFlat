@@ -69,7 +69,7 @@ proof fn pagetable_map_update_pci_mapping_eof_entries(pre: PageTableHigher, post
         post == (PageTableHigher { pci: post.pci, ..pre }),
     ensures
         forall|i: L4Index| #![trigger post.l4_entry(i)] post.l4_entry(i) == pre.l4_entry(i),
-        forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
+        forall|l4i: L4Index| #![trigger post.spec_nonempty_l4(l4i)] post.spec_nonempty_l4(l4i) == pre.spec_nonempty_l4(l4i),
         forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_resolve_mapping_1g_l3(l4i, l3i)]
             post.spec_resolve_mapping_1g_l3(l4i, l3i) == pre.spec_resolve_mapping_1g_l3(l4i, l3i),
 {}

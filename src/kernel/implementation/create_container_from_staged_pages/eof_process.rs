@@ -989,7 +989,7 @@ pub(super) proof fn publish_staged_container_root_eof_pagetable_pci_mappings_wf(
     ensures
         pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
-    broadcast use whole_pagetable_is_empty_implies_no_held_4k, whole_pagetable_is_empty_implies_no_held_2m, whole_pagetable_is_empty_implies_no_held_1g;
+    broadcast use whole_pagetable_is_empty_implies_no_nonempty_4k, whole_pagetable_is_empty_implies_no_nonempty_2m, whole_pagetable_is_empty_implies_no_nonempty_1g;
     reveal(publish_staged_container_root_eof_transition_framing);
     reveal(pagetable_pci_mappings_wf);
 }

@@ -3,7 +3,7 @@ verus! {
 use crate::*;
 
 /// S of `KernelK::replace_table_stale_cpus`: only the table stale-CPU record of page table `root` moved; its lock state,
-/// ghost slot, the rest of its big-lock payload, and so its mappings, held 4K and 2M leaves, root resolution, pages, and window
+/// ghost slot, the rest of its big-lock payload, and so its mappings, non-empty 4K and 2M leaves, root resolution, pages, and window
 /// holders, every window half, and every other table stay.
 #[verifier::opaque]
 pub open spec fn table_stale_cpus_update_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot) -> bool {
@@ -33,10 +33,10 @@ pub open spec fn table_stale_cpus_update_eof_transition_framing(pre: KernelK, po
         #![trigger before_table.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         before_table.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
             ==> after_table.window_locked_by_thread(l4i, l3i, l2i, thread_id) == before_table.window_locked_by_thread(l4i, l3i, l2i, thread_id)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger after_table.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        after_table.spec_held_4k_l1(l4i, l3i, l2i, l1i) == before_table.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after_table.spec_held_2m_l2(l4i, l3i, l2i)] after_table.spec_held_2m_l2(l4i, l3i, l2i) == before_table.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger after_table.spec_held_1g_l3(l4i, l3i)] after_table.spec_held_1g_l3(l4i, l3i) == before_table.spec_held_1g_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger after_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        after_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == before_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after_table.spec_nonempty_2m_l2(l4i, l3i, l2i)] after_table.spec_nonempty_2m_l2(l4i, l3i, l2i) == before_table.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger after_table.spec_nonempty_1g_l3(l4i, l3i)] after_table.spec_nonempty_1g_l3(l4i, l3i) == before_table.spec_nonempty_1g_l3(l4i, l3i)
     &&& forall|l4i: L4Index| #![trigger after_table.spec_resolve_mapping_l4(l4i)] after_table.spec_resolve_mapping_l4(l4i) == before_table.spec_resolve_mapping_l4(l4i)
     &&& forall|pagetable_ptr: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr)]
@@ -296,7 +296,7 @@ proof fn table_stale_cpus_update_eof_page_tables_pci_mappings(pre: KernelK, post
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 { reveal(table_stale_cpus_update_eof_transition_framing); reveal(pagetable_pci_mappings_wf); }
 
-/// Page-to-table records, table pages and emptied-process tables after `KernelK::replace_table_stale_cpus`: no leaf, held
+/// Page-to-table records, table pages and emptied-process tables after `KernelK::replace_table_stale_cpus`: no leaf, non-empty
 /// entry or table page moved.
 proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot)
     requires

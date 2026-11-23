@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// Hiding the resolving user root entry `l4i` of the write-held `pagetable` changes only that table: the entry becomes a
-/// placeholder that keeps its L3 address, every mapping and window under `l4i` leaves the table, and its held chain, its
+/// placeholder that keeps its L3 address, every mapping and window under `l4i` leaves the table, and its non-empty chain, its
 /// stale-CPU records, its table pages and every other field of its record stay.
 #[verifier::opaque]
 pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index) -> bool {
@@ -31,21 +31,21 @@ pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: K
     &&& new_c.spec_resolve_mapping_l4(l4i) is None
     &&& forall|i4: L4Index| #![trigger new_c.spec_resolve_mapping_l4(i4)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && i4 != l4i ==> new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
-    &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) && i4 != l4i ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4)
-    &&& new_c.spec_held_l4(l4i) == Some(PageEntry { addr: old_c.spec_held_l4(l4i)->0.addr,
+    &&& forall|i4: L4Index| #![trigger new_c.spec_nonempty_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) && i4 != l4i ==> new_c.spec_nonempty_l4(i4) == old_c.spec_nonempty_l4(i4)
+    &&& new_c.spec_nonempty_l4(l4i) == Some(PageEntry { addr: old_c.spec_nonempty_l4(l4i)->0.addr,
             perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
-    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_l2(i4, i3, i2)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_l2(i4, i3, i2) == old_c.spec_held_l2(i4, i3, i2)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_held_4k_l1(i4, i3, i2, i1)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_held_4k_l1(i4, i3, i2, i1) == old_c.spec_held_4k_l1(i4, i3, i2, i1)
-    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_2m_l2(i4, i3, i2)]
-        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_held_2m_l2(i4, i3, i2) == old_c.spec_held_2m_l2(i4, i3, i2)
-    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_nonempty_l3(i4, i3) == old_c.spec_nonempty_l3(i4, i3)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_l2(i4, i3, i2)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_l2(i4, i3, i2) == old_c.spec_nonempty_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger new_c.spec_nonempty_4k_l1(i4, i3, i2, i1)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) ==> new_c.spec_nonempty_4k_l1(i4, i3, i2, i1) == old_c.spec_nonempty_4k_l1(i4, i3, i2, i1)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_nonempty_2m_l2(i4, i3, i2)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> new_c.spec_nonempty_2m_l2(i4, i3, i2) == old_c.spec_nonempty_2m_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_nonempty_1g_l3(i4, i3)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_nonempty_1g_l3(i4, i3) == old_c.spec_nonempty_1g_l3(i4, i3)
 }
 
-/// The hide drops only mappings and keeps the PCI function array, every held leaf, and every other table.
+/// The hide drops only mappings and keeps the PCI function array, every non-empty leaf, and every other table.
 proof fn hide_user_l4_entry_eof_pci_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index)
     requires
         pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
@@ -67,7 +67,7 @@ proof fn hide_user_l4_entry_eof_pci_ownership(pre: KernelK, post: KernelK, paget
     ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 { reveal(hide_user_l4_entry_eof_transition_framing); reveal(pci_function_ownership_wf); }
 
-/// Every page record still names a held leaf of the table with its frame: the hide removes mappings only under `l4i`.
+/// Every page record still names a non-empty leaf of the table with its frame: the hide removes mappings only under `l4i`.
 proof fn hide_user_l4_entry_eof_page_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index)
     requires
         pre.inv(),
@@ -106,7 +106,7 @@ proof fn hide_user_l4_entry_eof_cpu_tlb(pre: KernelK, post: KernelK, pagetable: 
 
 /// The invariant survives hiding user root entry `l4i` of the write-held `pagetable` while every CPU is listed stale for the
 /// whole table: a translation or directory entry cached under `l4i` is covered by the table record, every page record still
-/// names a held leaf, and every other entry resolves as before.
+/// names a non-empty leaf, and every other entry resolves as before.
 pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index)
     requires
         pre.inv(),

@@ -4,7 +4,7 @@ use crate::*;
 verus! {
 /// Installs the present IO 4K leaf `entry` at `va` in the write-held `pagetable` (from `pre` to `mid`, which keeps the big-lock
 /// payload and resets its backup to the new window half) and then records the BAR mapping `(va, 4K)` under the function `f` (from
-/// `mid` to `post`, which changes only the table's PCI function array); every other held entry, table, and kernel field, the page
+/// `mid` to `post`, which changes only the table's PCI function array); every other non-empty entry, table, and kernel field, the page
 /// array included, is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn install_io_4k_mapping_eof_transition_framing(pre: KernelK, mid: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry)
@@ -24,16 +24,16 @@ pub(super) open spec fn install_io_4k_mapping_eof_transition_framing(pre: Kernel
     &&& mid_c.page_closure() == old_c.page_closure()
     &&& mid_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger mid_c.lower.l2_entry(p, i)] mid_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger mid_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != spec_va2index(va)
-            ==> mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& mid_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some
-    &&& mid_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == entry.addr
-    &&& mid_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io == entry.is_io
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_held_2m_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+            ==> mid_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& mid_c.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some
+    &&& mid_c.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == entry.addr
+    &&& mid_c.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io == entry.is_io
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
     &&& post == (KernelK { pt_mp: post.pt_mp, ..mid })
     &&& post.pt_mp.unchanged_except(&mid.pt_mp, pagetable)
     &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> {
@@ -49,18 +49,18 @@ pub(super) open spec fn install_io_4k_mapping_eof_transition_framing(pre: Kernel
     &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..mid_c.higher })
     &&& new_c.mapping_4k() == mid_c.mapping_4k() && new_c.mapping_2m() == mid_c.mapping_2m() && new_c.mapping_1g() == mid_c.mapping_1g() && new_c.page_closure() == mid_c.page_closure()
     &&& new_c.lower == mid_c.lower
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)] new_c.spec_held_l2(l4i, l3i, l2i) == mid_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)] new_c.spec_held_2m_l2(l4i, l3i, l2i) == mid_c.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)] new_c.spec_nonempty_l2(l4i, l3i, l2i) == mid_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)] new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == mid_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == mid_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == mid_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
     &&& new_c.kernel_l4_end() == mid_c.kernel_l4_end()
-    &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_held_l4(l4i)] new_c.higher.spec_held_l4(l4i) == mid_c.higher.spec_held_l4(l4i)
+    &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_nonempty_l4(l4i)] new_c.higher.spec_nonempty_l4(l4i) == mid_c.higher.spec_nonempty_l4(l4i)
     &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_resolve_mapping_l4(l4i)] new_c.higher.spec_resolve_mapping_l4(l4i) == mid_c.higher.spec_resolve_mapping_l4(l4i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_held_l3(l4i, l3i)] new_c.higher.spec_held_l3(l4i, l3i) == mid_c.higher.spec_held_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_nonempty_l3(l4i, l3i)] new_c.higher.spec_nonempty_l3(l4i, l3i) == mid_c.higher.spec_nonempty_l3(l4i, l3i)
     &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_resolve_mapping_l3(l4i, l3i)] new_c.higher.spec_resolve_mapping_l3(l4i, l3i) == mid_c.higher.spec_resolve_mapping_l3(l4i, l3i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_held_1g_l3(l4i, l3i)] new_c.higher.spec_held_1g_l3(l4i, l3i) == mid_c.higher.spec_held_1g_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_nonempty_1g_l3(l4i, l3i)] new_c.higher.spec_nonempty_1g_l3(l4i, l3i) == mid_c.higher.spec_nonempty_1g_l3(l4i, l3i)
     &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i)] new_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i) == mid_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i)
     &&& new_c.higher.pci.view() == mid_c.higher.pci.view().insert(f, mid_c.higher.pci.view()[f].insert((va, PageSize::SZ4k)))
     &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
@@ -78,7 +78,7 @@ proof fn install_io_4k_mapping_eof_page_tables(pre: KernelK, mid: KernelK, post:
         va_4k_valid(va),
         entry.is_io,
         pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains(f),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
     ensures
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
@@ -116,7 +116,7 @@ proof fn install_io_4k_mapping_eof_pagetable_pci_mappings_wf(pre: KernelK, mid: 
         entry.is_io,
         pci_bar_function_of_page(pre.pci_bars.view(), entry.addr) == Some(f),
         pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains(f),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(install_io_4k_mapping_eof_transition_framing);
@@ -124,7 +124,7 @@ proof fn install_io_4k_mapping_eof_pagetable_pci_mappings_wf(pre: KernelK, mid: 
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at;
 }
 
-/// The CPU caches close: the new leaf joins the table under a resolving L2 entry, the table's directory entries and held L2 entries
+/// The CPU caches close: the new leaf joins the table under a resolving L2 entry, the table's directory entries and non-empty L2 entries
 /// are unchanged, and recording its BAR mapping changes no walk.
 proof fn install_io_4k_mapping_eof_cpu_caches(pre: KernelK, mid: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry)
     requires
@@ -167,7 +167,7 @@ pub(super) proof fn install_io_4k_mapping_eof(pre: KernelK, mid: KernelK, post: 
         entry.is_io,
         pci_bar_function_of_page(pre.pci_bars.view(), entry.addr) == Some(f),
         pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains(f),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some,
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         pagetable_lower_wf(mid.pt_mp, mid.pt_lower.view()),
@@ -197,7 +197,7 @@ pub(super) proof fn install_io_4k_mapping_eof(pre: KernelK, mid: KernelK, post: 
 
 /// Installs the present IO 2M leaf `entry` at `va` in the write-held `pagetable` (from `pre` to `mid`, which keeps the big-lock
 /// payload and resets its backup to the new window half) and then records the BAR mapping `(va, 2M)` under the function `f` (from
-/// `mid` to `post`, which changes only the table's PCI function array); every other held entry, table, and kernel field, the page
+/// `mid` to `post`, which changes only the table's PCI function array); every other non-empty entry, table, and kernel field, the page
 /// array included, is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn install_io_2m_mapping_eof_transition_framing(pre: KernelK, mid: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry)
@@ -216,18 +216,18 @@ pub(super) open spec fn install_io_2m_mapping_eof_transition_framing(pre: Kernel
     &&& mid_c.mapping_2m() == old_c.mapping_2m().insert(va, entry) && mid_c.mapping_4k() == old_c.mapping_4k() && mid_c.mapping_1g() == old_c.mapping_1g()
     &&& mid_c.page_closure() == old_c.page_closure()
     &&& mid_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_held_l2(l4i, l3i, l2i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_nonempty_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_nonempty_l2(l4i, l3i, l2i) == old_c.spec_nonempty_l2(l4i, l3i, l2i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_resolve_mapping_l2(l4i, l3i, l2i)] #![trigger old_c.spec_resolve_mapping_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> mid_c.spec_resolve_mapping_l2(l4i, l3i, l2i) == old_c.spec_resolve_mapping_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_held_2m_l2(l4i, l3i, l2i)]
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger mid_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> mid_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger mid_c.spec_nonempty_2m_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
-            ==> mid_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& mid_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
-    &&& mid_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == entry.addr
-    &&& mid_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io == entry.is_io
+            ==> mid_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& mid_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
+    &&& mid_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == entry.addr
+    &&& mid_c.spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io == entry.is_io
     &&& post == (KernelK { pt_mp: post.pt_mp, ..mid })
     &&& post.pt_mp.unchanged_except(&mid.pt_mp, pagetable)
     &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)] pre.pt_mp.dom().contains(r) ==> {
@@ -243,18 +243,18 @@ pub(super) open spec fn install_io_2m_mapping_eof_transition_framing(pre: Kernel
     &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..mid_c.higher })
     &&& new_c.mapping_4k() == mid_c.mapping_4k() && new_c.mapping_2m() == mid_c.mapping_2m() && new_c.mapping_1g() == mid_c.mapping_1g() && new_c.page_closure() == mid_c.page_closure()
     &&& new_c.lower == mid_c.lower
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)] new_c.spec_held_l2(l4i, l3i, l2i) == mid_c.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)] new_c.spec_held_2m_l2(l4i, l3i, l2i) == mid_c.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == mid_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_l2(l4i, l3i, l2i)] new_c.spec_nonempty_l2(l4i, l3i, l2i) == mid_c.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_nonempty_2m_l2(l4i, l3i, l2i)] new_c.spec_nonempty_2m_l2(l4i, l3i, l2i) == mid_c.spec_nonempty_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
+        new_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == mid_c.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == mid_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
     &&& new_c.kernel_l4_end() == mid_c.kernel_l4_end()
-    &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_held_l4(l4i)] new_c.higher.spec_held_l4(l4i) == mid_c.higher.spec_held_l4(l4i)
+    &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_nonempty_l4(l4i)] new_c.higher.spec_nonempty_l4(l4i) == mid_c.higher.spec_nonempty_l4(l4i)
     &&& forall|l4i: L4Index| #![trigger new_c.higher.spec_resolve_mapping_l4(l4i)] new_c.higher.spec_resolve_mapping_l4(l4i) == mid_c.higher.spec_resolve_mapping_l4(l4i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_held_l3(l4i, l3i)] new_c.higher.spec_held_l3(l4i, l3i) == mid_c.higher.spec_held_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_nonempty_l3(l4i, l3i)] new_c.higher.spec_nonempty_l3(l4i, l3i) == mid_c.higher.spec_nonempty_l3(l4i, l3i)
     &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_resolve_mapping_l3(l4i, l3i)] new_c.higher.spec_resolve_mapping_l3(l4i, l3i) == mid_c.higher.spec_resolve_mapping_l3(l4i, l3i)
-    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_held_1g_l3(l4i, l3i)] new_c.higher.spec_held_1g_l3(l4i, l3i) == mid_c.higher.spec_held_1g_l3(l4i, l3i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_nonempty_1g_l3(l4i, l3i)] new_c.higher.spec_nonempty_1g_l3(l4i, l3i) == mid_c.higher.spec_nonempty_1g_l3(l4i, l3i)
     &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i)] new_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i) == mid_c.higher.spec_resolve_mapping_1g_l3(l4i, l3i)
     &&& new_c.higher.pci.view() == mid_c.higher.pci.view().insert(f, mid_c.higher.pci.view()[f].insert((va, PageSize::SZ2m)))
     &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
@@ -272,7 +272,7 @@ proof fn install_io_2m_mapping_eof_page_tables(pre: KernelK, mid: KernelK, post:
         va_2m_valid(va),
         entry.is_io,
         pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains(f),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None,
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
     ensures
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
@@ -310,7 +310,7 @@ proof fn install_io_2m_mapping_eof_pagetable_pci_mappings_wf(pre: KernelK, mid: 
         entry.is_io,
         pci_bar_2m_chunk_of(pre.pci_bars.view(), entry.addr, f),
         pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains(f),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None,
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(install_io_2m_mapping_eof_transition_framing);
@@ -319,7 +319,7 @@ proof fn install_io_2m_mapping_eof_pagetable_pci_mappings_wf(pre: KernelK, mid: 
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
 }
 
-/// The structure caches close: the table's held directory entries, their walks, and its window records are unchanged.
+/// The structure caches close: the table's non-empty directory entries, their walks, and its window records are unchanged.
 proof fn install_io_2m_mapping_eof_structure_cache(pre: KernelK, mid: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf, entry: MapEntry)
     requires
         pre.inv(),
@@ -356,7 +356,7 @@ pub(super) proof fn install_io_2m_mapping_eof(pre: KernelK, mid: KernelK, post: 
         entry.is_io,
         pci_bar_2m_chunk_of(pre.pci_bars.view(), entry.addr, f),
         pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains(f),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_nonempty_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None,
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),

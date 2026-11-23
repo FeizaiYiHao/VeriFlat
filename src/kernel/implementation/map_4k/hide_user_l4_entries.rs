@@ -81,7 +81,7 @@ fn hide_user_l4_entry_and_end_step(krnl: &mut KernelK, pagetable: RwLockPageTabl
 /// Hide every resolving user root entry of the write-held `pagetable` in index order, ending one kernel step per hidden entry;
 /// a hide that leaves the user view unchanged records no step. `hidden` lists the recorded hides as `(l4i, pre, post)` in step
 /// order. Every CPU is listed stale for the whole table, no window of the table is locked, and no L2 entry of it is locked.
-/// Afterwards no user root entry resolves, the table maps nothing, and its held chain keeps every table page, with each
+/// Afterwards no user root entry resolves, the table maps nothing, and its non-empty chain keeps every table page, with each
 /// hidden root entry as a placeholder naming its L3 page.
 pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     pagetable_perm: Tracked<&LockPerm>) -> (hidden: Ghost<Seq<(L4Index, KernelK, KernelK)>>)
@@ -155,28 +155,28 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         forall|i4: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= i4 && pei_valid(i4)
                 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4) is None,
-        forall|i4: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_l4(i4)]
+        forall|i4: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_l4(i4)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= i4 && pei_valid(i4)
-                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_l4(i4)
+                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_l4(i4)
                     == if whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4) is Some {
-                        Some(PageEntry { addr: whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_l4(i4)->0.addr,
+                        Some(PageEntry { addr: whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_l4(i4)->0.addr,
                             perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
                     } else {
-                        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_l4(i4)
+                        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_l4(i4)
                     },
-        forall|i4: L4Index, i3: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_l3(i4, i3)]
+        forall|i4: L4Index, i3: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_l3(i4, i3)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3)
-                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_l3(i4, i3) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_l3(i4, i3),
-        forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_l2(i4, i3, i2)]
+                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_l3(i4, i3) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_l3(i4, i3),
+        forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_l2(i4, i3, i2)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2)
-                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_l2(i4, i3, i2) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_l2(i4, i3, i2),
-        forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(i4, i3, i2, i1)]
+                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_l2(i4, i3, i2) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_l2(i4, i3, i2),
+        forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_4k_l1(i4, i3, i2, i1)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1)
-                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(i4, i3, i2, i1)
-                    == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(i4, i3, i2, i1),
-        forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(i4, i3, i2)]
+                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_4k_l1(i4, i3, i2, i1)
+                    == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_4k_l1(i4, i3, i2, i1),
+        forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_2m_l2(i4, i3, i2)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2)
-                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(i4, i3, i2) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(i4, i3, i2),
+                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_nonempty_2m_l2(i4, i3, i2) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_nonempty_2m_l2(i4, i3, i2),
 {
     let ghost entry = *krnl;
     let ghost e = whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable);
@@ -250,22 +250,22 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             forall|i4: L4Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4)]
                 e.kernel_l4_end() <= i4 && pei_valid(i4) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4)
                     == if i4 < l4i { None } else { e.spec_resolve_mapping_l4(i4) },
-            forall|i4: L4Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l4(i4)]
-                e.kernel_l4_end() <= i4 && pei_valid(i4) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l4(i4)
+            forall|i4: L4Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_l4(i4)]
+                e.kernel_l4_end() <= i4 && pei_valid(i4) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_l4(i4)
                     == if i4 < l4i && e.spec_resolve_mapping_l4(i4) is Some {
-                        Some(PageEntry { addr: e.spec_held_l4(i4)->0.addr, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+                        Some(PageEntry { addr: e.spec_nonempty_l4(i4)->0.addr, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
                     } else {
-                        e.spec_held_l4(i4)
+                        e.spec_nonempty_l4(i4)
                     },
-            forall|i4: L4Index, i3: L3Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l3(i4, i3)]
-                e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l3(i4, i3) == e.spec_held_l3(i4, i3),
-            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l2(i4, i3, i2)]
-                e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_l2(i4, i3, i2) == e.spec_held_l2(i4, i3, i2),
-            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_4k_l1(i4, i3, i2, i1)]
+            forall|i4: L4Index, i3: L3Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_l3(i4, i3)]
+                e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_l3(i4, i3) == e.spec_nonempty_l3(i4, i3),
+            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_l2(i4, i3, i2)]
+                e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_l2(i4, i3, i2) == e.spec_nonempty_l2(i4, i3, i2),
+            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_4k_l1(i4, i3, i2, i1)]
                 e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1)
-                    ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_4k_l1(i4, i3, i2, i1) == e.spec_held_4k_l1(i4, i3, i2, i1),
-            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_2m_l2(i4, i3, i2)]
-                e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_held_2m_l2(i4, i3, i2) == e.spec_held_2m_l2(i4, i3, i2),
+                    ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_4k_l1(i4, i3, i2, i1) == e.spec_nonempty_4k_l1(i4, i3, i2, i1),
+            forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_2m_l2(i4, i3, i2)]
+                e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_2m_l2(i4, i3, i2) == e.spec_nonempty_2m_l2(i4, i3, i2),
         decreases 512 - l4i,
     {
         proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }

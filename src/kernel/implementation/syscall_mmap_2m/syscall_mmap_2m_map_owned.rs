@@ -118,7 +118,7 @@ use super::syscall_mmap_2m_map_owned_eof::{map_owned_2m_page_eof, map_owned_2m_p
             assert(page_ptr_2m_valid(pg_ptr)) by (nonlinear_arith) requires pg_ptr % 0x1000 == 0, (pg_ptr / 4096) % 512 == 0, pg_ptr / 4096 < NUM_PAGES;
             pre_pt.higher.wf_l4_at(indices.0);
             pre_pt.l3_links_l2_wf_at(pre_pt.spec_resolve_mapping_l4(indices.0)->0.addr, indices.1);
-            pre_pt.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(indices.0, indices.1);
+            pre_pt.higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(indices.0, indices.1);
             pre_pt.wf_l2_at(pre_pt.window_l2_page(indices.0, indices.1), indices.2);
             pre_pt.wf_mapping_2m_at(indices.0, indices.1, indices.2);
             assert(!pre_pt.page_closure().contains(pg_ptr)) by {

@@ -317,7 +317,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(
         let c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
         pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); pre.default_pagetable_wf_at(pagetable); spec_va_4k_valid_index_roundtrip(va);
         c.wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-        c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+        c.spec_resolve_mapping_4k_l1_some_implies_spec_nonempty_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
         reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip;
     };
     reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);

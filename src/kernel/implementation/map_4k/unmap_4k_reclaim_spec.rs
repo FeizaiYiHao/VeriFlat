@@ -33,16 +33,16 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& new_table.lower.window_stale_cpus == old_table.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_table.lower.l2_entry(p, i)]
         new_table.lower.l2_entry(p, i) == old_table.lower.l2_entry(p, i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_table.spec_held_l2(l4i, l3i, l2i)]
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_table.spec_nonempty_l2(l4i, l3i, l2i)]
         old_table.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-            ==> new_table.spec_held_l2(l4i, l3i, l2i) == old_table.spec_held_l2(l4i, l3i, l2i)
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_table.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            ==> new_table.spec_nonempty_l2(l4i, l3i, l2i) == old_table.spec_nonempty_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)]
         old_table.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != spec_va2index(va)
-            ==> new_table.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_table.spec_held_4k_l1(l4i, l3i, l2i, l1i)
-    &&& new_table.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_table.spec_held_2m_l2(l4i, l3i, l2i)]
+            ==> new_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == old_table.spec_nonempty_4k_l1(l4i, l3i, l2i, l1i)
+    &&& new_table.spec_nonempty_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_table.spec_nonempty_2m_l2(l4i, l3i, l2i)]
         old_table.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-            ==> new_table.spec_held_2m_l2(l4i, l3i, l2i) == old_table.spec_held_2m_l2(l4i, l3i, l2i)
+            ==> new_table.spec_nonempty_2m_l2(l4i, l3i, l2i) == old_table.spec_nonempty_2m_l2(l4i, l3i, l2i)
     &&& post.pt_mp.spec_index(pagetable).view().higher == pre.pt_mp.spec_index(pagetable).view().higher
     &&& post.pt_mp.spec_index(pagetable).view().lower_backup == if pre.pt_mp.spec_index(pagetable).wlocked() { Ghost(post.pt_lower.view().spec_index(pagetable)) } else { pre.pt_mp.spec_index(pagetable).view().lower_backup }
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
