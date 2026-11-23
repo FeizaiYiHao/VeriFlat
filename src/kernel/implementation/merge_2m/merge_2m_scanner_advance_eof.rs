@@ -64,6 +64,8 @@ pub proof fn merge_2m_scan_page_eof_implies_cursor_queue_facts(pre: Merge2mScann
         post.remaining_work(krnl.allc_4k_mp.spec_index(allocator)) + 1 == pre.remaining_work(krnl.allc_4k_mp.spec_index(allocator)),
         post.remaining_work(krnl.allc_4k_mp.spec_index(allocator)) >= 0,
 {
+    hide(Merge2mCursorQueue::wf);
+    assert(pre.queue.cursors_wf() && post.queue.cursors_wf()) by { reveal(Merge2mCursorQueue::wf); };
     let before = pre.queue.cursors.view();
     let cursor = before.spec_index(0);
     let updated = before.update(0, next);
@@ -315,17 +317,16 @@ pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner
         complete ==> !pre.returned_heads.view().contains(post.candidate.head),
         complete ==> forall|head: PageIndex| #![trigger pre.returned_heads.view().contains(head)] pre.returned_heads.view().contains(head) ==> head < post.candidate.head,
 {
-    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, next);
+    merge_2m_scan_page_eof_implies_cursor_sources(pre, post, krnl, allocator, next);
     let cursor = pre.queue.cursors.view().spec_index(0);
     let list = krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(cursor.source);
     list.wf_implies_view_len_eq_len();
     let position = list.addr_list.view().index_of(cursor.node.unwrap());
     list.view().lemma_index_contains(position);
     if cursor.source < NUM_CPUS { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.source, cursor.page); }
+    else { allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.page); }
     assert(post.candidate_prefix_valid(krnl, allocator)) by {
-        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
-        reveal(Merge2mScanner::candidate_prefix_valid); reveal(allocator_free_4k_pages_wf);
-        reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf);
+        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); reveal(Merge2mScanner::candidate_prefix_valid);
     };
 }
 
@@ -374,7 +375,7 @@ pub broadcast proof fn merge_2m_scan_page_eof_implies_unreturned_page_remains(pr
         &&& forall|source: usize| #![trigger krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source)] source <= NUM_CPUS ==>
             LinkedList::<PagePtr, 233>::values_sorted(krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view())
     }) by { reveal(Merge2mScanner::wf); };
-    merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, next);
+    merge_2m_scan_page_eof_implies_cursor_sources(pre, post, krnl, allocator, next);
     let cursor = pre.queue.cursors.view().spec_index(0);
     page_ptr_roundtrip();
     let pointer = spec_page_index2page_ptr(page);

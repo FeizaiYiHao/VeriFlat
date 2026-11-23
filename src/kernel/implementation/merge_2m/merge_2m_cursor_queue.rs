@@ -78,11 +78,11 @@ impl Merge2mCursorQueue {
                 self.cursors_wf(),
                 first <= hole < NUM_CPUS + 1,
                 self.cursors.view().to_multiset() == old(self).cursors.view().to_multiset(),
+                forall|parent: int, i: int| #![trigger self.cursors.view().spec_index(parent), self.cursors.view().spec_index(i)]
+                    first <= parent && parent != hole && (i == 2 * parent + 1 || i == 2 * parent + 2) && i < NUM_CPUS + 1 ==>
+                        self.cursors.view().spec_index(parent).page <= self.cursors.view().spec_index(i).page,
                 forall|i: int| #![trigger self.cursors.view().spec_index(i)]
-                    1 <= i < NUM_CPUS + 1 && (i - 1) / 2 >= first && (i - 1) / 2 != hole ==>
-                        self.cursors.view().spec_index((i - 1) / 2).page <= self.cursors.view().spec_index(i).page,
-                forall|i: int| #![trigger self.cursors.view().spec_index(i)]
-                    1 <= i < NUM_CPUS + 1 && (i - 1) / 2 == hole && hole > first ==>
+                    (i == 2 * hole + 1 || i == 2 * hole + 2) && i < NUM_CPUS + 1 && hole > first ==>
                         self.cursors.view().spec_index((hole - 1) / 2).page <= self.cursors.view().spec_index(i).page,
                 forall|i: int| #![trigger self.cursors.view().spec_index(i)] 0 <= i < first ==>
                     self.cursors.view().spec_index(i) == old(self).cursors.view().spec_index(i),
@@ -106,6 +106,7 @@ impl Merge2mCursorQueue {
             self.swap_cursors(hole, child);
             hole = child;
         }
+        assert(self.ordered_from(first)) by { broadcast use vstd::arithmetic::div_mod::lemma_fundamental_div_mod; };
     }
 
     pub fn new(cursors: Array<Merge2mCursor, { NUM_CPUS + 1 }>) -> (ret: Self)

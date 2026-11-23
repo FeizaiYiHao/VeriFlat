@@ -159,10 +159,8 @@ impl<const MAJOR: LockMajorId> LinkedList<usize, MAJOR> {
                 forall|value: usize| #![trigger ret.view().contains(value)] #![trigger left.view().contains(value)] #![trigger right.view().contains(value)]
                     #![trigger old(left).view().contains(value)] #![trigger old(right).view().contains(value)]
                     (ret.view().contains(value) || left.view().contains(value) || right.view().contains(value)) == (old(left).view().contains(value) || old(right).view().contains(value)),
-                forall|i: int, j: int| #![trigger ret.view().spec_index(i), left.view().spec_index(j)]
-                    0 <= i < ret.length && 0 <= j < left.length ==> ret.view().spec_index(i) <= left.view().spec_index(j),
-                forall|i: int, j: int| #![trigger ret.view().spec_index(i), right.view().spec_index(j)]
-                    0 <= i < ret.length && 0 <= j < right.length ==> ret.view().spec_index(i) <= right.view().spec_index(j),
+                ret.length > 0 && left.length > 0 ==> ret.view().last() <= left.view().spec_index(0),
+                ret.length > 0 && right.length > 0 ==> ret.view().last() <= right.view().spec_index(0),
             decreases left.length + right.length,
         {
             let take_left = if left.length == 0 { false }
