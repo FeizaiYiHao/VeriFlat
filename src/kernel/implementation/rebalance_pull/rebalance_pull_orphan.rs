@@ -13,18 +13,17 @@ use super::rebalance_pull_orphan_eof::rebalance_orphan_pull_eof;
 use super::super::syscall_schedule::syscall_schedule::schedule_current_cpu_references_wf;
 
 verus! {
-/// The first shard index at or after `cursor`, then from 0, other than `cpu_id`, whose cpu does not serve the container
-/// `ctn_ptr` of `cpu_id`, decided from that container's cpu set `cpu_set` as of the state `entry`.
+/// The first index at or after `cursor`, then from 0, other than `cpu_id`, whose cpu is not an open cpu of the cpu set
+/// `cpu_set` of the container `ctn_ptr` in the state `entry`.
 fn rebalance_orphan_pull_find_victim(cpu_set: &CpuSet, Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, cpu_id: CpuId, cursor: CpuId, Ghost(entry): Ghost<KernelK>) -> (ret: Option<CpuId>)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        entry.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
         entry.ctn_mp.dom().contains(ctn_ptr),
         container_cpu_wf(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr),
         *cpu_set == entry.cpu_set_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view(),
         cpu_set.owned_cpus.wf(),
     ensures
-        ret == orphan_victim(kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(entry).cpu_array[cpu_id as int].owning_container, cursor, cpu_id),
+        ret == cpu_set_orphan_victim(*cpu_set, cursor, cpu_id),
         ret is Some ==> {
             let victim_cpu = entry.cpu_arr.spec_index(ret->Some_0).view().view().view();
             &&& index_valid(NUM_CPUS, ret->Some_0)
@@ -32,58 +31,42 @@ fn rebalance_orphan_pull_find_victim(cpu_set: &CpuSet, Ghost(ctn_ptr): Ghost<RwL
             &&& !(victim_cpu.owning_container == ctn_ptr && !(victim_cpu.state is Off))
         },
 {
-    let ghost u = kernel_k_to_kernel_u(entry);
-    let ghost ctn = kernel_k_to_kernel_u(entry).cpu_array[cpu_id as int].owning_container;
     let mut i = cursor;
     while i < NUM_CPUS
         invariant
             index_valid(NUM_CPUS, cpu_id),
-            entry.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
             entry.ctn_mp.dom().contains(ctn_ptr),
             container_cpu_wf(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr),
             *cpu_set == entry.cpu_set_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view(),
             cpu_set.owned_cpus.wf(),
-            u == kernel_k_to_kernel_u(entry),
-            ctn == u.cpu_array[cpu_id as int].owning_container,
             cursor <= i,
-            first_orphan_shard(u, ctn, cursor as int, cpu_id) == first_orphan_shard(u, ctn, i as int, cpu_id),
+            first_cpu_set_orphan(*cpu_set, cursor as int, cpu_id) == first_cpu_set_orphan(*cpu_set, i as int, cpu_id),
         decreases NUM_CPUS - i,
     {
         let orphan = i != cpu_id && !(cpu_set.owned_cpus.contains(i) && !cpu_set.owned_cpus.is_closed(i));
-        proof {
-            container_cpu_wf_container_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, ctn_ptr, i); container_cpu_wf_cpu_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, i);
-            rebalance_orphan_pull_victim_scan_from_k(&entry, ctn_ptr, i, cpu_id, orphan);
-        }
+        proof { container_cpu_wf_cpu_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, i); }
         if orphan { return Some(i); }
         i = i + 1;
     }
-    proof { rebalance_orphan_pull_victim_scan_from_k(&entry, ctn_ptr, i, cpu_id, false); }
     let mut i: usize = 0;
     while i < cursor && i < NUM_CPUS
         invariant
             index_valid(NUM_CPUS, cpu_id),
-            entry.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
             entry.ctn_mp.dom().contains(ctn_ptr),
             container_cpu_wf(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr),
             *cpu_set == entry.cpu_set_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view(),
             cpu_set.owned_cpus.wf(),
-            u == kernel_k_to_kernel_u(entry),
-            ctn == u.cpu_array[cpu_id as int].owning_container,
             i <= cursor,
             i <= NUM_CPUS,
-            first_orphan_shard(u, ctn, cursor as int, cpu_id) is None,
-            first_orphan_shard(u, ctn, 0, cpu_id) == first_orphan_shard(u, ctn, i as int, cpu_id),
+            first_cpu_set_orphan(*cpu_set, cursor as int, cpu_id) is None,
+            first_cpu_set_orphan(*cpu_set, 0, cpu_id) == first_cpu_set_orphan(*cpu_set, i as int, cpu_id),
         decreases NUM_CPUS - i,
     {
         let orphan = i != cpu_id && !(cpu_set.owned_cpus.contains(i) && !cpu_set.owned_cpus.is_closed(i));
-        proof {
-            container_cpu_wf_container_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, ctn_ptr, i); container_cpu_wf_cpu_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, i);
-            rebalance_orphan_pull_victim_scan_from_k(&entry, ctn_ptr, i, cpu_id, orphan);
-        }
+        proof { container_cpu_wf_cpu_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, i); }
         if orphan { return Some(i); }
         i = i + 1;
     }
-    proof { if i >= NUM_CPUS { rebalance_orphan_pull_victim_scan_from_k(&entry, ctn_ptr, i, cpu_id, false); } }
     None
 }
 
@@ -501,7 +484,8 @@ fn rebalance_orphan_pull_move_head(
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
-        orphan_victim(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(old(steps).snapshot_k()).cpu_array[cpu_id as int].owning_container, cursor, cpu_id) == Some(victim),
+        container_cpu_wf(old(steps).snapshot_k().ctn_mp, old(steps).snapshot_k().cpu_set_mp, old(steps).snapshot_k().cpu_arr),
+        cpu_set_orphan_victim(old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).view(), cursor, cpu_id) == Some(victim),
         {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             let victim_cpu = old(krnl).cpu_arr.spec_index(victim).view().view().view();
@@ -510,6 +494,7 @@ fn rebalance_orphan_pull_move_head(
             &&& !(cpu.state is Off)
             &&& old(krnl).ctn_mp.dom().contains(cpu.owning_container)
             &&& old(krnl).ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler == sched_ptr
+            &&& old(krnl).ctn_mp.spec_index(cpu.owning_container).view_rodata().view().cpu_set == set_ptr
             &&& old(krnl).sched_mp.dom().contains(sched_ptr)
             &&& !(victim_cpu.owning_container == cpu.owning_container && !(victim_cpu.state is Off))
             &&& queues[victim as int].len() > 0
@@ -581,6 +566,7 @@ fn rebalance_orphan_pull_move_head(
         steps.end_kernel_step_orphan_pull(&*krnl, &*lctx, cpu_id, victim, thrd_ptr);
         no_locks_held_imply_all_objects_unlocked(krnl, lctx);
         assert(orphan_pull_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(*krnl), cpu_id, cursor, true)) by {
+            rebalance_orphan_pull_victim_from_k(&snap, snap.cpu_arr.spec_index(cpu_id).view().view().view().owning_container, cursor, cpu_id);
             rebalance_orphan_pull_step_from_u(kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(*krnl), cpu_id, cursor, victim, thrd_ptr);
             rebalance_orphan_pull_trace_pull_step(&*steps, pull_before, kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(*krnl), cpu_id, cursor);
         };
@@ -655,7 +641,8 @@ fn rebalance_orphan_pull_locked(
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
-        orphan_victim(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(old(steps).snapshot_k()).cpu_array[cpu_id as int].owning_container, cursor, cpu_id) == Some(victim),
+        container_cpu_wf(old(steps).snapshot_k().ctn_mp, old(steps).snapshot_k().cpu_set_mp, old(steps).snapshot_k().cpu_arr),
+        cpu_set_orphan_victim(old(steps).snapshot_k().cpu_set_mp.spec_index(set_ptr).view(), cursor, cpu_id) == Some(victim),
         {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             let victim_cpu = old(krnl).cpu_arr.spec_index(victim).view().view().view();

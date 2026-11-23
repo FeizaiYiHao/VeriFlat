@@ -97,6 +97,26 @@ pub open spec fn rebalance_pull_syscall_trace(trace: Seq<KernelStep>, pre: Kerne
     }
 }
 
+/// Cpu `c` is an open cpu of the cpu set `cpu_set`: owned by it and not closed.
+pub(super) open spec fn cpu_set_open_cpu(cpu_set: CpuSet, c: CpuId) -> bool {
+    cpu_set.owned_cpus.view().contains(c) && !cpu_set.owned_cpus.closed_view().contains(c)
+}
+
+/// The first index at or after `from`, other than `own`, whose cpu is not an open cpu of the cpu set `cpu_set`.
+pub(super) open spec fn first_cpu_set_orphan(cpu_set: CpuSet, from: int, own: CpuId) -> Option<CpuId>
+    decreases NUM_CPUS - from,
+{
+    if from < 0 || from >= NUM_CPUS { None }
+    else if from != own as int && !cpu_set_open_cpu(cpu_set, from as CpuId) { Some(from as CpuId) }
+    else { first_cpu_set_orphan(cpu_set, from + 1, own) }
+}
+
+/// The first index at or after `cursor`, wrapping around to 0, other than `own`, whose cpu is not an open cpu of the cpu
+/// set `cpu_set`.
+pub(super) open spec fn cpu_set_orphan_victim(cpu_set: CpuSet, cursor: CpuId, own: CpuId) -> Option<CpuId> {
+    match first_cpu_set_orphan(cpu_set, cursor as int, own) { Some(v) => Some(v), None => first_cpu_set_orphan(cpu_set, 0, own) }
+}
+
 /// The result of `rebalance_orphan_pull` from the state at entry: a live non-Off cpu of a container whose cpu set is
 /// unmarked takes the live head of the first orphan shard of its container's scheduler at or after `cursor`, wrapping
 /// around; otherwise nothing moves.

@@ -3,31 +3,45 @@ use crate::*;
 use super::rebalance_pull_spec::*;
 use super::rebalance_pull::RebalanceResult;
 verus! {
-/// Shard `i` of the scan of the container `ctn_ptr` of cpu `own`: the user view's first orphan shard at or above `i` is `i`
-/// itself when `orphan`, the one at or above `i + 1` otherwise, and none past the last shard.
-pub(super) proof fn rebalance_orphan_pull_victim_scan_from_k(krnl: &KernelK, ctn_ptr: RwLockContainerPtr, i: usize, own: CpuId, orphan: bool)
+/// From index `from` on, the first index other than `own` whose cpu is not an open cpu of the cpu set of the container
+/// `ctn_ptr` of cpu `own` is the user view's first orphan shard of that container.
+pub(super) proof fn rebalance_orphan_pull_first_orphan_from_k(krnl: &KernelK, ctn_ptr: RwLockContainerPtr, from: int, own: CpuId)
     requires
         index_valid(NUM_CPUS, own),
         krnl.cpu_arr.spec_index(own).view().view().view().owning_container == ctn_ptr,
-        i < NUM_CPUS ==> orphan == (i != own && !({
-            let c = krnl.cpu_arr.spec_index(i).view().view().view();
-            c.owning_container == ctn_ptr && !(c.state is Off)
-        })),
+        krnl.ctn_mp.dom().contains(ctn_ptr),
+        container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr),
     ensures
-        ({
-            let u = kernel_k_to_kernel_u(*krnl);
-            let ctn = u.cpu_array[own as int].owning_container;
-            &&& u.cpu_array.len() == NUM_CPUS
-            &&& i >= NUM_CPUS ==> first_orphan_shard(u, ctn, i as int, own) is None
-            &&& i < NUM_CPUS && orphan ==> first_orphan_shard(u, ctn, i as int, own) == Some(i)
-            &&& i < NUM_CPUS && !orphan ==> first_orphan_shard(u, ctn, i as int, own) == first_orphan_shard(u, ctn, i + 1, own)
-        }),
-{ kernel_cpu_projection_at(krnl, own); if i < NUM_CPUS { kernel_cpu_projection_at(krnl, i); } }
+        first_cpu_set_orphan(krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view(), from, own)
+            == first_orphan_shard(kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl).cpu_array[own as int].owning_container, from, own),
+    decreases NUM_CPUS - from,
+{
+    kernel_cpu_projection_at(krnl, own);
+    if 0 <= from < NUM_CPUS {
+        kernel_cpu_projection_at(krnl, from as CpuId);
+        container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, from as CpuId); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, from as CpuId);
+        rebalance_orphan_pull_first_orphan_from_k(krnl, ctn_ptr, from + 1, own);
+    }
+}
+
+/// The wrapping scan of the cpu set of the container `ctn_ptr` of cpu `own` from `cursor` picks the user view's orphan
+/// victim of that container.
+pub(super) proof fn rebalance_orphan_pull_victim_from_k(krnl: &KernelK, ctn_ptr: RwLockContainerPtr, cursor: CpuId, own: CpuId)
+    requires
+        index_valid(NUM_CPUS, own),
+        krnl.cpu_arr.spec_index(own).view().view().view().owning_container == ctn_ptr,
+        krnl.ctn_mp.dom().contains(ctn_ptr),
+        container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr),
+    ensures
+        cpu_set_orphan_victim(krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view(), cursor, own)
+            == orphan_victim(kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl).cpu_array[own as int].owning_container, cursor, own),
+{ rebalance_orphan_pull_first_orphan_from_k(krnl, ctn_ptr, cursor as int, own); rebalance_orphan_pull_first_orphan_from_k(krnl, ctn_ptr, 0, own); }
 
 /// Each return path's entry-state K facts give its value as the user-view result.
 pub(super) proof fn rebalance_orphan_pull_result_from_k(krnl: &KernelK, cpu_id: CpuId, cursor: CpuId, victim: Option<CpuId>, ret: RebalanceResult)
     requires
         index_valid(NUM_CPUS, cpu_id),
+        container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr),
         {
             let c = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
             let ro = krnl.ctn_mp.spec_index(c.owning_container).view_rodata().view();
@@ -36,7 +50,7 @@ pub(super) proof fn rebalance_orphan_pull_result_from_k(krnl: &KernelK, cpu_id: 
             let live = !krnl.cpu_arr.spec_index(cpu_id).view().being_killed() && !(c.state is Off) && !krnl.cpu_set_mp.spec_index(ro.cpu_set).being_killed();
             let ready = live && victim is Some && queues[victim->Some_0 as int].len() > 0;
             &&& krnl.ctn_mp.dom().contains(c.owning_container)
-            &&& live ==> victim == orphan_victim(kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container, cursor, cpu_id)
+            &&& live ==> victim == cpu_set_orphan_victim(krnl.cpu_set_mp.spec_index(ro.cpu_set).view(), cursor, cpu_id)
             &&& ready ==> krnl.thrd_mp.dom().contains(head)
             &&& (ret is Pulled) == (ready && !krnl.thrd_mp.spec_index(head).being_killed())
             &&& ret is Pulled ==> ret->Pulled_thread_ptr == head
@@ -46,7 +60,7 @@ pub(super) proof fn rebalance_orphan_pull_result_from_k(krnl: &KernelK, cpu_id: 
 {
     let c = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
     let queues = scheduler_shards_of(krnl.sched_mp.spec_index(krnl.ctn_mp.spec_index(c.owning_container).view_rodata().view().scheduler));
-    kernel_cpu_projection_at(krnl, cpu_id); kernel_container_projection_at(krnl, c.owning_container);
+    kernel_cpu_projection_at(krnl, cpu_id); kernel_container_projection_at(krnl, c.owning_container); rebalance_orphan_pull_victim_from_k(krnl, c.owning_container, cursor, cpu_id);
     if victim is Some && queues[victim->Some_0 as int].len() > 0 && krnl.thrd_mp.dom().contains(queues[victim->Some_0 as int][0]) {
         kernel_thread_projection_at(krnl, queues[victim->Some_0 as int][0]);
     }
