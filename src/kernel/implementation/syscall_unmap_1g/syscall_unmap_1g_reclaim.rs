@@ -13,6 +13,10 @@ use crate::kernel::implementation::map_4k::reclaim_held_1g_page::reclaim_held_1g
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota;
 
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap_1g_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap_1g_steps_from_k;
 verus! {
 /// After every page of `range` was hidden and flushed in the write-held page table `pagetable`: reclaim each page, which records no step, and refund the 1G quota the reclaims left pending on the thread. Steps recorded from `start` stay range steps; only the range's 1G leaves change. `hv`
 /// is the table record before the flush, whose held root and L3 entries resolve; the record differs from it only in its stale-CPU set, and reclaiming 1G leaves keeps every held root and L3 entry.
@@ -231,8 +235,9 @@ pub(super) fn unmap_1g_reclaim_range(
     let ghost refund_before = steps.view();
     let ghost refund_k = *krnl;
     let ghost refund_lctx = *lctx;
-    refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
+    let Ghost(refunds) = refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
+        refund_unmap_1g_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() =~= old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         unmap_1g_range_steps_from_refund(&*steps, refund_before, start, cpu_id, thrd_ptr, prc_ptr, ctn_ptr, refund_progress);
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == entry.mapping_4k() && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == entry.mapping_2m())

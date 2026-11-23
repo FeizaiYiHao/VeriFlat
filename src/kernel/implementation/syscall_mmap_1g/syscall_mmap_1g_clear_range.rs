@@ -540,8 +540,9 @@ fn mmap_1g_flush_and_reclaim_range(
     let ghost flush_entry = *krnl;
     let ghost flush_lctx = *lctx;
     let ghost flush_before = steps.view();
-    flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
+    let Ghost(snaps) = flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
     proof {
+        unmap_4k_tlb_flush_steps_from_k(steps.view(), flush_before.len() as int, snaps, &flush_entry, &flush_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, pcid, snaps.len() as int);
         mmap_1g_tlb_flush_range_steps_from_k(&*steps, flush_before, start, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);

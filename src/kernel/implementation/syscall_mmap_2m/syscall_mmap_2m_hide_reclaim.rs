@@ -409,8 +409,9 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     }
     let ghost flush_lctx = *lctx;
-    flush_pagetable_tlbs::<false>(krnl, pagetable_ptr, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
+    let Ghost(snaps) = flush_pagetable_tlbs::<false>(krnl, pagetable_ptr, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
     proof {
+        unmap_4k_tlb_flush_steps_from_k(steps.view(), old(steps).view().len() as int, snaps, old(krnl), &flush_lctx, cpu_id, thrd_ptr, pagetable_ptr, ctn_ptr, pcid, snaps.len() as int);
         process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, thrd_ptr); process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, prc_ptr);
         mmap_2m_tlb_flush_range_steps_from_k(&*steps, old(steps).view(), start, old(krnl), &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable_ptr, *va_range, phase);
     }

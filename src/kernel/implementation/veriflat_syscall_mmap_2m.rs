@@ -11,6 +11,8 @@ use veriflat_map_4k::map_4k::hide_empty_l1_in_window::hide_empty_l1_in_window;
 use veriflat_map_4k::map_4k::reclaim_hidden_l1_page_in_window::reclaim_hidden_l1_page_in_window;
 use veriflat_map_4k::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 
+#[cfg(verus_keep_ghost)]
+use veriflat_map_4k::map_4k::unmap_4k_trace::unmap_4k_tlb_flush_steps_from_k;
 pub mod syscall_mmap_2m;
 
 verus! {

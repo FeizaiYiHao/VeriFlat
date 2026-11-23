@@ -8,4 +8,4 @@ pub use drain_2m_cache_batch::*;
 pub mod refund_unmap_2m_quota;
 pub use refund_unmap_2m_quota::*;
 
-mod refund_unmap_2m_quota_trace;
+pub mod refund_unmap_2m_quota_trace;

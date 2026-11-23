@@ -186,9 +186,10 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
     let ghost hidden_steps = steps.view();
     let ghost flush_entry = *krnl;
     let ghost flush_lctx = *lctx;
-    flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cpu_perm), Tracked(&pagetable_perm));
+    let Ghost(snaps) = flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cpu_perm), Tracked(&pagetable_perm));
     let ghost flush_steps_snap = *steps;
     proof {
+        unmap_4k_tlb_flush_steps_from_k(steps.view(), hidden_steps.len() as int, snaps, &flush_entry, &flush_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, pcid, snaps.len() as int);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
     }
     // flushed step

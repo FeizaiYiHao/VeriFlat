@@ -7,6 +7,8 @@ use veriflat_alloc_page::free_4k_page::{drain_4k_cache_batch, refund_unmap_4k_qu
 use veriflat_alloc_page::reclaim_dangling_thread::{take_over_dangling_caller, wake_waiting_reply_caller, drop_endpoint_descriptor, reclaim_killed_thread_chain};
 use veriflat_map_4k::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 
+#[cfg(verus_keep_ghost)]
+use veriflat_map_4k::map_4k::unmap_4k_trace::unmap_4k_tlb_flush_steps_from_k;
 pub mod syscall_thread_exit;
 
 verus! {

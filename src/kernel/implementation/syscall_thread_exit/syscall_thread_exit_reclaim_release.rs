@@ -20,6 +20,18 @@ use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota;
 
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_4k_page::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_4k_page::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_2m_page::refund_unmap_2m_quota_trace::refund_unmap_2m_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota_trace::refund_unmap_2m_steps_from_k;
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap_1g_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap_1g_steps_from_k;
 verus! {
 /// Flush the process's PCID from every cpu once, dropping every cpu from the page table's stale record, then record the flush.
 pub(super) fn thread_exit_reclaim_flush(
@@ -206,8 +218,9 @@ pub(super) fn thread_exit_reclaim_flush(
     let ghost entry_flush_k = *krnl;
     let ghost entry_flush_lctx = *lctx;
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
+    let Ghost(snaps) = flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
     proof {
+        unmap_4k_tlb_flush_steps_from_k(steps.view(), flush_before.len() as int, snaps, &entry_flush_k, &entry_flush_lctx, cpu_id, thrd_ptr, pagetable, ctn_ptr, pcid, snaps.len() as int);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_flush_step_pre_from_k(&entry_flush_k, &entry_flush_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, pcid);
             thread_exit_trace_from_tlb_flush(&*steps, flush_before, start, pre, kernel_k_to_kernel_u(entry_flush_k), cpu_id, thrd_ptr, prc_ptr, ctn_ptr, pcid);
@@ -444,20 +457,24 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         Tracked(&mut *steps), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm));
     let ghost reclaimed_k = *krnl;
     proof { assert(entry_lctx.container_lock_map().dom().contains(ctn_ptr) && entry_lctx.process_lock_map().dom().contains(prc_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id) && lctx.pagetable_lock_map().dom().contains(pagetable)); }
-    let ghost refund_4k_before = steps.view();
+    let ghost (refund_4k_before, refund_4k_k, refund_4k_lctx) = (steps.view(), *krnl, *lctx);
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect_4k, &mut direct_4k, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
-    proof { thread_exit_trace_from_refund(&*steps, refund_4k_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr); }
-    let ghost refund_2m_before = steps.view();
-    refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
+    let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect_4k, &mut direct_4k, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
+        refund_unmap_4k_steps_from_k(steps.view(), refund_4k_before.len() as int, refunds, &refund_4k_k, &refund_4k_lctx, thrd_ptr, refunds.len() as int);
+        thread_exit_trace_from_refund(&*steps, refund_4k_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr); }
+    let ghost (refund_2m_before, refund_2m_k, refund_2m_lctx) = (steps.view(), *krnl, *lctx);
+    let Ghost(refunds) = refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
+    proof {
+        refund_unmap_2m_steps_from_k(steps.view(), refund_2m_before.len() as int, refunds, &refund_2m_k, &refund_2m_lctx, thrd_ptr, refunds.len() as int);
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         thread_exit_trace_from_refund(&*steps, refund_2m_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr);
     }
-    let ghost refund_1g_before = steps.view();
-    refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
+    let ghost (refund_1g_before, refund_1g_k, refund_1g_lctx) = (steps.view(), *krnl, *lctx);
+    let Ghost(refunds) = refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
+        refund_unmap_1g_steps_from_k(steps.view(), refund_1g_before.len() as int, refunds, &refund_1g_k, &refund_1g_lctx, thrd_ptr, refunds.len() as int);
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
@@ -821,10 +838,11 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).next_mapped_4k_from(cursor);
     }
     proof { assert(krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); broadcast use iova_4k_valid_index_roundtrip; }; }
-    let ghost refund_before = steps.view();
+    let ghost (refund_before, refund_k, refund_lctx) = (steps.view(), *krnl, *lctx);
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
+    let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
+        refund_unmap_4k_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         thread_exit_trace_from_refund(&*steps, refund_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr);
     }
