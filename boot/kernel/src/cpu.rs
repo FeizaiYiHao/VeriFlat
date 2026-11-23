@@ -130,6 +130,12 @@ pub struct Cpu {
     /// Whether the timer handler re-arms the one-shot LAPIC timer (false while the CPU is Off).
     pub timer_on: bool,
 
+    /// Timer ticks this CPU took from user mode; every `ORPHAN_PULL_TICKS`-th one runs the orphan pull.
+    pub tick_count: u64,
+
+    /// The shard index the next orphan pull scans from; advanced by one modulo `NUM_CPUS` per pull.
+    pub rebalance_cursor: usize,
+
     /// Set by every running-to-idle IPI (`platform::handle_running_to_idle_ipi`) together with
     /// `running_to_idle_ack_owed`, so outside the handler the two are equal; cleared with it by the
     /// idle loop when it acknowledges (`platform::acknowledge_running_to_idle`).
@@ -200,6 +206,8 @@ impl Cpu {
             frame_top: 0,
             verified_cpu: ptr::null(),
             timer_on: false,
+            tick_count: 0,
+            rebalance_cursor: 0,
             running_to_idle_pending: AtomicBool::new(false),
             running_to_idle_ack_owed: AtomicBool::new(false),
             wake_seen: AtomicBool::new(false),
