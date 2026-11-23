@@ -290,11 +290,6 @@ impl KernelK {
             higher.lower_backup = Ghost(self.pt_lower.view().spec_index(root));
         }
         proof {
-            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k()
-                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m()
-                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g());
-            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
-                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
             assert(unlock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i)) by {
                 reveal(unlock_pagetable_window_eof_transition_framing);
             };

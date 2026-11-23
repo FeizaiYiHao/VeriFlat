@@ -65,9 +65,10 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
 {
     reveal(mmap_4k_directory_step_pre); reveal(mmap_4k_directory_step); reveal(kernel_thread_quota_4k_changed);
     broadcast use spec_index2va_2m_valid, Set::lemma_map_by_contains;
-    spec_va_4k_index_roundtrip_at(spec_index2va((l4i, l3i, lo, 0usize)), l4i, l3i, lo, 0usize);
     if pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill {
-        assert(va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) }));
+        assert(va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) })) by {
+            spec_va_4k_index_roundtrip_at(spec_index2va((l4i, l3i, lo, 0usize)), l4i, l3i, lo, 0usize);
+        };
     }
     if write_held { kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }
     else { kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }

@@ -1392,6 +1392,7 @@ pub(crate) proof fn steps_extended_implies_kill_process_retire_count_monotone(be
     ensures kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id) <= kill_process_retire_count(after.subrange(start, after.len() as int), cpu_id),
     decreases after.len() - before.len(),
 {
+    hide(kill_process_retire_step);
     reveal(kernel_steps_prefix_unchanged);
     if after.len() == before.len() { assert(after.subrange(start, after.len() as int) =~= before.subrange(start, before.len() as int)); }
     else {
