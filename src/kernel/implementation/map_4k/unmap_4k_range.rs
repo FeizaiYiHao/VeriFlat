@@ -9,6 +9,8 @@ use super::unmap_4k_reclaim_one::reclaim_unmapped_4k_page_in_window;
 use super::unmap_4k_range_eol::*;
 use super::refund_unmap_4k_quota_to_thread::refund_unmap_4k_quota_to_thread;
 
+#[cfg(verus_keep_ghost)]
+use crate::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
 verus! {
 /// First phase of `unmap_4k_range`: clear the present bit of each page of `range` in order, recording one step per page,
 /// while every 2M window of the range stays held; the cleared leaves keep their entries otherwise.
@@ -680,9 +682,10 @@ pub fn unmap_4k_range(
             process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         }
     }
-    let ghost refund_before = steps.view();
-    refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
+    let ghost (refund_before, refund_k, refund_lctx) = (steps.view(), *krnl, *lctx);
+    let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
+        refund_unmap_4k_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         unmap_4k_range_steps_from_refund(&*steps, refund_before, old(steps).view().len() as int, cpu_id, thrd_ptr, prc_ptr, ctn_ptr, refund_progress);
     }

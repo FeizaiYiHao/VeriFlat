@@ -5,4 +5,4 @@ mod free_quota_1g_eof;
 pub mod refund_unmap_1g_quota;
 pub use refund_unmap_1g_quota::*;
 
-mod refund_unmap_1g_quota_trace;
+pub mod refund_unmap_1g_quota_trace;

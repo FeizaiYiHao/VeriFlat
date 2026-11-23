@@ -2,8 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use super::free_quota_4k::return_free_quota_4k;
 #[cfg(verus_keep_ghost)]
-use super::refund_unmap_4k_quota_trace::refund_unmap_4k_step_pre_from_k;
-#[cfg(verus_keep_ghost)]
 use super::refund_unmap_4k_quota_eof::refund_unmap_4k_quota_owner_at_depth_implies_parent_is_previous_chain_entry;
 
 verus! {
@@ -203,7 +201,8 @@ fn refund_unmap_4k_quota_at_depth(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr,
     if depth > 0 { parent.unwrap() } else { owner }
 }
 
-pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>)
+pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>) -> (refunds: Ghost<Seq<KernelK>>)
     requires
         old(steps).snapshot_k() == *old(krnl),
         old(krnl).inv(),
@@ -233,38 +232,19 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
         *old(direct) == 0 ==> final(steps).view().len() <= old(steps).view().len() + MAX_CONTAINER_TREE_DEPTH,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> {
-            let old_u = final(steps).view()[j].old_u;
-            let thread = old(krnl).thrd_mp.spec_index(thrd_ptr).view();
-            &&& kernel_u_container_quota_4k_increased(old_u, final(steps).view()[j].new_u, thread.owning_container)
-            &&& old_u.cpu_array[old(lctx).cpu_id() as int].lock_state is WriteLocked
-            &&& old_u.cpu_array[old(lctx).cpu_id() as int].current_thread == old(krnl).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_thread
-            &&& old_u.thread_map.dom().contains(thrd_ptr)
-            &&& old_u.thread_map[thrd_ptr].lock_state is WriteLocked
-            &&& old_u.thread_map[thrd_ptr].owning_container == thread.owning_container
-            &&& old_u.thread_map[thrd_ptr].owning_proc == thread.owning_proc
-            &&& old_u.thread_map[thrd_ptr].syscall_progress == thread.syscall_progress.view()
-            &&& old_u.process_map.dom().contains(thread.owning_proc)
-            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), thread.owning_proc, TypedLockMode::Write) ==> old_u.process_map[thread.owning_proc].lock_state is WriteLocked
-            &&& !old(krnl).prc_mp.spec_index(thread.owning_proc).view().zombie && typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(krnl).prc_mp.spec_index(thread.owning_proc).view().pagetable, TypedLockMode::Write) ==> {
-                &&& old_u.process_map[thread.owning_proc].pagetable is Some
-                &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is WriteLocked
-            }
-            &&& !old(krnl).prc_mp.spec_index(thread.owning_proc).view().zombie && typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(krnl).prc_mp.spec_index(thread.owning_proc).view().pagetable, TypedLockMode::Read) ==> {
-                &&& old_u.process_map[thread.owning_proc].pagetable is Some
-                &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is ReadLocked
-            }
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), thread.owning_container, TypedLockMode::Write) ==> {
-                &&& old_u.container_map.dom().contains(thread.owning_container)
-                &&& old_u.container_map[thread.owning_container].lock_state is WriteLocked
-            }
-            &&& old_u.cpu_array[old(lctx).cpu_id() as int] == kernel_k_to_kernel_u(*old(krnl)).cpu_array[old(lctx).cpu_id() as int]
-            &&& forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)] old(lctx).process_lock_map().dom().contains(p) ==> {
-                &&& old_u.process_map.dom().contains(p)
-                &&& old_u.process_map[p].lock_state == kernel_k_to_kernel_u(*old(krnl)).process_map[p].lock_state
-                &&& old_u.process_map[p].killed == kernel_k_to_kernel_u(*old(krnl)).process_map[p].killed
-                &&& old_u.process_map[p].owning_container == kernel_k_to_kernel_u(*old(krnl)).process_map[p].owning_container
-            }
+        final(steps).view().len() == old(steps).view().len() + refunds.view().len(),
+        forall|k: int| #![trigger refunds.view()[k]] 0 <= k < refunds.view().len() ==> {
+            let step = final(steps).view()[old(steps).view().len() + k];
+            &&& step.old_u == kernel_k_to_kernel_u(refunds.view()[k])
+            &&& kernel_u_container_quota_4k_increased(step.old_u, step.new_u, old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container)
+            &&& refunds.view()[k].inv()
+            &&& typed_lock_maps_aligned(&refunds.view()[k], old(lctx))
+            &&& refunds.view()[k].thrd_mp.dom().contains(thrd_ptr)
+            &&& refunds.view()[k].thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: refunds.view()[k].thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
+                indirect_free_quota_pending_4k: refunds.view()[k].thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() })
+            &&& held_processes_unchanged(old(krnl).prc_mp, refunds.view()[k].prc_mp, old(lctx))
+            &&& held_cpus_unchanged(old(krnl).cpu_arr, refunds.view()[k].cpu_arr, old(lctx))
+            &&& refunds.view()[k].cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int]
         },
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
@@ -306,6 +286,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
     assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == thread_depth && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by {
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, owner);
     };
+    let ghost mut refunds: Seq<KernelK> = Seq::empty();
     let mut remaining = thread_depth + 1;
     while remaining > 0
         invariant
@@ -315,38 +296,19 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
             *old(direct) == 0 && remaining <= thread_depth ==> steps.view().len() + remaining <= old(steps).view().len() + thread_depth,
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
-            forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> {
-                let old_u = steps.view()[j].old_u;
-                let thread = old(krnl).thrd_mp.spec_index(thrd_ptr).view();
-                &&& kernel_u_container_quota_4k_increased(old_u, steps.view()[j].new_u, thread.owning_container)
-                &&& old_u.cpu_array[old(lctx).cpu_id() as int].lock_state is WriteLocked
-                &&& old_u.cpu_array[old(lctx).cpu_id() as int].current_thread == old(krnl).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_thread
-                &&& old_u.thread_map.dom().contains(thrd_ptr)
-                &&& old_u.thread_map[thrd_ptr].lock_state is WriteLocked
-                &&& old_u.thread_map[thrd_ptr].owning_container == thread.owning_container
-                &&& old_u.thread_map[thrd_ptr].owning_proc == thread.owning_proc
-                &&& old_u.thread_map[thrd_ptr].syscall_progress == thread.syscall_progress.view()
-                &&& old_u.process_map.dom().contains(thread.owning_proc)
-                &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), thread.owning_proc, TypedLockMode::Write) ==> old_u.process_map[thread.owning_proc].lock_state is WriteLocked
-                &&& !old(krnl).prc_mp.spec_index(thread.owning_proc).view().zombie && typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(krnl).prc_mp.spec_index(thread.owning_proc).view().pagetable, TypedLockMode::Write) ==> {
-                    &&& old_u.process_map[thread.owning_proc].pagetable is Some
-                    &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is WriteLocked
-                }
-                &&& !old(krnl).prc_mp.spec_index(thread.owning_proc).view().zombie && typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(krnl).prc_mp.spec_index(thread.owning_proc).view().pagetable, TypedLockMode::Read) ==> {
-                    &&& old_u.process_map[thread.owning_proc].pagetable is Some
-                    &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is ReadLocked
-                }
-                &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), thread.owning_container, TypedLockMode::Write) ==> {
-                    &&& old_u.container_map.dom().contains(thread.owning_container)
-                    &&& old_u.container_map[thread.owning_container].lock_state is WriteLocked
-                }
-                &&& old_u.cpu_array[old(lctx).cpu_id() as int] == kernel_k_to_kernel_u(*old(krnl)).cpu_array[old(lctx).cpu_id() as int]
-                &&& forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)] old(lctx).process_lock_map().dom().contains(p) ==> {
-                    &&& old_u.process_map.dom().contains(p)
-                    &&& old_u.process_map[p].lock_state == kernel_k_to_kernel_u(*old(krnl)).process_map[p].lock_state
-                    &&& old_u.process_map[p].killed == kernel_k_to_kernel_u(*old(krnl)).process_map[p].killed
-                    &&& old_u.process_map[p].owning_container == kernel_k_to_kernel_u(*old(krnl)).process_map[p].owning_container
-                }
+            steps.view().len() == old(steps).view().len() + refunds.len(),
+            forall|k: int| #![trigger refunds[k]] 0 <= k < refunds.len() ==> {
+                let step = steps.view()[old(steps).view().len() + k];
+                &&& step.old_u == kernel_k_to_kernel_u(refunds[k])
+                &&& kernel_u_container_quota_4k_increased(step.old_u, step.new_u, old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container)
+                &&& refunds[k].inv()
+                &&& typed_lock_maps_aligned(&refunds[k], old(lctx))
+                &&& refunds[k].thrd_mp.dom().contains(thrd_ptr)
+                &&& refunds[k].thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: refunds[k].thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
+                    indirect_free_quota_pending_4k: refunds[k].thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() })
+                &&& held_processes_unchanged(old(krnl).prc_mp, refunds[k].prc_mp, old(lctx))
+                &&& held_cpus_unchanged(old(krnl).cpu_arr, refunds[k].cpu_arr, old(lctx))
+                &&& refunds[k].cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int]
             },
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
@@ -404,9 +366,11 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
         decreases remaining,
     {
         let depth = remaining - 1;
-        proof { refund_unmap_4k_step_pre_from_k(&*krnl, &*old(krnl), &*lctx, &*old(lctx), thrd_ptr); }
+        let ghost (krnl_i, len_i) = (*krnl, steps.view().len());
         owner = refund_unmap_4k_quota_at_depth(krnl, thrd_ptr, owner, depth, thread_depth, indirect, direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
+        proof { if steps.view().len() > len_i { refunds = refunds.push(krnl_i); } }
         remaining = depth;
     }
+    Ghost(refunds)
 }
 }

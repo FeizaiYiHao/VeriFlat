@@ -27,6 +27,18 @@ use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota;
 
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_4k_page::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_4k_page::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_2m_page::refund_unmap_2m_quota_trace::refund_unmap_2m_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota_trace::refund_unmap_2m_steps_from_k;
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap_1g_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota_trace::refund_unmap_1g_steps_from_k;
 verus! {
 /// Hide every user root entry of the target's write-locked page table, which lists every cpu stale, each root in its own
 /// step; the lower half, the window locks, and every held entry under the roots stay.
@@ -497,8 +509,9 @@ pub(crate) fn kill_reclaim_held_leaves(
             kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         }
-        refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+        let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {
+            refund_unmap_4k_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
             vstd::assert_seqs_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view(), entry_thread.indirect_free_quota_pending_4k.view());
             kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true },
                 entry_thread.owning_container, scope);
@@ -511,8 +524,9 @@ pub(crate) fn kill_reclaim_held_leaves(
             kill_step_pre_from_k(&refund_2m_k, &refund_2m_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
             kill_refund_pre_from_k(&refund_2m_k, target, entry_thread.owning_container);
         }
-        refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+        let Ghost(refunds) = refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {
+            refund_unmap_2m_steps_from_k(steps.view(), refund_2m_before.len() as int, refunds, &refund_2m_k, &refund_2m_lctx, thrd_ptr, refunds.len() as int);
             vstd::assert_seqs_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view(), entry_thread.indirect_free_quota_pending_2m.view());
             kill_trace_from_refund(&*steps, refund_2m_before, start, pre, kernel_k_to_kernel_u(refund_2m_k), cpu_id, ctx, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true },
                 entry_thread.owning_container, scope);
@@ -524,8 +538,9 @@ pub(crate) fn kill_reclaim_held_leaves(
             kill_step_pre_from_k(&refund_1g_k, &refund_1g_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
             kill_refund_pre_from_k(&refund_1g_k, target, entry_thread.owning_container);
         }
-        refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+        let Ghost(refunds) = refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {
+            refund_unmap_1g_steps_from_k(steps.view(), refund_1g_before.len() as int, refunds, &refund_1g_k, &refund_1g_lctx, thrd_ptr, refunds.len() as int);
             vstd::assert_seqs_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view(), entry_thread.indirect_free_quota_pending_1g.view());
             kill_trace_from_refund(&*steps, refund_1g_before, start, pre, kernel_k_to_kernel_u(refund_1g_k), cpu_id, ctx, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true },
                 entry_thread.owning_container, scope);
@@ -726,8 +741,9 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         }
-        refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+        let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {
+            refund_unmap_4k_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
             assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_thread.indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
             kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true },
                 entry_thread.owning_container, scope);

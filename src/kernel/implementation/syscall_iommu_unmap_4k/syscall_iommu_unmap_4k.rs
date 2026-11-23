@@ -6,6 +6,8 @@ use super::syscall_iommu_unmap_4k_range::{iommu_unmap_4k_hide_range, iommu_unmap
 #[cfg(verus_keep_ghost)]
 use super::syscall_iommu_unmap_4k_trace::*;
 
+#[cfg(verus_keep_ghost)]
+use crate::refund_unmap_4k_quota_trace::refund_unmap_4k_steps_from_k;
 verus! {
 /// Unmap the 4K pages `iova..iova + range * 4K` from the running process's IOMMU table. Success records an entering step that
 /// write-locks the cpu, container, process, thread, and IOMMU table; one step per hidden leaf; one IOTLB flush step; one step
@@ -85,8 +87,11 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let ghost refund_k = *krnl;
     let ghost refund_lctx = *lctx;
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm));
-    proof { iommu_unmap_4k_trace_refund_steps(refund_before, steps.view(), &refund_k, &refund_lctx, cpu_id, thrd_ptr, r); }
+    let Ghost(refunds) = refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm));
+    proof {
+        refund_unmap_4k_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
+        iommu_unmap_4k_trace_refund_steps(refund_before, steps.view(), &refund_k, &refund_lctx, cpu_id, thrd_ptr, r);
+    }
     let ghost exit_start = *krnl;
     let ghost exit_before = steps.view();
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));

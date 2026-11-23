@@ -20,6 +20,10 @@ use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::map_4k::unmap_4k_flush_va::flush_pagetable_tlbs_va_range;
 
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_2m_page::refund_unmap_2m_quota_trace::refund_unmap_2m_steps_from_k;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota_trace::refund_unmap_2m_steps_from_k;
 verus! {
 /// Unmap every page of `range`, each a present 2M RAM leaf of the read-held page table `pagetable` whose window this thread holds
 /// among the 2M windows of `cover`, the 4K range covering `range`: clear each leaf, flush the TLBs, then reclaim each page and
@@ -419,9 +423,10 @@ pub(super) fn unmap_2m_range(
             process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         }
     }
-    let ghost refund_before = steps.view();
-    refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
+    let ghost (refund_before, refund_k, refund_lctx) = (steps.view(), *krnl, *lctx);
+    let Ghost(refunds) = refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
+        refund_unmap_2m_steps_from_k(steps.view(), refund_before.len() as int, refunds, &refund_k, &refund_lctx, thrd_ptr, refunds.len() as int);
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() =~= old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         unmap_2m_range_steps_from_refund(&*steps, refund_before, old(steps).view().len() as int, cpu_id, thrd_ptr, prc_ptr, ctn_ptr, refund_progress);
     }
