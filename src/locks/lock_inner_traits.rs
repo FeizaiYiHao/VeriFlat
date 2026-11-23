@@ -45,6 +45,8 @@ pub trait KillableLockInner: SpinLockInner {
 pub trait RwLockInner: SpinLockInner {
     fn rlock(&self, cpu_id: CpuId);
     fn runlock(&self, cpu_id: CpuId);
+    /// Read-locks the slot of `cpu_id` unless the lock is marked; `false` leaves the lock unchanged.
+    fn rlock_unless_killed(&self, cpu_id: CpuId) -> bool;
     /// Turns the caller's write lock into the only read lock, held by `cpu_id`.
     fn downgrade(&self, cpu_id: CpuId);
 }

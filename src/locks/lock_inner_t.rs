@@ -185,7 +185,7 @@ struct ReaderSlot(AtomicUsize);
 
 /// TCB: big-reader lock. A reader takes only the slot of its own cpu; a writer takes every slot in increasing cpu order,
 /// so a reader never touches a cache line written by another reader. Slot 0 alone carries the kill mark, which only a
-/// writer holding every slot sets or clears; readers do not check it.
+/// writer holding every slot sets or clears; `rlock` readers do not check it, `rlock_unless_killed` readers do.
 #[verifier::external_body]
 #[repr(C, align(64))]
 pub struct PerCpuReaderSlots {
@@ -282,6 +282,36 @@ impl RwLockInner for PerCpuReaderSlots {
         loop {
             let v = slot.load(Ordering::Relaxed);
             if v & !SLOT_KILLED == SLOT_FREE && slot.compare_exchange_weak(v, v | SLOT_READER, Ordering::Acquire, Ordering::Relaxed).is_ok() { return; }
+            core::hint::spin_loop();
+        }
+    }
+
+    /// Read-locks the slot of `cpu_id` unless slot 0 carries the kill mark; `false` leaves the lock unchanged. Only a
+    /// writer holding every slot, this one included, sets or clears the mark, so the mark read once this slot is held stays
+    /// valid while it is held; while the slot is busy the mark is polled, so a reader never waits on a marked set.
+    #[verifier::external_body]
+    #[inline(never)]
+    fn rlock_unless_killed(&self, cpu_id: CpuId) -> bool {
+        let slot = &self.slots[cpu_id].0;
+        let mark = &self.slots[0].0;
+        loop {
+            let v = slot.load(Ordering::Relaxed);
+            if v & !SLOT_KILLED == SLOT_FREE {
+                // Only slot 0 carries the mark, so this test fires only for cpu 0, whose own slot holds it.
+                if v & SLOT_KILLED != 0 {
+                    fence(Ordering::Acquire);
+                    return false;
+                }
+                if slot.compare_exchange_weak(v, v | SLOT_READER, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                    if cpu_id == 0 || mark.load(Ordering::Relaxed) & SLOT_KILLED == 0 { return true; }
+                    // Marked before this acquisition: give the slot back, keeping a waiting writer's pending bit.
+                    slot.fetch_and(!SLOT_READER, Ordering::Release);
+                    return false;
+                }
+            } else if mark.load(Ordering::Relaxed) & SLOT_KILLED != 0 {
+                fence(Ordering::Acquire);
+                return false;
+            }
             core::hint::spin_loop();
         }
     }
