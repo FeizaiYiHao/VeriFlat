@@ -118,7 +118,8 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& typed_lock_map_contains_mode(final(lctx).pcid_allocator_lock_map(), x.pcid_allocator_ptr, TypedLockMode::Write)
             &&& x.pcid_allocator_lock_perm.view().state() is WriteLock && x.pcid_allocator_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& x.pcid_allocator_lock_perm.view().lock_id() == final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).locking_thread()->Write_lock_id
-            &&& forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
+            &&& forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id)
+                ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).process_lock_map().dom() =~= set![x.parent_ptr]
             &&& final(lctx).thread_lock_map().dom() =~= set![x.current_thread_ptr]
@@ -204,7 +205,8 @@ pub(super) fn new_process_lock_cpu_owner(
         proof {
             assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), None, None, None, None);
-            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, initial_regs, ep_idx, with_iommu, RetValueType::ErrorProcessKilled);
+            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, initial_regs, ep_idx, with_iommu, RetValueType::ErrorProcessKilled);
             new_process_result_from_k(old(krnl), cpu_id, va, range, ep_idx, with_iommu, RetValueType::ErrorProcessKilled, 0);
         }
         return Err(RetValueType::ErrorProcessKilled);
@@ -228,7 +230,6 @@ pub(super) fn new_process_lock_cpu_owner(
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &unlocked_k)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert(unlocked_k == KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*krnl });
     }
     Ok(NewProcessOwnerLocked {
         container_ptr: ctn_ptr, parent_ptr, current_thread_ptr: current_thrd_ptr, scheduler_ptr: sched_ptr, allocator_ptr: allc_ptr, pcid_allocator_ptr: pcid_allc_ptr, source_range, cpu_lock_perm: Tracked(cpu_lock_perm),
@@ -571,18 +572,22 @@ pub(super) fn new_process_lock_source_windows(
         ret.0 ==> kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         ret.0 ==> kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         ret.0 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
-            va_range_2m_windows(*range).contains(w) && whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> ret.1.view().dom().contains(w),
+            va_range_2m_windows(*range).contains(w) && whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
+                ==> ret.1.view().dom().contains(w),
         ret.0 ==> forall|w: WindowVa| #![trigger ret.1.view().dom().contains(w)] ret.1.view().dom().contains(w) ==> {
             &&& va_range_2m_windows(*range).contains(w)
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (root, w), TypedLockMode::Write)
             &&& ret.1.view().index(w).state() is WriteLock
             &&& ret.1.view().index(w).thread_id() == final(lctx).thread_id()
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_owner(
+                whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                 == (RwLockState::Write { thread_id: ret.1.view().index(w).thread_id(), lock_id: ret.1.view().index(w).lock_id() })
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_leaves_present(w)
-            &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
-            &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+            &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.window_stale_cpus.dom().contains(
+                (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         ret.0 ==> forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == root && ret.1.view().dom().contains(w)),

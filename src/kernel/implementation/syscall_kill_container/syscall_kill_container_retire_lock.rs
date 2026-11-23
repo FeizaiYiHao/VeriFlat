@@ -211,7 +211,6 @@ pub(crate) fn kill_container_retire_lock_flags_pcid(
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert((KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*krnl }) == flags_k);
         assert(lctx.pcid_allocator_lock_map().dom() =~= set![pcid_ptr]);
     }
     ret

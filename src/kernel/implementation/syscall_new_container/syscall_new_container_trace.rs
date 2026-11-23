@@ -136,13 +136,15 @@ pub(super) proof fn new_container_publish_step_pre_from_k(
 }
 
 /// Creating the child container with its root process from `pre` to `post` is the publish step.
-pub(super) proof fn new_container_publish_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr, root_ptr: RwLockProcessPtr, record: NewContainerProgress)
+pub(super) proof fn new_container_publish_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr, root_ptr: RwLockProcessPtr, record: NewContainerProgress)
     requires
         pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         pre.thread_map.spec_index(thrd_ptr).syscall_progress == Some(SyscallProgress::NewContainer(record)),
         pre.thread_map.spec_index(thrd_ptr).owning_container == ctn_ptr,
         kernel_u_container_root_created(pre, post, ctn_ptr, child_ptr, root_ptr, thrd_ptr, record.transfer_cpu, record.funding, record.process_quota,
-            Some(SyscallProgress::Share4k { source_range: record.range, target_range: record.range, shared: 0, directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_ptr), ..record }) }), cpu_id),
+            Some(SyscallProgress::Share4k { source_range: record.range, target_range: record.range, shared: 0, directory: Mmap4kDirectory::None,
+                origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_ptr), ..record }) }), cpu_id),
         post.container_map[ctn_ptr].children.last() == child_ptr,
         post.container_map[child_ptr].root_process == root_ptr,
     ensures
@@ -256,7 +258,8 @@ pub(super) proof fn new_container_finish_step_from_u(
 { reveal(new_container_finish_step); }
 
 /// The one step pushed since `before` is the partial trace after entering.
-pub(super) proof fn new_container_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
+pub(super) proof fn new_container_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId,
+    range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx),
@@ -266,7 +269,8 @@ pub(super) proof fn new_container_trace_enter_step(steps: &KernelSteps, before: 
 { reveal(new_container_trace_after_enter); }
 
 /// The publish step pushed after the partial trace that starts at `start` is the partial trace after publishing.
-pub(super) proof fn new_container_trace_publish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
+pub(super) proof fn new_container_trace_publish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId,
+    range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
     requires
         0 <= start <= before.len(),
         new_container_trace_after_enter(before.subrange(start, before.len() as int), pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
@@ -281,7 +285,8 @@ pub(super) proof fn new_container_trace_publish_step(steps: &KernelSteps, before
 }
 
 /// The share steps pushed after the partial trace that starts at `start` give the partial trace after sharing.
-pub(super) proof fn new_container_trace_share_steps(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
+pub(super) proof fn new_container_trace_share_steps(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId,
+    range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
     requires
         0 <= start <= before.len(),
         new_container_trace_after_publish(before.subrange(start, before.len() as int), pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
@@ -296,7 +301,8 @@ pub(super) proof fn new_container_trace_share_steps(steps: &KernelSteps, before:
 }
 
 /// The finish step pushed after the shared partial trace that starts at `start` completes the commit trace.
-pub(super) proof fn new_container_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
+pub(super) proof fn new_container_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId,
+    range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
     requires
         0 <= start <= before.len(),
         new_container_trace_after_share(before, start, pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
@@ -373,7 +379,8 @@ pub(super) proof fn new_container_result_from_k(
 }
 
 /// A rejected call records no step.
-pub(super) proof fn new_container_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>, ret: RetValueType)
+pub(super) proof fn new_container_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize,
+    funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>, ret: RetValueType)
     requires
         trace.len() == 0,
         !(ret is SuccessThreeUsize),
@@ -382,7 +389,8 @@ pub(super) proof fn new_container_trace_stutter(trace: Seq<KernelStep>, pre: Ker
 { reveal(new_container_syscall_trace); }
 
 /// A complete commit trace ending in `post` is the successful syscall trace.
-pub(super) proof fn new_container_syscall_trace_from_commit(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>, ret: RetValueType)
+pub(super) proof fn new_container_syscall_trace_from_commit(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr,
+    range: usize, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>, ret: RetValueType)
     requires
         trace.len() > 0,
         new_container_commit_trace(trace, pre, cpu_id, spec_va_range_4k(va, range),
@@ -461,8 +469,10 @@ pub(super) proof fn kernel_container_publication_composes(
     requires
         moved.len() == 2 * 512 + 8 + funding,
     ensures
-        kernel_u_container_root_published(pre, published, parent, child, process, thread, cpu, funding, process_quota, moved, thread_page, progress, cpu_id) && kernel_u_cpu_and_page_owner_changed(published, post, cpu, parent, child, thread_page)
-            ==> kernel_u_container_root_created(pre, post, parent, child, process, thread, cpu, funding, process_quota, progress, cpu_id) && post.container_map[parent].children.last() == child && post.container_map[child].root_process == process,
+        kernel_u_container_root_published(pre, published, parent, child, process, thread, cpu, funding, process_quota, moved, thread_page, progress, cpu_id)
+            && kernel_u_cpu_and_page_owner_changed(published, post, cpu, parent, child, thread_page)
+            ==> kernel_u_container_root_created(pre, post, parent, child, process, thread, cpu, funding, process_quota, progress, cpu_id)
+                && post.container_map[parent].children.last() == child && post.container_map[child].root_process == process,
 {
     if kernel_u_container_root_published(pre, published, parent, child, process, thread, cpu, funding, process_quota, moved, thread_page, progress, cpu_id)
         && kernel_u_cpu_and_page_owner_changed(published, post, cpu, parent, child, thread_page) {

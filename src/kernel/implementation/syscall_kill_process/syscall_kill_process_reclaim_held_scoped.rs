@@ -87,7 +87,8 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -139,7 +140,8 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
             pei_valid(cursor.1),
             pei_valid(cursor.2),
             cursor.3 <= 512,
-            krnl.pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { l3_tables: krnl.pt_mp.spec_index(pagetable).view().higher.l3_tables, mapping_1g: krnl.pt_mp.spec_index(pagetable).view().higher.mapping_1g, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
+            krnl.pt_mp.spec_index(pagetable).view().higher
+                == (PageTableHigher { l3_tables: krnl.pt_mp.spec_index(pagetable).view().higher.l3_tables, mapping_1g: krnl.pt_mp.spec_index(pagetable).view().higher.mapping_1g, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
             krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             krnl.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
             iommu_perm is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0) == old(krnl).it_mp.spec_index(iommu_table->Some_0),
@@ -147,7 +149,8 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
             forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
                 KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
             forall|l4i: L4Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
-                KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i),
+                KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i)
+                    ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k(),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),

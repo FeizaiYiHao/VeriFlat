@@ -160,8 +160,7 @@ pub(super) fn thread_exit_destroy(
     krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
-        broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&unlocked_k, &*krnl));
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&unlocked_k, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &KernelK { pcid_allc_mp: mid.pcid_allc_mp, ..*krnl })) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         thread_exit_destroy_eof_fields(start, *old(krnl), mid, *krnl, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr);
     }

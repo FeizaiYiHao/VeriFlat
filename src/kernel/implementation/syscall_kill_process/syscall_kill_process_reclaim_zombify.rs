@@ -73,7 +73,8 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -143,7 +144,8 @@ pub(crate) fn kill_reclaim_return_quota(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -155,9 +157,11 @@ pub(crate) fn kill_reclaim_return_quota(
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(KillStage::Reclaim { flushed: true }), PageSize::SZ4k, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(KillStage::Quota { returned: PageSize::SZ4k }), PageSize::SZ2m, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm),
+            Ghost(KillStage::Quota { returned: PageSize::SZ4k }), PageSize::SZ2m, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(KillStage::Quota { returned: PageSize::SZ2m }), PageSize::SZ1g, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm),
+            Ghost(KillStage::Quota { returned: PageSize::SZ2m }), PageSize::SZ1g, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
 }
 
 /// Return the whole `size` quota of the target to its container's `size` allocator under that allocator's quota lock, and
@@ -214,7 +218,8 @@ pub(crate) fn kill_reclaim_return_quota_size(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -293,9 +298,12 @@ pub(crate) fn kill_reclaim_return_quota_under_lock(
                 old(krnl).allc_2m_mp.dom().contains(a) && a != container.allocator_ptr_2m ==> final(krnl).allc_2m_mp.spec_index(a).quota.view().view() == old(krnl).allc_2m_mp.spec_index(a).quota.view().view()
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)]
                 old(krnl).allc_1g_mp.dom().contains(a) && a != container.allocator_ptr_1g ==> final(krnl).allc_1g_mp.spec_index(a).quota.view().view() == old(krnl).allc_1g_mp.spec_index(a).quota.view().view()
-            &&& final(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int == old(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int + if size is SZ4k { process.quota_4k as int } else { 0 }
-            &&& final(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int == old(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int + if size is SZ2m { process.quota_2m as int } else { 0 }
-            &&& final(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int == old(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int + if size is SZ1g { process.quota_1g as int } else { 0 }
+            &&& final(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int
+                == old(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int + if size is SZ4k { process.quota_4k as int } else { 0 }
+            &&& final(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int
+                == old(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int + if size is SZ2m { process.quota_2m as int } else { 0 }
+            &&& final(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int
+                == old(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int + if size is SZ1g { process.quota_1g as int } else { 0 }
         }),
 {
     match size {
@@ -596,7 +604,8 @@ pub(crate) fn kill_reclaim_unlock_table(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
@@ -693,7 +702,8 @@ pub(crate) fn kill_reclaim_zombify(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),

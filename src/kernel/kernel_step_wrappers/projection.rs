@@ -92,7 +92,8 @@ pub proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre: &Ke
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
-            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u(),
+            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table)
+                ==> post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
             post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> post.thrd_mp.spec_index(p).lock_state_u() == pre.thrd_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
@@ -168,7 +169,8 @@ proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_process_map(pre
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
-            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u(),
+            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table)
+                ==> post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u(),
     ensures kernel_k_to_kernel_u(*pre).process_map == kernel_k_to_kernel_u(*post).process_map,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -531,7 +533,8 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
-pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, cpu: CpuId, container: Option<RwLockContainerPtr>, process: Option<RwLockProcessPtr>, thread: Option<RwLockThreadPtr>, endpoint: Option<RwLockEndpointPtr>, table: Option<RwLockPageTableRoot>)
+pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, cpu: CpuId, container: Option<RwLockContainerPtr>,
+    process: Option<RwLockProcessPtr>, thread: Option<RwLockThreadPtr>, endpoint: Option<RwLockEndpointPtr>, table: Option<RwLockPageTableRoot>)
     requires
         post.inv(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
@@ -720,7 +723,8 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.prc_mp.spec_index(process).view().uppertree_seq.view().len() == 0,
         after.prc_mp.spec_index(process).view_ghost().subtree_set.view().is_empty(),
         before.pt_mp.dom().subset_of(after.pt_mp.dom()),
-        forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
+        forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p)
+            ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         after.pt_mp.dom().contains(after.prc_mp.spec_index(process).view().pagetable),
         after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
@@ -828,7 +832,8 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
         after.prc_mp.spec_index(process).view().uppertree_seq.view().len() == 0,
         after.prc_mp.spec_index(process).view_ghost().subtree_set.view().is_empty(),
         before.pt_mp.dom().subset_of(after.pt_mp.dom()),
-        forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
+        forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p)
+            ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         after.pt_mp.dom().contains(after.prc_mp.spec_index(process).view().pagetable),
         after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
@@ -1094,7 +1099,8 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
             &&& after.ep_mp.spec_index(e).view().queue.view() == if e == endpoint && dequeue { before.ep_mp.spec_index(e).view().queue.view().skip(1) } else { before.ep_mp.spec_index(e).view().queue.view() }
             &&& after.ep_mp.spec_index(e).view().queue_state == before.ep_mp.spec_index(e).view().queue_state
             &&& after.ep_mp.spec_index(e).view().owning_container == before.ep_mp.spec_index(e).view().owning_container
-            &&& after.ep_mp.spec_index(e).view().owning_threads.view() == if e == endpoint && descriptor is Some { before.ep_mp.spec_index(e).view().owning_threads.view().insert(descriptor->Some_0) } else { before.ep_mp.spec_index(e).view().owning_threads.view() }
+            &&& after.ep_mp.spec_index(e).view().owning_threads.view()
+                == if e == endpoint && descriptor is Some { before.ep_mp.spec_index(e).view().owning_threads.view().insert(descriptor->Some_0) } else { before.ep_mp.spec_index(e).view().owning_threads.view() }
             &&& after.ep_mp.spec_index(e).being_killed() == before.ep_mp.spec_index(e).being_killed()
             &&& if e == endpoint { after.ep_mp.spec_index(e).locking_thread() is None } else { after.ep_mp.spec_index(e).locking_thread() == before.ep_mp.spec_index(e).locking_thread() }
         },
