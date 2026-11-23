@@ -47,9 +47,6 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
     assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
     pagetable_table_stale_cpus_only_when_write_locked_at(pre.pt_mp, pagetable_ptr);
     pagetable_hidden_roots_only_when_write_locked_or_emptied_at(pre.pt_mp, pre.prc_mp, pagetable_ptr);
-    assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k());
-    assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m());
-    assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g());
     assert(!pre.pt_mp.spec_index(pagetable_ptr).locked() ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).leaves_present()) by {
         pagetable_hidden_leaves_only_when_locked_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
         pre.default_pagetable_wf_at(pagetable_ptr); reveal(pagetable_window_holders_hold_pagetable); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;

@@ -4,7 +4,8 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, ass
 use crate::*;
 
 verus! {
-/// With `cpu_id` write-held and Running: write-locks its current thread and returns its process, thread, container, 4K allocator, pagetable, 4K quota, and thread and cpu perms; if the thread is being killed, releases the cpu and finishes without a step.
+/// With `cpu_id` write-held and Running: write-locks its current thread and returns its process, thread, container, 4K allocator,
+/// pagetable, 4K quota, and thread and cpu perms; if the thread is being killed, releases the cpu and finishes without a step.
 pub fn mmap_4k_lock_current_thread(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 ) -> (ret: Option<(RwLockProcessPtr, RwLockThreadPtr, RwLockContainerPtr, RwLockPageAllocatorPtr, RwLockPageTableRoot, usize, Tracked<LockPerm>, Tracked<LockPerm>)>)

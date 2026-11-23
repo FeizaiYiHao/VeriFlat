@@ -117,11 +117,14 @@ verus! {
             },
             level is L4 ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_held_l4(indices.0) is None,
             level is L3 ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_held_l3(indices.0, indices.1) is None,
-            level is L2 ==> !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2),
+            level is L2
+                ==> !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(
+                    whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2),
             va_2m_valid(spec_index2va((indices.0, indices.1, indices.2, 0))),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
+                ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -209,7 +212,8 @@ verus! {
                     == (RwLockState::Write { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
                 &&& ret.view().index(i).state() is WriteLock
                 &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
-                &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), i)
+                &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(
+                    whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), i)
             },
             held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
             transfer_source is None ==> held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
@@ -280,7 +284,8 @@ verus! {
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr,
             write_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).user_view(LockStateU::Unlocked)
-                == (PageTableU { pagetable_window_locks: whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).user_view(LockStateU::Unlocked) }),
+                == (PageTableU { pagetable_window_locks: whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+                    ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).user_view(LockStateU::Unlocked) }),
             write_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k(),
             write_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m(),
             write_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g(),
@@ -298,23 +303,27 @@ verus! {
                 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_page(p).entry_lock(i).l1()]
                 write_held && pei_valid(i) && (!whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(p, i)
-                    || (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_perms.dom().contains(p) && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_perms.dom().contains(p)))
+                    || (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_perms.dom().contains(p)
+                        && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_perms.dom().contains(p)))
                     ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(p, i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_page(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i)).entry_lock(l2i).l1()]
+                #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_page(
+                    whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i)).entry_lock(l2i).l1()]
                 write_held && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i)
                     ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && !(level is L3 && l4i == indices.0 && l3i == indices.1)
-                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i),
+                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)
+                        == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i)]
                 write_held && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                     ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i)]
-                write_held && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(l4i, l3i)
+                write_held && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(l4i, l3i)
                     ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i)
                         == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i),
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))]
@@ -322,9 +331,11 @@ verus! {
                     &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_view(w).l2_page == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_view(w).l2_page
                     &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_view(w).lock_state == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_view(w).lock_state
                     &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_view(w).stale_cpus == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_view(w).stale_cpus
-                    &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
+                    &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
+                        == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
                     &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
-                        ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va)
+                        ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va)
+                            == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(w.va)
                     &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(
                         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                         ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(
@@ -335,7 +346,8 @@ verus! {
                 #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
                 !write_held && old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va)
                     && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
-                    &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)
+                    &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)
+                        == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)
                     &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)
                         ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v)
                 },
@@ -369,7 +381,9 @@ verus! {
                 },
                 MissingPageTableLevel::L2 => whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
             },
-            level is L3 ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2),
+            level is L3
+                ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(
+                    whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2),
             (forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)]
                 old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i) is Some
                     ==> old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i) is Some)
@@ -384,7 +398,8 @@ verus! {
                         ==> final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
             old(steps).snapshot_k() == *old(krnl) && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some
                 && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k
-                && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L3 || (level is L4 && !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is L4)))
+                && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill
+                    ==> level is L3 || (level is L4 && !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is L4)))
                 && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill && level is L4
                     ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }))
                 && (!(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill)
@@ -392,7 +407,8 @@ verus! {
                 && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
                 && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(quota_thrd_ptr)
                 && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped < old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len
-                && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len - old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped
+                && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k
+                    > old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len - old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped
                 && transfer_source is None && progress_thread == quota_thrd_ptr
                 && (level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w)]
                     w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
@@ -433,7 +449,8 @@ verus! {
                     ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi));
         let ghost mmap_guard = old(steps).snapshot_k() == *old(krnl) && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some
             && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k
-            && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L3 || (level is L4 && !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is L4)))
+            && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill
+                ==> level is L3 || (level is L4 && !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is L4)))
             && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill && level is L4
                 ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }))
             && (!(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill)
@@ -441,7 +458,8 @@ verus! {
             && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
             && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(quota_thrd_ptr)
             && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped < old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len
-            && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len - old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped
+            && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k
+                > old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len - old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped
             && transfer_source is None && progress_thread == quota_thrd_ptr
             && (level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w)]
                 w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
@@ -570,7 +588,8 @@ verus! {
             va_2m_valid(spec_index2va((indices.0, indices.1, indices.2, 0))),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
+                ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -629,7 +648,8 @@ verus! {
                     == (RwLockState::Write { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
                 &&& ret.view().index(i).state() is WriteLock
                 &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
-                &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), i)
+                &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(
+                    whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), i)
             },
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view(),
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m.view().len() == 0,
@@ -654,16 +674,19 @@ verus! {
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows()
                 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_page(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i)).entry_lock(l2i).l1()]
+                #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_page(
+                    whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i)).entry_lock(l2i).l1()]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     && !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i)
                     ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && !(level is L3 && l4i == indices.0 && l3i == indices.1)
-                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i),
+                    ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)
+                        == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i)]
-                whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(l4i, l3i)
+                whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(l4i, l3i)
                     ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i)
                         == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(l4i, l3i), l2i),
             level is L4 ==> {
@@ -712,7 +735,8 @@ verus! {
         proof {
             spec_va_4k_index_roundtrip_at(spec_index2va((indices.0, indices.1, lo, 0usize)), indices.0, indices.1, lo, 0usize);
             if whole_pagetable(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }) {
-                pagetable_lower_wf_at(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr); whole_pagetable(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr).wf_window_locks_va_at(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) });
+                pagetable_lower_wf_at(linked.pt_mp, linked.pt_lower.view(),
+                    pagetable_ptr); whole_pagetable(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr).wf_window_locks_va_at(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) });
             }
         }
         install_one_mmap_2m_directory_page_end_step(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), level, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr, indices, lo, hi,

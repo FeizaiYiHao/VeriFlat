@@ -352,7 +352,8 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr
             &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).is_io
-            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains(
+                (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
@@ -404,8 +405,7 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread(),
         post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().being_killed() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().being_killed(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.window_stale_cpus == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus,
-        post.pt_mp.spec_index(pagetable).view().higher
-            == pre.pt_mp.spec_index(pagetable).view().higher,
+        post.pt_mp.spec_index(pagetable).view().higher == pre.pt_mp.spec_index(pagetable).view().higher,
         post.pt_mp.spec_index(pagetable).view().lower_backup == if pre.pt_mp.spec_index(pagetable).wlocked() { Ghost(post.pt_lower.view().spec_index(pagetable)) } else { pre.pt_mp.spec_index(pagetable).view().lower_backup },
         new_counter == old_counter + 1,
         post.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_4k_at_depth(depth) == new_counter,
@@ -414,7 +414,8 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
-        post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view() == pre.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view() + if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { 1int } else { 0int },
+        post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view()
+            == pre.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view() + if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { 1int } else { 0int },
         post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()
             == if depth < pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { pre.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().update(depth as int, new_counter) }
             else { pre.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() },

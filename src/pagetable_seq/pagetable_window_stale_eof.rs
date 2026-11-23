@@ -38,7 +38,9 @@ pub open spec fn single_tlb_held_window_entries_present(tlb: SingleTLB, table: W
 /// The stale-CPU map after the empty records the thread may change are deleted: all of them while it write-holds the table,
 /// otherwise those of the windows it holds in `lower`.
 pub open spec fn window_stale_cpus_after_clear_empty(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
-    stale.filter_keys(|k: (PageMapPtr, L2Index)| !(stale.spec_index(k) == Set::<CpuId>::empty() && (root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Write && lower.l2_owner(k.0, k.1)->Write_thread_id == thread_id)))))
+    stale.filter_keys(
+        |k: (PageMapPtr, L2Index)| !(stale.spec_index(k) == Set::<CpuId>::empty()
+            && (root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Write && lower.l2_owner(k.0, k.1)->Write_thread_id == thread_id)))))
 }
 
 /// One update of a page table's stale-CPU map by `KernelK::replace_window_stale_cpus`.
@@ -302,7 +304,7 @@ proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable, post: WholeP
 
 /// EOF closure of `KernelK::replace_window_stale_cpus` for an update that keeps every listed CPU listed: the TLB
 /// invariant carries over to the new map.
-pub(super) proof fn window_stale_cpus_update_eof_tlb_wf(
+proof fn window_stale_cpus_update_eof_tlb_wf(
     cpu_tlb: CpuTLB, pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, root: RwLockPageTableRoot, cpu_arr: CpuLockedArray, needflush: PcidNeedFlushArray,
 )
     requires
