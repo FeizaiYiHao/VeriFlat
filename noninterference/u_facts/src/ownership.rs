@@ -454,7 +454,7 @@ proof fn kernel_wf_implies_u_io_leaf_wf(krnl: &KernelK)
             spec_va_2m_valid_index_roundtrip(va);
             reveal(WholePageTable::wf_mapping_2m);
             assert(c.lower.mapping_2m.spec_index(spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0))) == e);
-            c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+            c.spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
         } else {
             reveal(mapped_2m_page_pagetable_wf);
             let head = page_ptr2page_index(e.addr);
