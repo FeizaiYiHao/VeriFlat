@@ -134,12 +134,7 @@ impl KernelK {
                     assert(!window_lock_id(root, l4i, l3i, l2i).spec_gt(window_lock_id(root, l4i, l3i, l2i))) by { reveal_with_fuel(lock_minor_lt, 5); };
                 }
             };
-            assert(pre_c.lower.pagetable_window_locks.dom().contains(w)) by {
-                let rev = pre_c.higher.l2_rev_map.view().spec_index(pre_c.window_l2_page(l4i, l3i));
-                pre_c.higher.wf_l4_at(l4i); pre_c.l3_links_l2_wf_at(pre_c.spec_resolve_mapping_l4(l4i)->0.addr, l3i); pre_c.tables_reachable_wf_l2_at(pre_c.window_l2_page(l4i, l3i));
-                pre_c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); pre_c.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
-                pre_c.wf_window_locks_l2_entry_at(pre_c.window_l2_page(l4i, l3i), l2i);
-            };
+            assert(pre_c.lower.pagetable_window_locks.dom().contains(w)) by { pre_c.wf_window_locks_window_at(l4i, l3i, l2i); };
         }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
         let tracked mut lower = self.pt_lower.borrow_mut().tracked_remove(root);
@@ -282,12 +277,7 @@ impl KernelK {
             pagetable_window_typed_lock_map_aligned_at(old(self).pt_mp, old(self).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id(),
                 root, w);
             assert(spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && spec_v2l2index(w.va) == l2i) by { broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective(); };
-            assert(pre_c.lower.pagetable_window_locks.dom().contains(w)) by {
-                let rev = pre_c.higher.l2_rev_map.view().spec_index(pre_c.window_l2_page(l4i, l3i));
-                pre_c.higher.wf_l4_at(l4i); pre_c.l3_links_l2_wf_at(pre_c.spec_resolve_mapping_l4(l4i)->0.addr, l3i); pre_c.tables_reachable_wf_l2_at(pre_c.window_l2_page(l4i, l3i));
-                pre_c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); pre_c.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
-                pre_c.wf_window_locks_l2_entry_at(pre_c.window_l2_page(l4i, l3i), l2i);
-            };
+            assert(pre_c.lower.pagetable_window_locks.dom().contains(w)) by { pre_c.wf_window_locks_window_at(l4i, l3i, l2i); };
         }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
         let tracked mut lower = self.pt_lower.borrow_mut().tracked_remove(root);
