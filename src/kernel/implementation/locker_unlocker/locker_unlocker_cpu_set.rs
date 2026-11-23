@@ -284,6 +284,70 @@ impl KernelK {
         ret
     }
 
+    /// Read-lock the cpu set `cpu_set_ptr` in this cpu's reader slot unless its container's killer marked it; a marked set
+    /// returns `None` and nothing changes.
+    pub fn rlock_cpu_set_unless_killed(&mut self, cpu_id: CpuId, cpu_set_ptr: RwLockCpuSetPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            cpu_id == old(lctx).cpu_id(),
+            old(self).inv(),
+            old(self).cpu_set_mp.dom().contains(cpu_set_ptr),
+            !old(lctx).cpu_set_lock_map().dom().contains(cpu_set_ptr),
+            old(lctx).kernel_view_locking_state() is Acquire,
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+            old(lctx).scheduler_lock_map().dom().is_empty(),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
+            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)]
+                old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)]
+                old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
+            forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)] old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)
+                ==> held_cpu_set < cpu_set_ptr || old(self).cpu_set_mp.spec_index(held_cpu_set).being_killed(),
+            typed_lock_maps_aligned(old(self), old(lctx)),
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Acquire,
+            final(self).inv(),
+            kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
+            kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
+            typed_lock_maps_aligned(final(self), final(lctx)),
+            *final(self) == (KernelK { cpu_set_mp: final(self).cpu_set_mp, ..*old(self) }),
+            final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
+            final(self).cpu_set_mp.perms_wf(),
+            final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr) == old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr),
+            forall|c: RwLockContainerPtr| #![trigger final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
+                old(self).ctn_mp.dom().contains(c) && old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set != cpu_set_ptr
+                    ==> final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set) == old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set),
+            (ret is None) == old(self).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
+            ret is None ==> final(self).cpu_set_mp.spec_index(cpu_set_ptr) == old(self).cpu_set_mp.spec_index(cpu_set_ptr) && *final(lctx) == *old(lctx),
+            ret is Some ==> rlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), final(lctx), ret->Some_0.view()),
+            ret is Some ==> typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr), TypedHeldLock { lock_id: final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), mode: TypedLockMode::Read }),
+    {
+        assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { cpu_set_perms_wf_map(old(self).cpu_set_mp); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); };
+        proof {
+            if !old(self).cpu_set_mp.spec_index(cpu_set_ptr).being_killed() {
+                assert(old(lctx).lock_id_acyclic(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr))) by {
+                    reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
+                    reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                };
+            }
+        }
+        assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr).locked_by_thread(old(lctx).thread_id())) by {
+            old(self).cpu_set_mp.typed_lock_map_aligned_locked_at(old(lctx).cpu_set_lock_map(), old(lctx).thread_id(), cpu_set_ptr);
+        };
+        let ret = self.cpu_set_mp.rlock_unless_killed(cpu_id, cpu_set_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
+        proof {
+            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+            cpu_set_lock_op_eof(*old(self), *self, cpu_set_ptr);
+        }
+        ret
+    }
+
     /// Release this thread's read hold on the unmarked cpu set `cpu_set_ptr`.
     pub fn runlock_cpu_set(&mut self, cpu_id: CpuId, cpu_set_ptr: RwLockCpuSetPtr, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
@@ -308,6 +372,9 @@ impl KernelK {
             final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
             final(self).cpu_set_mp.perms_wf(),
             final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr) == old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr),
+            forall|c: RwLockContainerPtr| #![trigger final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
+                old(self).ctn_mp.dom().contains(c) && old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set != cpu_set_ptr
+                    ==> final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set) == old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set),
             runlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr), old(lctx).thread_id()),
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr)),
     {

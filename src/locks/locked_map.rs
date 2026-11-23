@@ -542,6 +542,40 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         has_kill_state_runlock(&PPtr::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>::from_usize(key), cpu_id, Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
+
+    /// Read-lock `key` in this cpu's reader slot unless it is marked; a marked object returns `None` and nothing changes.
+    pub fn rlock_unless_killed(&mut self, cpu_id: CpuId, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            cpu_id == old(lctx).cpu_id(),
+            !(old(self).spec_index(key).view_rodata().container_source() is Dynamic),
+            !(old(self).spec_index(key).view_rodata().process_source() is Dynamic),
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            wlock_requires(old(self).spec_index(key), old(lctx)),
+            !old(self).spec_index(key).being_killed() ==> old(lctx).lock_id_acyclic(LockId {
+                container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: seq![key] }),
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+            ret is None ==> {
+                &&& old(self).spec_index(key).being_killed()
+                &&& final(self).spec_index(key) == old(self).spec_index(key)
+                &&& *final(lctx) == *old(lctx)
+            },
+            ret is Some ==> {
+                &&& !old(self).spec_index(key).being_killed()
+                &&& rlock_ensures(old(self).spec_index(key), final(self).spec_index(key), LockId {
+                    container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(),
+                    minor: seq![key] }, final(lctx), ret->Some_0.view())
+                &&& rlock_lctx_ensures(old(lctx), final(lctx), LockId {
+                    container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: seq![key] }, obj_id.view())
+            },
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        let ret = has_kill_state_rlock_unless_killed(&PPtr::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>::from_usize(key), cpu_id, Tracked(&mut perm), Tracked(lctx), obj_id);
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
+        ret
+    }
 }
 
 impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, I: KillableLockInner> LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE, I> {

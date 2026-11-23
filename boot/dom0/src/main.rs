@@ -14,7 +14,8 @@
 //! Nothing here waits for a timer tick, so the same binary passes on a `no-timer` kernel: threads
 //! that share a CPU take turns at blocking IPC and `sys_schedule`, and every CPU that has to run a
 //! thread is woken by the IPI of `cpu_online` and kept busy by a thread that only yields, since a
-//! halted idle CPU without the timer wakes at an IPI only.
+//! halted idle CPU without the timer wakes at an IPI only. The one tick-driven check, the orphan pull
+//! of a busy CPU, first probes for ticks and is skipped without them.
 
 #![no_std]
 #![no_main]
@@ -108,6 +109,7 @@ static mut PEER_STACK: [u8; 16384] = [0; 16384];
 static mut PLAIN_STACK: [u8; 16384] = [0; 16384];
 static mut CONTAINER_STACK: [u8; 16384] = [0; 16384];
 static mut CONTAINER_YIELD_STACK: [u8; 16384] = [0; 16384];
+static mut TICK_PROBE_STACK: [u8; 16384] = [0; 16384];
 static DMA_BDF: AtomicUsize = AtomicUsize::new(0);
 /// The BAR-table slot of edu's BAR0, the offset of its identification register in BAR0's first page, and the value dom0
 /// read there.
@@ -119,6 +121,13 @@ static CHILD_SAW_BAR_MAPPED: AtomicBool = AtomicBool::new(false);
 static IOMMU_CHILD_ATTACHED: AtomicBool = AtomicBool::new(false);
 static PEER_DONE: AtomicBool = AtomicBool::new(false);
 static CONTAINER_CPU_ONLINED: AtomicBool = AtomicBool::new(false);
+/// Runs of the child container's root thread (0) and of the thread it starts (1).
+static CHILD_RUNS: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
+/// The CPU dom0 spins on while probing for timer ticks, and the probe thread's runs there.
+static TICK_PROBE_CPU: AtomicUsize = AtomicUsize::new(usize::MAX);
+static TICK_PROBE_RUNS: AtomicU64 = AtomicU64::new(0);
+/// TSC cycles dom0 spins without a syscall while probing for timer ticks (ticks come every 10 ms).
+const TICK_PROBE_SPIN: u64 = 2_000_000_000;
 
 extern "C" {
     /// The first and one-past-last bytes of dom0's loaded image (linker-defined).
@@ -267,6 +276,30 @@ extern "C" fn yield_forever() -> ! {
     }
 }
 
+/// Counts its runs in `CHILD_RUNS[i]` and yields forever, recording where it runs.
+fn count_forever(i: usize) -> ! {
+    loop {
+        CHILD_RUNS[i].fetch_add(1, Ordering::SeqCst);
+        SEEN_CPUS.fetch_or(1 << current_cpu(), Ordering::SeqCst);
+        unsafe { sys_schedule() };
+    }
+}
+
+/// The second thread of the child container.
+extern "C" fn child_counter() -> ! {
+    count_forever(1)
+}
+
+/// Counts its runs on the CPU in `TICK_PROBE_CPU` and yields forever.
+extern "C" fn tick_probe() -> ! {
+    loop {
+        if current_cpu() == TICK_PROBE_CPU.load(Ordering::SeqCst) {
+            TICK_PROBE_RUNS.fetch_add(1, Ordering::SeqCst);
+        }
+        unsafe { sys_schedule() };
+    }
+}
+
 /// dom0's second thread, holding the new endpoint in descriptor 0: the other side of every IPC test of
 /// `test_ipc`, then exits while serving dom0's last call.
 extern "C" fn ipc_thread() -> ! {
@@ -319,7 +352,7 @@ extern "C" fn peer_child() -> ! {
 extern "C" fn container_child() -> ! {
     ok(NR_ALLOC_QUOTA_4K, unsafe { sys_alloc_quota_4k(CONTAINER_FUNDING - CONTAINER_PROCESS_QUOTA) });
     ok(NR_ALLOC_THREAD_QUOTA_4K, unsafe { sys_alloc_thread_quota_4k(CONTAINER_FUNDING) });
-    ok(NR_NEW_THREAD, unsafe { sys_new_thread(entry(yield_forever), stack_top(&raw const CONTAINER_YIELD_STACK)) });
+    ok(NR_NEW_THREAD, unsafe { sys_new_thread(entry(child_counter), stack_top(&raw const CONTAINER_YIELD_STACK)) });
     let cpu = ok(NR_RECEIVE_CPU, unsafe { sys_receive_cpu(ROOT_ENDPOINT) });
     if cpu != 3 {
         log::error!("self-test: receive_cpu returned CPU {}, expected 3", cpu);
@@ -327,7 +360,7 @@ extern "C" fn container_child() -> ! {
     }
     ok(NR_CPU_ONLINE, unsafe { sys_cpu_online(cpu) });
     CONTAINER_CPU_ONLINED.store(true, Ordering::SeqCst);
-    yield_forever()
+    count_forever(0)
 }
 
 /// Root thread of a child container that never runs: its only CPU has no processor.
@@ -573,10 +606,49 @@ fn test_cpus() {
     ok(NR_CPU_ONLINE, ret);
 }
 
+/// Whether timer ticks preempt a thread: dom0 queues a probe thread on its own CPU and spins there without a syscall, so
+/// only a tick runs the probe on that CPU. False on a `no-timer` kernel, and also when another CPU took the probe first.
+fn timer_ticks() -> bool {
+    TICK_PROBE_CPU.store(current_cpu(), Ordering::SeqCst);
+    fund(1);
+    ok(NR_NEW_THREAD, unsafe { sys_new_thread(entry(tick_probe), stack_top(&raw const TICK_PROBE_STACK)) });
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    while unsafe { core::arch::x86_64::_rdtsc() } - start < TICK_PROBE_SPIN {
+        if TICK_PROBE_RUNS.load(Ordering::SeqCst) > 0 {
+            return true;
+        }
+        core::hint::spin_loop();
+    }
+    false
+}
+
+/// With timer ticks: CPU 3 of the child container goes Off while one of the container's two threads runs there, which
+/// leaves that thread on CPU 3's run queue; CPU 2 stays busy with the other thread, so only its periodic orphan pull
+/// takes the stranded thread over, and both threads must run again.
+fn test_orphan_pull() {
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    loop {
+        let ret = unsafe { sys_cpu_offline_request_child(0, 3) };
+        if error_name(ret) == "ErrorCpuAlreadyOff" {
+            break;
+        }
+        if ret < 0 || unsafe { core::arch::x86_64::_rdtsc() } - start > WAIT_LIMIT {
+            fail("waiting for CPU 3 to go Off", ret);
+        }
+        ok(NR_SCHEDULE, unsafe { sys_schedule() });
+    }
+    let runs = [CHILD_RUNS[0].load(Ordering::SeqCst), CHILD_RUNS[1].load(Ordering::SeqCst)];
+    wait_yield("both child container threads to run with CPU 3 Off", || {
+        CHILD_RUNS[0].load(Ordering::SeqCst) > runs[0] && CHILD_RUNS[1].load(Ordering::SeqCst) > runs[1]
+    });
+    log::info!("self-test: orphan_pull ok (a thread left on an Off CPU ran again)");
+}
+
 /// Two child containers: one gets CPU 2 and the root endpoint, runs once dom0 brings CPU 2 online,
-/// receives CPU 3 from dom0 and brings it online; the other gets an absent CPU and never runs. Both
-/// are killed.
+/// receives CPU 3 from dom0 and brings it online; the other gets an absent CPU and never runs. With timer ticks, CPU 3
+/// goes Off while a thread of the first one runs there (`test_orphan_pull`). Both are killed.
 fn test_containers() {
+    let ticks = timer_ticks();
     let (image, pages) = image_range();
     // Each container takes 2 of the thread's 2M quota: the one merge_2m left plus 3 of the boot's 4.
     fund(2 * (9 + CONTAINER_FUNDING + 3 * pages));
@@ -589,7 +661,15 @@ fn test_containers() {
     ok(NR_CPU_ONLINE_CHILD, unsafe { sys_cpu_online_child(0, 2) });
     ok(NR_SEND_CPU, unsafe { sys_send_cpu(ROOT_ENDPOINT, 3) });
     wait_yield("the child container to bring CPU 3 online", || CONTAINER_CPU_ONLINED.load(Ordering::SeqCst));
+    if ticks {
+        wait_yield("a child container thread on CPU 3", || SEEN_CPUS.load(Ordering::SeqCst) & 0b1000 != 0);
+    }
     ok(NR_CPU_OFFLINE_REQUEST_CHILD, unsafe { sys_cpu_offline_request_child(0, 3) });
+    if ticks {
+        test_orphan_pull();
+    } else {
+        log::info!("self-test: orphan_pull skipped: no timer tick preempted a spinning thread");
+    }
 
     let ret = unsafe { sys_new_container(image, pages, CONTAINER_FUNDING, CONTAINER_PROCESS_QUOTA, ABSENT_CPU, entry(never_runs), stack_top(&raw const IOMMU_CHILD_STACK)) };
     ok(NR_NEW_CONTAINER, ret.rax);

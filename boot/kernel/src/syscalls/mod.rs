@@ -55,6 +55,7 @@ use core::arch::naked_asm;
 use core::mem::{offset_of, size_of};
 
 use veriflat_monolith::kernel::implementation::rebalance_pull::rebalance_pull::{rebalance_pull, RebalanceResult};
+use veriflat_monolith::kernel::implementation::rebalance_pull::rebalance_pull_orphan::rebalance_orphan_pull;
 use veriflat_monolith::kernel::implementation::syscall_alloc_quota::syscall_alloc_quota::{
     syscall_alloc_quota_2m, syscall_alloc_quota_4k, syscall_alloc_thread_quota_2m, syscall_alloc_thread_quota_4k,
 };
@@ -113,6 +114,9 @@ const SYSRET_UNSAFE_FLAGS: u64 = (1 << 16) | (1 << 8);
 
 /// Model errors are returned as `-(MODEL_ERROR_BASE + index)`.
 const MODEL_ERROR_BASE: i64 = 100;
+
+/// A running CPU runs the orphan pull on every this-many-th timer tick from user mode.
+const ORPHAN_PULL_TICKS: u64 = 16;
 
 /// LAPIC timer cycles per scheduling tick (about 10 ms under KVM).
 const TICK: Cycles = Cycles(5_000_000);
@@ -466,9 +470,10 @@ fn start_timer() {
     interrupt::set_timer(TICK);
 }
 
-/// LAPIC timer tick. From user mode it preempts the running thread; in the kernel, where it arrives
-/// outside a step (in a trampoline, the idle loop, or its `hlt`), it only re-arms the timer. It
-/// sets `wake_seen` either way: the idle loop waits for ticks too.
+/// LAPIC timer tick. From user mode it preempts the running thread, after an orphan pull on every
+/// [`ORPHAN_PULL_TICKS`]-th such tick; in the kernel, where it arrives outside a step (in a trampoline,
+/// the idle loop, or its `hlt`), it only re-arms the timer. It sets `wake_seen` either way: the idle
+/// loop waits for ticks too.
 pub fn timer_interrupt(regs: &mut Registers) {
     interrupt::end_of_interrupt();
     crate::boot::check_reset_deadline();
@@ -477,8 +482,23 @@ pub fn timer_interrupt(regs: &mut Registers) {
         interrupt::set_timer(TICK);
     }
     if from_user(regs) {
+        let current = cpu::get_current();
+        current.tick_count += 1;
+        if current.tick_count % ORPHAN_PULL_TICKS == 0 {
+            orphan_pull(cpu::get_cpu_id());
+        }
         schedule_from_running();
     }
+}
+
+/// Moves the head of the next orphan shard of this CPU's container, scanning from the CPU's cursor, to
+/// this CPU's shard (`rebalance_orphan_pull`), then advances the cursor by one modulo `NUM_CPUS`.
+fn orphan_pull(cpu_id: usize) -> RebalanceResult {
+    let current = cpu::get_current();
+    let cursor = current.rebalance_cursor;
+    let ret = rebalance_orphan_pull(kernel(), Tracked::assume_new(), Tracked::assume_new(), cpu_id, cursor);
+    current.rebalance_cursor = (cursor + 1) % NUM_CPUS;
+    ret
 }
 
 /// Wake-up IPI (`platform::veriflat_send_ipi`, sent by `cpu_online`). It ends a `hlt`, the one of
@@ -971,7 +991,7 @@ fn schedule_from_running() {
 /// steps or at the `hlt`. The acknowledgement clears `running_to_idle_pending` together with the owed
 /// flag; the handler sets both, so outside it they are equal and the entry needs no other clear. Until
 /// the acknowledgement the sender holds this CPU's lock, so every step here returns at once
-/// (`syscall_schedule` with Idle, `rebalance_pull` with Nothing) and the halt does not sleep while the
+/// (`syscall_schedule` with Idle, `rebalance_pull` and the orphan pull with Nothing) and the halt does not sleep while the
 /// owed flag is set (`platform::veriflat_halt_until_ipi`): the next iteration acknowledges. An IPI that
 /// lands after the step that switched to a thread sets `running_to_idle_pending`, so
 /// [`restore_frame`] diverts back here and the entry acknowledges.
@@ -998,7 +1018,10 @@ fn run_idle() {
             ScheduleResult::Continue => continue,
             ScheduleResult::Idle => {}
         }
-        match rebalance_pull(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id) {
+        if let RebalanceResult::Pulled { .. } = rebalance_pull(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id) {
+            continue;
+        }
+        match orphan_pull(cpu_id) {
             RebalanceResult::Pulled { .. } => continue,
             // Wait for the next tick or IPI; another CPU may queue a thread here meanwhile.
             RebalanceResult::Nothing => platform::veriflat_halt_until_ipi(),
