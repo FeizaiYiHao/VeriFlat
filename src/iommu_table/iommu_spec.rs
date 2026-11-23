@@ -5,7 +5,9 @@ use super::entry::*;
 use super::page_map::*;
 use vstd::simple_pptr::*;
 
-/// Legacy 4-level VT-d second-level table, 4K leaves only. The IommuPageMap view is a bit lens; IOMMU publication has its own codec. Hidden leaves keep address/held/software-XD in memory and old write permission in mapping_4k until domain invalidation. Fields are public for specs only.
+/// Legacy 4-level VT-d second-level table, 4K leaves only. The IommuPageMap view is a bit lens; IOMMU publication has its own
+/// codec. Hidden leaves keep address/kernel_present/software-XD in memory and old write permission in mapping_4k until domain
+/// invalidation. Fields are public for specs only.
 pub struct IommuTable {
     pub cr3: PageTableRoot,
     pub did: Option<VtdDomainId>,

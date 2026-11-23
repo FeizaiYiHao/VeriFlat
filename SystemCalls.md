@@ -2042,7 +2042,7 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   IOMMU table takes no step.
 - Refund: pre `reclaim(ThreadExitReclaim { flushed: true })`; effect: one
   container in `C` or `C.uppertree_seq` gains 4K, 2M, or 1G quota
-  (`thread_exit_refund_step`). Before the refunds, K reclaims every held leaf
+  (`thread_exit_refund_step`). Before the refunds, K reclaims every non-empty leaf
   of `PT(P)`, hidden ones included (`reclaim_nonempty_leaves`, after the unown
   step, with the array empty): a RAM leaf's page returns to its owner's
   allocator cache of its size and its refund accumulates in the thread's
@@ -2156,7 +2156,7 @@ steps use anchor DIDs. The PCI unown step replaced the reassign step in phase 2 
   or remote cpu `R`; in the killed-thread reclaim, the endpoint, the caller,
   the shard, the page, cache, pool, and quota; in reclaim, `PT(L)`, the
   needflush cells, then the root table and `IT(L)` in the unown step, then the
-  per-page, cache, pool, and quota locks of the held leaves and of `IT(L)`'s
+  per-page, cache, pool, and quota locks of the non-empty leaves and of `IT(L)`'s
   leaves, and the PCID
   allocator; in retire, the process and table object pages (1000), `PT(L)`,
   `IT(L)`, then in each section a structure page or the root pages (10008),
@@ -2290,7 +2290,7 @@ children and no threads)
   `kill_process_reclaim_step_pre` (the stage and `W(PT(L))`) for `reclaim`:
   - Refund (`kill_process_refund_step`, stage `Reclaim { flushed: true }` or
     `Retire`): one container in `C` or `C.uppertree_seq` gains 4K, 2M, or 1G
-    quota. Before the refunds, K reclaims every held leaf of `PT(L)` as in §17
+    quota. Before the refunds, K reclaims every non-empty leaf of `PT(L)` as in §17
     (`reclaim_nonempty_leaves`, after the unown step): a RAM leaf's page
     (mapped-page major 10009) returns to shard `cpu_id` of its owner's
     allocator cache of its size (pool only to drain a full cache), an IO leaf
