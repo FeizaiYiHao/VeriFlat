@@ -395,7 +395,7 @@ pub(super) proof fn publish_staged_container_root_eof_existing_container_page_st
     hide(Seq::contains);
     publish_staged_container_root_eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, ctn_ptr);
     let container_index = page_ptr2page_index(ctn_ptr);
-    assert(page_index2page_ptr(container_index) == ctn_ptr);
+    assert(page_index2page_ptr(container_index) == ctn_ptr) by (nonlinear_arith) requires page_ptr_2m_valid(ctn_ptr), container_index == page_ptr2page_index(ctn_ptr);
     publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,

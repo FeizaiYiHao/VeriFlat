@@ -452,7 +452,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     let mut direct_1g = 0usize;
     proof {
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        if let Some(it) = iommu_table { assert(lctx.iommu_table_lock_map().dom().contains(it)); }
     }
     reclaim_nonempty_leaves(krnl, pagetable, thrd_ptr, cpu_id, &mut indirect_4k, &mut direct_4k, &mut indirect_2m, &mut direct_2m, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx),
         Tracked(&mut *steps), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm));
@@ -492,6 +491,9 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable)) by {
             assert(lctx.pagetable_lock_map().dom().contains(pagetable));
         };
+        if let Some(it) = iommu_table {
+            assert(krnl.it_mp.dom().contains(it) && krnl.it_mp.spec_index(it) == old(krnl).it_mp.spec_index(it)) by { assert(old(lctx).iommu_table_lock_map().dom().contains(it)); };
+        }
     }
 }
 

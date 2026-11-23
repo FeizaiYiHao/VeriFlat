@@ -429,12 +429,14 @@ impl KernelK {
         }
         proof {
             assert(self.pt_lower.view() =~= old(self).pt_lower.view().insert(root, PageTableLower { window_stale_cpus: new_map, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }));
-            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k()
-                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m()
-                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g());
-            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
-                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
-            assert(window_stale_cpus_update_eof_transition_framing(*old(self), *self, root, WRITE)) by { reveal(window_stale_cpus_update_eof_transition_framing); };
+            assert(window_stale_cpus_update_eof_transition_framing(*old(self), *self, root, WRITE)) by {
+                assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k()
+                    && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m()
+                    && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g());
+                assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
+                    && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
+                reveal(window_stale_cpus_update_eof_transition_framing);
+            };
             assert(typed_lock_maps_aligned(self, lctx)) by {
                 reveal(window_stale_cpus_update_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
