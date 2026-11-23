@@ -310,15 +310,13 @@ pub open spec fn kill_process_table_hidden_step(old_u: KernelU, new_u: KernelU, 
     &&& process_table_hidden_step(old_u, new_u, kill_target(old_u, cpu_id))
 }
 
-/// The flush runs once the hidden root entries left the target's page table without a user 4K mapping, a 2M or 1G
-/// mapping, or a window lock, and before it is recorded.
+/// The flush runs once the hidden root entries left the target's page table without any 4K, 2M or 1G mapping and
+/// without any window lock, and before it is recorded.
 pub open spec fn kill_process_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let pagetable = old_u.process_map[kill_target(old_u, cpu_id)].pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: false })
-    &&& process_user_4k_unmapped(old_u, pagetable)
-    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
-    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
-    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+    &&& pagetable.mapping_4k == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_2m == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_1g == Map::<VAddr, MapEntry>::empty()
+    &&& pagetable.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
 }
 
 /// Recording the flush changes only the kill's stage.
@@ -340,10 +338,8 @@ pub open spec fn kill_process_unown_functions_step(old_u: KernelU, new_u: Kernel
     let pagetable = target.pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true })
     &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is Unlocked
-    &&& process_user_4k_unmapped(old_u, pagetable)
-    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
-    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
-    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+    &&& pagetable.mapping_4k == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_2m == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_1g == Map::<VAddr, MapEntry>::empty()
+    &&& pagetable.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
     &&& process_pci_functions_unowned(old_u, new_u, prc_ptr, cpu_id)
 }
 
@@ -398,7 +394,7 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
 }
 
 /// Unlocking the target's reclaimed page table and IOMMU table, once every quota size is returned, the page table keeps
-/// no user 4K mapping, 2M or 1G mapping, window lock, or PCI function, and the IOMMU table no 4K mapping, readies the
+/// no 4K, 2M or 1G mapping, window lock, or PCI function, and the IOMMU table no 4K mapping, readies the
 /// target to become a zombie.
 #[verifier::opaque]
 pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
@@ -407,10 +403,8 @@ pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, 
     let pagetable = target.pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Quota { returned: PageSize::SZ1g })
     &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is WriteLocked
-    &&& process_user_4k_unmapped(old_u, pagetable)
-    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
-    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
-    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+    &&& pagetable.mapping_4k == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_2m == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_1g == Map::<VAddr, MapEntry>::empty()
+    &&& pagetable.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
     &&& pagetable.pci_functions == Map::<PciBdf, nat>::empty()
     &&& target.iommu_table is Some ==> process_iommu_4k_unmapped(target.iommu_table->Some_0)
     &&& new_u == (KernelU {

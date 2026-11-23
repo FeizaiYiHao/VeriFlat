@@ -506,9 +506,9 @@ pub(super) proof fn thread_exit_unown_step_from_k(
         iommu_table is Some || pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() != Set::<PciBdf>::empty() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
     kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
-    kernel_pagetable_user_4k_unmapped_projection_at(pre, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
+    kernel_process_projection_at(pre, prc_ptr);
     let table = kernel_k_to_kernel_u(*pre).process_map[prc_ptr].pagetable->Some_0;
-    assert(table.mapping_2m.dom() =~= Set::<VAddr>::empty()); assert(table.mapping_1g.dom() =~= Set::<VAddr>::empty());
+    assert(table.mapping_4k =~= Map::empty() && table.mapping_2m =~= Map::empty() && table.mapping_1g =~= Map::empty() && table.pagetable_window_locks =~= Map::empty());
     kernel_pci_functions_released_implies_u_step(pre, post, post_lctx, cpu_id, prc_ptr, pagetable, iommu_table, detached);
     reveal(thread_exit_unown_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unown_step);
 }

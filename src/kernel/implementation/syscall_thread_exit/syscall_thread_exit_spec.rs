@@ -254,7 +254,7 @@ pub open spec fn thread_exit_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// Unowning runs after the flush is recorded, once the page table has no user 4K mapping, 2M or 1G mapping, or window lock, while the
+/// Unowning runs after the flush is recorded, once the page table has no 4K, 2M or 1G mapping and no window lock, while the
 /// process's IOMMU table, if any, is unlocked.
 #[verifier::opaque]
 pub open spec fn thread_exit_unown_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
@@ -263,10 +263,8 @@ pub open spec fn thread_exit_unown_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     let pagetable = process.pagetable->Some_0;
     &&& thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true })
     &&& process.iommu_table is Some ==> process.iommu_table->Some_0.lock_state is Unlocked
-    &&& process_user_4k_unmapped(old_u, pagetable)
-    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
-    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
-    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+    &&& pagetable.mapping_4k == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_2m == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_1g == Map::<VAddr, MapEntry>::empty()
+    &&& pagetable.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
 }
 
 /// The process gives up its PCI functions: a process with an IOMMU table write-locks it, every function of its page

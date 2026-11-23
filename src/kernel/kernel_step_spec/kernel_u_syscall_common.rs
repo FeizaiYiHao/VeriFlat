@@ -76,11 +76,6 @@ pub open spec fn process_table_hidden_step(old_u: KernelU, new_u: KernelU, prc_p
     })
 }
 
-/// No valid user VA at or above the kernel's L4 end has a 4K mapping in `pagetable`.
-pub open spec fn process_user_4k_unmapped(u: KernelU, pagetable: PageTableU) -> bool {
-    forall|va: VAddr| #![trigger pagetable.mapping_4k.dom().contains(va)] spec_va_4k_valid(va) && u.kernel_l4_end <= spec_v2l4index(va) ==> !pagetable.mapping_4k.dom().contains(va)
-}
-
 /// No IOVA has a 4K mapping in `iommu_table`.
 pub open spec fn process_iommu_4k_unmapped(iommu_table: PageTableU) -> bool {
     forall|iova: VAddr| #![trigger iommu_table.mapping_4k.dom().contains(iova)] !iommu_table.mapping_4k.dom().contains(iova)

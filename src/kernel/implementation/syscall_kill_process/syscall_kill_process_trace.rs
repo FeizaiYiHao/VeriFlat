@@ -381,20 +381,15 @@ pub(crate) proof fn kill_reclaim_pre_from_k(
     }
 }
 
-/// With no present user 4K leaf at or above the kernel L4 end of the live target's page table on `krnl`, and no 2M or 1G
-/// mapping or window lock in it, the target's projected page table has no user 4K mapping, 2M or 1G mapping, or window lock.
+/// With no 4K, 2M or 1G mapping and no window lock in the live target's page table on `krnl`, the target's projected
+/// page table has no 4K, 2M or 1G mapping and no window lock.
 pub(crate) proof fn kill_table_unmapped_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.inv(),
         krnl.prc_mp.dom().contains(target),
         !krnl.prc_mp.spec_index(target).view().zombie,
         krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-            #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i
-                && krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().higher.kernel_l4_end <= l4i
-                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-                ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
@@ -402,15 +397,13 @@ pub(crate) proof fn kill_table_unmapped_pre_from_k(krnl: &KernelK, target: RwLoc
         kernel_k_to_kernel_u(*krnl).process_map[target].pagetable is Some,
         ({
             let pagetable = kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0;
-            &&& process_user_4k_unmapped(kernel_k_to_kernel_u(*krnl), pagetable)
-            &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
-            &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
-            &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+            &&& pagetable.mapping_4k == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_2m == Map::<VAddr, MapEntry>::empty() && pagetable.mapping_1g == Map::<VAddr, MapEntry>::empty()
+            &&& pagetable.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
         }),
 {
-    kernel_pagetable_user_4k_unmapped_projection_at(krnl, target); kernel_process_projection_at(krnl, target);
+    kernel_process_projection_at(krnl, target);
     let pagetable = kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0;
-    assert(pagetable.mapping_2m.dom() =~= Set::<VAddr>::empty()); assert(pagetable.mapping_1g.dom() =~= Set::<VAddr>::empty());
+    assert(pagetable.mapping_4k =~= Map::empty() && pagetable.mapping_2m =~= Map::empty() && pagetable.mapping_1g =~= Map::empty() && pagetable.pagetable_window_locks =~= Map::empty());
 }
 
 /// With no 4K leaf in the live target's IOMMU table on `krnl`, its projected IOMMU table has no 4K mapping.
@@ -901,10 +894,10 @@ pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, c
         kill_target(pre, cpu_id) == target,
         kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Quota { returned: PageSize::SZ1g }),
         pre.process_map[target].iommu_table is Some ==> pre.process_map[target].iommu_table->Some_0.lock_state is WriteLocked,
-        process_user_4k_unmapped(pre, pre.process_map[target].pagetable->Some_0),
-        pre.process_map[target].pagetable->Some_0.mapping_2m.dom() == Set::<VAddr>::empty(),
-        pre.process_map[target].pagetable->Some_0.mapping_1g.dom() == Set::<VAddr>::empty(),
-        pre.process_map[target].pagetable->Some_0.pagetable_window_locks.dom() == Set::<WindowVa>::empty(),
+        pre.process_map[target].pagetable->Some_0.mapping_4k == Map::<VAddr, MapEntry>::empty(),
+        pre.process_map[target].pagetable->Some_0.mapping_2m == Map::<VAddr, MapEntry>::empty(),
+        pre.process_map[target].pagetable->Some_0.mapping_1g == Map::<VAddr, MapEntry>::empty(),
+        pre.process_map[target].pagetable->Some_0.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty(),
         pre.process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
         pre.process_map[target].iommu_table is Some ==> process_iommu_4k_unmapped(pre.process_map[target].iommu_table->Some_0),
         post == (KernelU {

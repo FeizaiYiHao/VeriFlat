@@ -301,31 +301,6 @@ pub proof fn kernel_pagetable_mappings_projection_at(krnl: &KernelK, process: Rw
     }
 }
 
-/// A live process's projected page table shows no valid user 4K mapping once every user index path of its page table
-/// at or above its kernel L4 end names no present 4K entry.
-pub proof fn kernel_pagetable_user_4k_unmapped_projection_at(krnl: &KernelK, process: RwLockProcessPtr)
-    requires
-        krnl.inv(),
-        krnl.prc_mp.dom().contains(process),
-        !krnl.prc_mp.spec_index(process).view().zombie,
-        krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(process).view().pagetable),
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-            #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i
-                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).kernel_l4_end() <= l4i
-                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-                ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
-    ensures
-        kernel_k_to_kernel_u(*krnl).process_map.dom().contains(process),
-        kernel_k_to_kernel_u(*krnl).process_map[process].pagetable is Some,
-        forall|va: VAddr| #![trigger kernel_k_to_kernel_u(*krnl).process_map[process].pagetable->Some_0.mapping_4k.dom().contains(va)]
-            spec_va_4k_valid(va) && kernel_k_to_kernel_u(*krnl).kernel_l4_end <= spec_v2l4index(va) ==> !kernel_k_to_kernel_u(*krnl).process_map[process].pagetable->Some_0.mapping_4k.dom().contains(va),
-{
-    broadcast use spec_va_4k_valid_index_roundtrip;
-    let pagetable = krnl.prc_mp.spec_index(process).view().pagetable;
-    kernel_l4_end_projection_at(krnl, pagetable); kernel_pagetable_mappings_projection_at(krnl, process); reveal(kernel_k_to_kernel_u);
-}
-
 /// A live process's projected IOMMU table carries its IOMMU table's lock mode, and shows the whole 4K, 2M, and 1G
 /// mappings when every leaf is present.
 pub proof fn kernel_iommu_table_mappings_projection_at(krnl: &KernelK, process: RwLockProcessPtr)
