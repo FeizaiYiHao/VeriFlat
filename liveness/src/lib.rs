@@ -94,6 +94,7 @@ pub mod lock_order;
 pub mod run_queue;
 pub mod run_steps;
 pub mod run_measure;
+pub mod run_fair;
 
 pub use behavior::*;
 pub use pilot::*;

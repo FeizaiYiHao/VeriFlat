@@ -90,7 +90,7 @@ pub open spec fn pulled_step(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId, t:
     &&& pos(u, t) == 0
     &&& pops_head(u, l, d, c, shard_of(u, t))
     &&& shard_of(u2, t) == d
-    &&& cpu_serves_container(u, c, d)
+    &&& cpu_serves_container(u, c, d) && cpu_serves_container(u2, c, d)
     &&& pos(u2, t) <= shard_queue(u, c, d).len()
     &&& l is RebalancePull ==> pos(u2, t) == 0
     &&& l is RebalancePull || l is OrphanPull && !cpu_serves_container(u, c, shard_of(u, t))
@@ -118,13 +118,14 @@ pub open spec fn sched_frame(u: KernelU, u2: KernelU) -> bool {
     &&& forall|x: RwLockThreadPtr| #![trigger waiting(u, x)] waiting(u, x) ==> waiting(u2, x) || gone(u2, x)
 }
 
-/// The cpu frame of every world step: no cpu changes its kill mark, no container its cpu-set kill mark, and a cpu's running
-/// thread is kept or dropped, except by a Schedule of that cpu.
+/// The cpu frame of every world step: no container appears or disappears, no cpu changes its kill mark, no container its
+/// cpu-set kill mark, and a cpu keeps its running thread and process or drops both, except by a Schedule of that cpu.
 pub open spec fn cpu_frame(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId) -> bool {
     &&& forall|c: CpuId| #![trigger u2.cpu_array[c as int]] index_valid(NUM_CPUS, c) ==> u2.cpu_array[c as int].killed == u.cpu_array[c as int].killed
-        && (u2.cpu_array[c as int].current_thread is Some ==> u2.cpu_array[c as int].current_thread == u.cpu_array[c as int].current_thread || l is Schedule && c == d)
-    &&& forall|c: RwLockContainerPtr| #![trigger u2.container_map[c]] u.container_map.dom().contains(c)
-        ==> u2.container_map.dom().contains(c) && u2.container_map[c].cpu_set_killed == u.container_map[c].cpu_set_killed
+        && (u2.cpu_array[c as int].current_thread is Some || u2.cpu_array[c as int].current_process is Some ==> l is Schedule && c == d
+            || u2.cpu_array[c as int].current_thread == u.cpu_array[c as int].current_thread && u2.cpu_array[c as int].current_process == u.cpu_array[c as int].current_process)
+    &&& u2.container_map.dom() =~= u.container_map.dom()
+    &&& forall|c: RwLockContainerPtr| #![trigger u2.container_map[c]] u.container_map.dom().contains(c) ==> u2.container_map[c].cpu_set_killed == u.container_map[c].cpu_set_killed
 }
 
 /// `t` first occurs in `q` at `p`.
