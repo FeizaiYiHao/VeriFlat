@@ -886,6 +886,7 @@ pub fn process_map_unlink_child(
     node_perm
 }
 
+#[inline(always)]
 pub fn process_subsystem_create_scheduled_thread(
     ctn_mp: &ContainerLockedMap, prc_mp: &mut ProcessLockedMap, thrd_mp: &mut ThreadLockedMap,
     sched_mp: &mut SchedulerUnLockedMap, pg_ptr: PagePtr, prc_ptr: RwLockProcessPtr,
