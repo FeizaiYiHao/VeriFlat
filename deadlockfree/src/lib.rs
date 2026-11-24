@@ -28,7 +28,9 @@
 //! - (b) The external_body lock words in `src/locks/lock_inner_t.rs` implement their contracts: a cpu holding the word
 //!   has the typed entry, and a waiter spins only while another cpu holds it. This includes the per-cpu reader-lock
 //!   writer (`wlock_unless_killed_with`, :200-232), which sets `SLOT_PENDING` and takes the slots one by one; the pending
-//!   state is not in `KernelK`, so a cpu blocked behind it enters the theorem as a same-want edge.
+//!   state is not in `KernelK`, so a cpu blocked behind it enters the theorem as a same-want edge. It also includes the
+//!   per-cpu reader-lock reader that gives up on a mark (`rlock_unless_killed`, :288-317): it spins only while its own
+//!   slot is busy, polls slot 0's kill mark while spinning, and returns as soon as it sees the mark.
 //! - (c) The NMI handler (`boot/kernel/src/platform.rs:220`) serves every pending flush request, takes no lock, and NMIs
 //!   arrive whatever the interrupt flag, so the flush waits at :134 and :152 end.
 //! - (d) `ipi_remote_running_to_idle_raw` (`src/cpu/atomic_pcid_cr3.rs:73`): its contract requires the target outside a
@@ -95,12 +97,23 @@
 //!     not checked caller by caller.
 //! - (b) Every blocking primitive requires `lock_id_acyclic` of the id it spins on, so every call site proves it
 //!   (Verified); `l2_entry_lock` (`src/pagetable_concurrent/l2_entry_lock_t.rs:14`) does not, and its caller
-//!   `pagetable_concurrent_lock.rs:21` does; `wlock_kill_victim_thread` proves it in its own body.
+//!   `pagetable_concurrent_lock.rs:21` does; `wlock_kill_victim_thread` proves it in its own body. So do, for an
+//!   unmarked object, `rlock_cpu_set_unless_killed` (`locker_unlocker_cpu_set.rs:289`, from its requires: every held
+//!   cpu set is below the wanted one or marked, and no scheduler, needflush or allocator lock is held), which the orphan
+//!   pull calls under its own cpu lock (`rebalance_pull_orphan.rs:150`), and `wlock_scheduled_thread_unless_killed`
+//!   (`locker_unlocker_thread.rs:165`, :242), re-audited with its weaker requires: the cpu's process and thread lock maps
+//!   are only subsets of its current process and thread, and cpu sets may be held; its body still proves the thread's id
+//!   above every held one (callers `syscall_schedule_lock_helpers.rs:461`, `rebalance_pull.rs:504`,
+//!   `rebalance_pull_orphan.rs:656`).
 //! - (c) A marked (killed) object has id (High, High, `KILLED_LOCK_MAJOR`, minor) and killable waiters return as soon as
 //!   they see `WORD_KILLED` or `SLOT_KILLED`, so they add no wait edge; `unkill` requires the Release phase and the
-//!   killer unlocks in that same phase. Per-cpu reader-lock readers do not check the mark, but their contracts require
-//!   `lock_id_acyclic` against the marked (minimal) id.
-//! - (d) Primitives that never wait add no edge: `downgrade` (`lock_inner_t.rs:301`), locks born held by retype, and
+//!   killer unlocks in that same phase. Plain per-cpu reader-lock readers (`rlock`) do not check the mark, and their
+//!   contracts require `lock_id_acyclic` against the marked (minimal) id. `rlock_unless_killed`
+//!   (`has_kill_state_rlock_unless_killed`, `locked_points_to.rs:425`; wrapper `rlock_cpu_set_unless_killed`) returns as
+//!   soon as it sees the mark, so it adds no wait edge on a marked set and requires `lock_id_acyclic` only when the object
+//!   is unmarked, like `wlock_unless_killed`; a reader stopped by a writer's pending bit is a same-want edge, as for plain
+//!   readers.
+//! - (d) Primitives that never wait add no edge: `downgrade` (`lock_inner_t.rs:331`), locks born held by retype, and
 //!   `l2_entry_lock` of an unpublished L2 page (`pagetable_concurrent_impl_base.rs:224`).
 //! - (e) A halting cpu holds no lock: `halt_until_ipi` (`src/cpu/cpu_ipi.rs:31`) requires `no_locks_held`, so no cpu waits
 //!   on it.

@@ -10,7 +10,8 @@
 //!   owner), `<=`: a waiter spins only on a holder whose recorded owner is at or above the requested one
 //!   (`src/locks/lock_inner_t.rs:164`)
 //! - Process / Thread / Endpoint / PcidAllocator / CpuSet / PageTable / IommuTable `*_mp.lock_id_by_key`,
-//!   locker_unlocker_process.rs:102, _thread.rs:15 and :155, _endpoint.rs:159, _pcid_allocator.rs:111, _cpu_set.rs:41,
+//!   locker_unlocker_process.rs:102, _thread.rs:15 and :155, _endpoint.rs:159, _pcid_allocator.rs:111, _cpu_set.rs:41
+//!   (and :332, `rlock_cpu_set_unless_killed`, unmarked sets only),
 //!   _pagetable.rs:79, _iommu_table.rs:47, `=`
 //! - SchedulerShard `sched_mp[s].shards.lock_id_by_index`, locker_unlocker_scheduler.rs:51, `=`
 //! - PageTableWindow `window_lock_id_of`, locker_unlocker_pagetable_window.rs:118 and

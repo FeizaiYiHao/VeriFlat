@@ -435,7 +435,7 @@ pub proof fn pci_step_implies_kill_frame(u: KernelU, u2: KernelU, l: StepLabel, 
 
 }
 
-/// A switch or pull keeps the kill frame: the threads it moves are unlocked.
+/// A switch, pull, or orphan pull keeps the kill frame: the threads it moves are unlocked.
 pub proof fn schedule_step_implies_kill_frame(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId)
     requires kernel_u_ownership_wf(u), schedule_label(l), labeled_step(l, u, u2, d),
     ensures kill_frame(u, u2, d),
@@ -444,6 +444,7 @@ pub proof fn schedule_step_implies_kill_frame(u: KernelU, u2: KernelU, l: StepLa
     match l {
         StepLabel::Schedule { flushed_pcid } => { reveal(schedule_step_pre); reveal(kernel_u_context_switch_changed); },
         StepLabel::RebalancePull => { reveal(rebalance_pull_step_pre); reveal(kernel_u_rebalance_pull_changed); },
+        StepLabel::OrphanPull { cursor } => { reveal(orphan_pull_step_pre); reveal(kernel_u_orphan_pull_changed); },
         _ => {},
     }
 }

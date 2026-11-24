@@ -30,6 +30,33 @@ pub proof fn rebalance_pull_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
+/// Moving the live head of an orphan shard of the container of a non-Off cpu of `a` onto that cpu's shard leaves the
+/// view of `b` unchanged: the shards and the thread belong to that container.
+pub proof fn orphan_pull_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, cursor: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        orphan_pull_step_pre(old_u, cpu_id, cursor),
+        orphan_pull_step(old_u, new_u, cpu_id, cursor),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(kernel_u_orphan_pull_changed); reveal(kernel_u_cpu_ownership_wf); }
+
+/// The step of `orphan_pull_step_lr` preserves isolation.
+pub proof fn orphan_pull_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, cursor: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        orphan_pull_step_pre(old_u, cpu_id, cursor),
+        orphan_pull_step(old_u, new_u, cpu_id, cursor),
+    ensures isolated(new_u, a, b),
+{
+    reveal(kernel_u_orphan_pull_changed); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
+
 /// The pull result of a cpu of `b` reads only the view of `b`: the cpu, its container's shards, and the head
 /// of the victim shard, which that container owns.
 pub proof fn rebalance_pull_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, b: RwLockContainerPtr)

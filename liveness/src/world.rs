@@ -38,7 +38,7 @@ pub open spec fn world_label(l: StepLabel) -> bool {
     ||| new_thread_label(l) // new_thread, new_thread_with_endpoint
     ||| cpu_label(l) // cpu_offline_request, cpu_online, cpu_offline_request_child, cpu_online_child
     ||| pci_label(l) // pci_attach_dma, pci_claim
-    ||| schedule_label(l) // schedule, rebalance_pull
+    ||| schedule_label(l) // schedule, rebalance_pull, rebalance_orphan_pull
     ||| split_merge_label(l) // split_2m, merge_2m
     ||| env_label(l) // trap entry, return, and divert, register changes, TLB and context-cache fills
     ||| kill_label(l) // kill_process without its five killed-thread reclaim steps (`kill_label`)

@@ -210,7 +210,9 @@ pub proof fn table_invariants_implies_mmap_4k_never_blocked(u: KernelU, c: CpuId
     table_invariants_implies_mmap_4k_never_blocked_steps(u, c);
     let t = cur_thread(u, c);
     if t.syscall_progress is Some && t.syscall_progress->Some_0->Mmap4k_phase is Fill {
-        assert(table_op(u, c) && table_filling(u, c) && table_op_shape(u, c));
+        assert(table_op(u, c));
+        assert(table_filling(u, c));
+        assert(table_op_shape(u, c));
         fill_quota_implies_fill_quota_at(u, c);
         let r = table_range(u, c);
         if !pagetable_range_windows_exist(table_windows(u, table_proc(u, c)), r) { window_missing_implies_missing_pages_nonempty(table_windows(u, table_proc(u, c)), r); }
