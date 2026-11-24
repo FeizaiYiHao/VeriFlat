@@ -415,7 +415,8 @@ pub(super) fn cpu_offline_commit_take_cpu_off(
         let (addr, perm) = previous.running_to_scheduled(prev, cpu_id, Tracked(prev_frame));
         let shard = krnl.sched_mp.borrow_mut_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
         shard.queue.push_tail(addr, perm);
-        krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+        krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Ghost(krnl.cpu_op.view().view()),
+            Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
         proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id)); lctx.update_lock_id(KernelObjId::Thread(prev), old_prev_lock_id, krnl.thrd_mp.lock_id_by_key(prev)); }
     } else {
         proof {
@@ -424,7 +425,7 @@ pub(super) fn cpu_offline_commit_take_cpu_off(
                 &&& krnl.cpu_hw_cr3_pcid[cpu_id as int].inv()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == default_cr3
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
-            }) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+            }) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, krnl.cpu_op.view().view(), cpu_id); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
     }
     let ghost idle_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);

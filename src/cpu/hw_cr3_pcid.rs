@@ -23,7 +23,7 @@ impl KernelK {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
     {
-        proof { cpu_hw_cr3_pcid_wf_at(self.cpu_hw_cr3_pcid, self.cpu_arr, self.pcid_needflush, cpu_id); }
+        proof { cpu_hw_cr3_pcid_wf_at(self.cpu_hw_cr3_pcid, self.cpu_arr, self.pcid_needflush, self.cpu_op.view().view(), cpu_id); }
         self.cpu_hw_cr3_pcid[cpu_id].load(cpu_id, Tracked(&mut *lctx))
     }
 }

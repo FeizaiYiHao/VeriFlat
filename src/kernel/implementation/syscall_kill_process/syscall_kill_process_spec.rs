@@ -319,14 +319,14 @@ pub open spec fn kill_process_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     &&& pagetable.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
 }
 
-/// The cpu of every TLB entry that changes from `old_u` to `new_u` is write-locked or runs process `prc`: a flush acts on
-/// a cpu whose hardware cr3/pcid word names the target's table, and that word differs from the cpu's recorded one only while
-/// the cpu is write-locked.
+/// The cpu of every TLB entry that changes from `old_u` to `new_u` is inside a kernel step or runs process `prc`: a flush
+/// acts on a cpu whose hardware cr3/pcid word names the target's table, and that word differs from the cpu's recorded one
+/// only inside a kernel step of that cpu.
 #[verifier::opaque]
-pub open spec fn kill_process_tlb_cleared_cpu_write_locked_or_running(old_u: KernelU, new_u: KernelU, prc: RwLockProcessPtr) -> bool {
+pub open spec fn kill_process_tlb_cleared_cpu_in_step_or_running(old_u: KernelU, new_u: KernelU, prc: RwLockProcessPtr) -> bool {
     let changed = new_u.cpu_tlb.dom().filter(|key: (CpuId, Pcid)| !old_u.cpu_tlb.dom().contains(key) || old_u.cpu_tlb[key] != new_u.cpu_tlb[key]);
     forall|key: (CpuId, Pcid)| #![trigger changed.contains(key)]
-        changed.contains(key) ==> old_u.cpu_array[key.0 as int].lock_state is WriteLocked || old_u.cpu_array[key.0 as int].current_process == Some(prc)
+        changed.contains(key) ==> old_u.cpu_array[key.0 as int].op is InStep || old_u.cpu_array[key.0 as int].current_process == Some(prc)
 }
 
 /// Recording the flush changes only the kill's stage.
@@ -499,7 +499,7 @@ pub open spec fn kill_process_refund_step(old_u: KernelU, new_u: KernelU, cpu_id
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
 /// marking, dequeuing, or unlinking a thread, forcing the cpu running a thread to idle, reclaiming killed threads of the target's
 /// container, and, for an empty target, locking its page table, hiding one user root entry of it, flushing one cpu's TLB for its
-/// PCID (a cpu write-locked or running the target), recording the flush, releasing its PCI functions and locking its IOMMU table, removing one IOMMU 4K leaf, returning quota of freed pages to the
+/// PCID (a cpu inside a kernel step or running the target), recording the flush, releasing its PCI functions and locking its IOMMU table, removing one IOMMU 4K leaf, returning quota of freed pages to the
 /// target's container chain, returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
 pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
@@ -517,7 +517,7 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_lock_table_step(old_u, new_u, cpu_id)
         ||| kill_process_table_hidden_step(old_u, new_u, cpu_id)
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid, None)
-            && kill_process_tlb_cleared_cpu_write_locked_or_running(old_u, new_u, kill_target(old_u, cpu_id))
+            && kill_process_tlb_cleared_cpu_in_step_or_running(old_u, new_u, kill_target(old_u, cpu_id))
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id)
         ||| kill_process_unown_functions_step(old_u, new_u, cpu_id)
         ||| kill_process_iommu_leaf_step(old_u, new_u, cpu_id)

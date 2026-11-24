@@ -89,7 +89,7 @@ impl KernelK{
         &&& cpu_array_wf(self.cpu_arr, self.dflt_pt.view())
         &&& pcid_needflush_wf(self.pcid_needflush)
         &&& cpu_offline_flags_wf(self.cpu_offline_mp, self.cpu_arr)
-        &&& cpu_hw_cr3_pcid_wf(self.cpu_hw_cr3_pcid, self.cpu_arr, self.pcid_needflush)
+        &&& cpu_hw_cr3_pcid_wf(self.cpu_hw_cr3_pcid, self.cpu_arr, self.pcid_needflush, self.cpu_op.view().view())
         // one cpu_op entry per cpu
         &&& self.cpu_op.view().view().len() == NUM_CPUS
         &&& self.cpu_regs.view().view().len() == NUM_CPUS

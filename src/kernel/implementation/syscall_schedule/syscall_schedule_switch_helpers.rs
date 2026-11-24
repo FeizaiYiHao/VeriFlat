@@ -247,7 +247,7 @@ pub(super) fn schedule_switch_commit(
     }
     let ghost pre = *krnl;
     if same {
-        proof { pcid_needflush_wf_implies_array_inv(krnl.pcid_needflush); cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); }
+        proof { pcid_needflush_wf_implies_array_inv(krnl.pcid_needflush); cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, krnl.cpu_op.view().view(), cpu_id); }
         krnl.cpu_arr.switch_to_thread_same_process(cpu_id, next_thread, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     } else {
         krnl.cpu_arr.switch_to_thread(cpu_id, next_process, next_thread, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid,
