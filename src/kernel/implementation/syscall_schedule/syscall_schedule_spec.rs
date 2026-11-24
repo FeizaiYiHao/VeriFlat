@@ -171,7 +171,8 @@ pub open spec fn schedule_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
 }
 
 /// User-visible scheduler switch step: `cpu_id` runs the head of shard `cpu_id` of its container's
-/// scheduler, the previous thread is requeued at that shard's tail, and at most one PCID TLB entry is flushed.
+/// scheduler, the previous thread is requeued at that shard's tail, and at most one PCID TLB entry is flushed: the next
+/// thread's process's, only when that process is not the one running on `cpu_id`.
 pub open spec fn schedule_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, flushed_pcid: Option<Pcid>) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     kernel_u_context_switch_changed(old_u, new_u, cpu_id, old_u.container_map.spec_index(cpu.owning_container).scheduler[cpu_id as int][0], flushed_pcid)

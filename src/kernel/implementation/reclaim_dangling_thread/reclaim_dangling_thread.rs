@@ -46,6 +46,8 @@ pub fn reclaim_dangling_thread(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).view() == old(steps).view(),
         kernel_dangling_thread_reclaimed_fields(&final(steps).snapshot_k(), final(krnl), dangling_ptr),
+        forall|j: int| #![trigger final(steps).snapshot_k().thrd_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j)]
+            0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> final(steps).snapshot_k().thrd_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
         final(krnl).cpu_arr == final(steps).snapshot_k().cpu_arr,
         final(krnl).cpu_op == final(steps).snapshot_k().cpu_op,
         final(krnl).cpu_trap_frame == final(steps).snapshot_k().cpu_trap_frame,

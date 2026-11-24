@@ -89,8 +89,9 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
     reveal(kernel_u_endpoint_released);
 }
 
-/// Releasing the endpoint held only at descriptor `index` of the write-held killed thread `thrd_ptr` projects to
-/// `kernel_u_killed_endpoint_released`, changes the projection, and changes no thread outside `thrd_ptr`'s container.
+/// Releasing the endpoint held only at descriptor `index`, the lowest holding an endpoint, of the write-held killed thread
+/// `thrd_ptr` projects to `kernel_u_killed_endpoint_released`, changes the projection, and changes no thread outside
+/// `thrd_ptr`'s container.
 pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, index: EndpointIdx)
     requires
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
@@ -100,6 +101,8 @@ pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, af
         before.thrd_mp.spec_index(thrd_ptr).wlocked_by_thread(cpu_id),
         before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view().len() == MAX_NUM_ENDPOINT_DESCRIPTORS,
         before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view()[index as int] == Some(ep_ptr),
+        forall|j: int| #![trigger before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view()[j]]
+            0 <= j < index ==> before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view()[j] is None,
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
         after.thrd_mp.spec_index(thrd_ptr).view() == (Thread { endpoint_descriptors: after.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors, ..before.thrd_mp.spec_index(thrd_ptr).view() }),
         after.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view() == before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view().update(index as int, None),

@@ -264,6 +264,7 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
             &&& pre_u.process_map.dom().contains(cpu.current_process.unwrap())
             &&& !pre_u.process_map.spec_index(cpu.current_process.unwrap()).killed
         })
+        &&& flushed_pcid matches Some(pcid) ==> pcid == pre_u.process_map.spec_index(next.owning_proc).pcid && cpu.current_process != Some(next.owning_proc)
     }) by {
         reveal(kernel_context_switch_fields); kernel_cpu_user_projection_at(pre, cpu_id);
         if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
