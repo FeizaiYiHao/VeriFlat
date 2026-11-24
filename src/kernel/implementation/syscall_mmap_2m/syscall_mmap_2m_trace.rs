@@ -435,6 +435,7 @@ pub(super) proof fn mmap_2m_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id
             &&& forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].pagetable->Some_0.mapping_1g[v]]
                 pre.process_map.dom().contains(p) && pre.process_map[p].pagetable is Some && pre.process_map[p].pagetable->Some_0.mapping_1g.dom().contains(v)
                 ==> !(pre.process_map[p].pagetable->Some_0.mapping_1g[v].addr <= entry.addr < pre.process_map[p].pagetable->Some_0.mapping_1g[v].addr + 0x40000000)
+            &&& kernel_u_frame_named_by_no_current_translation(pre, PageSize::SZ2m, entry.addr)
             &&& post == (KernelU {
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { quota_2m: (thread.quota_2m - 1) as usize, syscall_progress: mmap_2m_progress_after_leaf(thread.syscall_progress), ..thread }),
                 process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { mapping_2m: pagetable.mapping_2m.insert(va, entry), ..pagetable }), ..process }),
@@ -615,7 +616,7 @@ pub(super) proof fn mmap_2m_tlb_flush_range_steps_from_k(
             let old_u = steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(*entry);
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, entry.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid)
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, entry.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid, Some(ctn_ptr))
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& old_u.thread_map.dom().contains(thrd_ptr)

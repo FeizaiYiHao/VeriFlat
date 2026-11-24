@@ -152,6 +152,21 @@ verus! {
             }
     }
 
+    /// `cpu_tlb_wf` at cpu `cpu_id` and PCID `pcid`.
+    pub proof fn cpu_tlb_wf_at(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid)
+        requires cpu_tlb_wf(cpu_tlb, pagetable_map, pt_lower, cpu_array, needflush),
+        ensures
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid)
+            && pcid != KERNEL_DEFAULT_PCID && cpu_tlb.spec_index((cpu_id, pcid)).is_empty() == false && (!needflush.spec_index(cpu_id, pcid).view().needflush || cpu_array.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
+                let dirty_entry = cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+                let table = whole_pagetable(pagetable_map, pt_lower, dirty_entry.unwrap().pagetable_ptr);
+                &&& dirty_entry is Some
+                &&& pagetable_map.dom().contains(dirty_entry.unwrap().pagetable_ptr)
+                &&& single_tlb_subset_of_whole_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), table)
+                &&& single_tlb_present_or_stale(cpu_tlb.spec_index((cpu_id, pcid)), table, cpu_id)
+            },
+    { reveal(cpu_tlb_wf); }
+
     /// A page table of `k` that lists no CPU stale, neither for a window nor for the whole table, keeps every TLB entry
     /// backed by it present.
     pub proof fn tlb_wf_pagetable_entries_present_at(k: KernelK, pagetable: RwLockPageTableRoot)

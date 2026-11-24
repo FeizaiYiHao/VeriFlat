@@ -264,7 +264,10 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
             let ghost krnl_i = *krnl;
             let ghost lctx_i = *lctx;
             let ghost steps_i = *steps;
-            proof { flush_pagetable_tlbs_va_range_eol_held_windows_flushed(*old(krnl), *krnl, &held, old(steps), steps, snaps, cpu_id as nat, pagetable, va, count, stride_2m, local_cpu, thrd_ptr, ctn_ptr); }
+            proof {
+                flush_pagetable_tlbs_va_range_eol_held_windows_flushed(*old(krnl), *krnl, &held, old(steps), steps, snaps, cpu_id as nat, pagetable, va, count, stride_2m, local_cpu, thrd_ptr, ctn_ptr);
+                assert(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, cpu_id); };
+            }
             let Ghost(rec) = flush_pagetable_tlb_va_range_on_cpu(krnl, pagetable, cr3, pcid, va, count, stride_2m, cpu_id, local_cpu, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(*old(krnl)),
                 Ghost(held), Ghost(ctn_ptr));
             proof {

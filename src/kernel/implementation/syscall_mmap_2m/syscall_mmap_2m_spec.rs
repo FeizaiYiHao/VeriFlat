@@ -165,7 +165,7 @@ pub open spec fn mmap_2m_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
 }
 
 /// A leaf page consumes one 2M quota and publishes a present, writable, executable 2M mapping of a frame that no other
-/// mapping reaches and no 1G frame contains.
+/// mapping reaches, no 1G frame contains, and no translation a cpu may use right now or IOTLB translation names.
 #[verifier::opaque]
 pub open spec fn mmap_2m_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -191,6 +191,7 @@ pub open spec fn mmap_2m_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     &&& forall|p: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[p].pagetable->Some_0.mapping_1g[v]]
         old_u.process_map.dom().contains(p) && old_u.process_map[p].pagetable is Some && old_u.process_map[p].pagetable->Some_0.mapping_1g.dom().contains(v)
         ==> !(old_u.process_map[p].pagetable->Some_0.mapping_1g[v].addr <= entry.addr < old_u.process_map[p].pagetable->Some_0.mapping_1g[v].addr + 0x40000000)
+    &&& kernel_u_frame_named_by_no_current_translation(old_u, PageSize::SZ2m, entry.addr)
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_2m: (thread.quota_2m - 1) as usize, syscall_progress: mmap_2m_progress_after_leaf(thread.syscall_progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { mapping_2m: pagetable.mapping_2m.insert(va, entry), ..pagetable }), ..process }),

@@ -765,7 +765,7 @@ pub proof fn kill_process_tlb_cleared_step_lr(old_u: KernelU, new_u: KernelU, cp
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
         kill_process_flush_step_pre(old_u, cpu_id),
-        kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid),
+        kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid, None),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_cpu_tlb_cleared); }
 
@@ -777,7 +777,7 @@ pub proof fn kill_process_tlb_cleared_step_iso(old_u: KernelU, new_u: KernelU, c
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
         kill_process_flush_step_pre(old_u, cpu_id),
-        kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid),
+        kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid, None),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_cpu_tlb_cleared);

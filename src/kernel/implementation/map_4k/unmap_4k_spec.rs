@@ -83,7 +83,7 @@ pub open spec fn unmap_4k_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_id:
             ContainerU { cpu_set_lock: old_u.container_map.spec_index(thread.owning_container).cpu_set_lock.with_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     };
-    new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
+    new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid, Some(thread.owning_container))
 }
 
 /// A per-address TLB flush step takes or keeps this cpu's read hold on the cpu set of the thread's container, and every TLB
@@ -103,7 +103,7 @@ pub open spec fn unmap_4k_tlb_va_flush_step(old_u: KernelU, new_u: KernelU, cpu_
         &&& locked.cpu_tlb.dom().subset_of(new_u.cpu_tlb.dom())
         &&& forall|key: (CpuId, Pcid)| #![trigger new_u.cpu_tlb.dom().contains(key)]
             new_u.cpu_tlb.dom().contains(key) && !(locked.cpu_tlb.dom().contains(key) && locked.cpu_tlb[key] == new_u.cpu_tlb[key])
-                ==> key.1 == pcid && kernel_u_cpu_tlb_va_flushed(locked, new_u, key.0, pcid, va, count, stride_2m)
+                ==> key.1 == pcid && kernel_u_cpu_tlb_va_flushed(locked, new_u, key.0, pcid, va, count, stride_2m, thread.owning_container)
     })
 }
 

@@ -30,6 +30,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu<const WRITE: bool>(krnl: &mut KernelK, 
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         ctn_ptr == entry.thrd_mp.spec_index(thrd_ptr).view().owning_container,
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
         old(krnl).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
         old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
             == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
