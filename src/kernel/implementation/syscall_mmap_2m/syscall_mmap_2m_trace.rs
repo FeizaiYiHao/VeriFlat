@@ -435,6 +435,7 @@ pub(super) proof fn mmap_2m_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id
             &&& forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].pagetable->Some_0.mapping_1g[v]]
                 pre.process_map.dom().contains(p) && pre.process_map[p].pagetable is Some && pre.process_map[p].pagetable->Some_0.mapping_1g.dom().contains(v)
                 ==> !(pre.process_map[p].pagetable->Some_0.mapping_1g[v].addr <= entry.addr < pre.process_map[p].pagetable->Some_0.mapping_1g[v].addr + 0x40000000)
+            &&& kernel_u_frame_named_by_no_current_translation(pre, PageSize::SZ2m, entry.addr)
             &&& post == (KernelU {
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { quota_2m: (thread.quota_2m - 1) as usize, syscall_progress: mmap_2m_progress_after_leaf(thread.syscall_progress), ..thread }),
                 process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { mapping_2m: pagetable.mapping_2m.insert(va, entry), ..pagetable }), ..process }),
