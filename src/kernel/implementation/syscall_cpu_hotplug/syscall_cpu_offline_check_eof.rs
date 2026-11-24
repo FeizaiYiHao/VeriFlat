@@ -192,7 +192,7 @@ proof fn cpu_went_off_eof_subsystems_inv(pre: KernelK, post: KernelK, cpu_id: Cp
     assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
     assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-    assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
+    assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
     assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); };
     reveal(KernelK::default_pagetable_wf);
 }

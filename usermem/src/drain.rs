@@ -1,7 +1,6 @@
 //! A kernel step of a cpu of a domain changes the TLBs, mode, or current process of no other cpu outside that domain unless
-//! that cpu is inside a kernel step or off, proved per label family from the step specifications; the kill TLB clear, whose
-//! specification does not say whose cpu it clears, is the one exception. Hence such a step drains no buffer holding stores
-//! of a cpu outside the domain but its own (`remote_cpu_views_within_domain_implies_drains_within_domain`).
+//! that cpu is inside a kernel step or off, proved per label family from the step specifications. Hence such a step drains
+//! no buffer holding stores of a cpu outside the domain but its own (`remote_cpu_views_within_domain_implies_drains_within_domain`).
 use vstd::prelude::*;
 use crate::*;
 use crate::pcid::*;
@@ -159,6 +158,38 @@ pub proof fn kill_process_cpu_to_idle_step_implies_remote_cpu_views_within_domai
         if target.owning_container != owner {
             if owner != x { assert(u.container_map[owner].uppertree_seq.contains(x)); }
             assert(u.container_map[target.owning_container].uppertree_seq.contains(x));
+        }
+    };
+}
+
+/// The kill TLB clear changes the TLBs of one cpu, which is inside a kernel step or runs the kill target, a process whose
+/// container lies in the killer's domain.
+pub proof fn kill_process_tlb_cleared_step_implies_remote_cpu_views_within_domain(u: KernelU, u2: KernelU, d: CpuId, x: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(u), steps_in_domain(u, d, x), u.container_map.dom().contains(x), kill_process_step_pre(u, d),
+        kernel_u_cpu_tlb_cleared(u, u2, u.process_map[kill_target(u, d)].pcid, None), kill_process_tlb_cleared_cpu_in_step_or_running(u, u2, kill_target(u, d)),
+    ensures remote_cpu_views_within_domain(u, u2, d, x),
+{
+    reveal(kill_process_step_pre); reveal(kernel_u_cpu_tlb_cleared); reveal(kill_process_tlb_cleared_cpu_in_step_or_running); reveal(kernel_u_cpu_ownership_wf);
+    let owner = u.cpu_array[d as int].owning_container;
+    let target = kill_target(u, d);
+    assert(in_domain(u, x, u.process_map[target].owning_container)) by {
+        reveal(kernel_u_container_tree_wf); reveal(kernel_u_process_ownership_wf);
+        let t = u.process_map[target].owning_container;
+        if t != owner {
+            if owner != x { assert(u.container_map[owner].uppertree_seq.contains(x)); }
+            assert(u.container_map[t].uppertree_seq.contains(x));
+        }
+    };
+    let changed = u2.cpu_tlb.dom().filter(|key: (CpuId, Pcid)| !u.cpu_tlb.dom().contains(key) || u.cpu_tlb[key] != u2.cpu_tlb[key]);
+    assert forall|c: CpuId| #![trigger u.cpu_array[c as int]] index_valid(NUM_CPUS, c) && c != d && !cpu_view_kept(u, u2, c)
+        implies u.cpu_array[c as int].op is InStep || u.cpu_array[c as int].op is Off || in_domain(u, x, u.cpu_array[c as int].owning_container) by {
+        if !(u.cpu_array[c as int].op is InStep) && !in_domain(u, x, u.cpu_array[c as int].owning_container) {
+            assert(u.cpu_array[c as int].current_process != Some(target));
+            assert forall|p: Pcid| #![trigger u2.cpu_tlb.dom().contains((c, p))] #![trigger u.cpu_tlb.dom().contains((c, p))]
+                u2.cpu_tlb.dom().contains((c, p)) == u.cpu_tlb.dom().contains((c, p)) && (u.cpu_tlb.dom().contains((c, p)) ==> u2.cpu_tlb[(c, p)] == u.cpu_tlb[(c, p)]) by {
+                if u2.cpu_tlb.dom().contains((c, p)) && !(u.cpu_tlb.dom().contains((c, p)) && u2.cpu_tlb[(c, p)] == u.cpu_tlb[(c, p)]) { assert(changed.contains((c, p))); }
+            };
         }
     };
 }
@@ -465,9 +496,9 @@ pub proof fn kill_container_step_implies_remote_cpu_views_within_domain(l: StepL
 }
 
 /// A step of the `kill_process` family of a cpu of the domain rooted at `x` changes the view of no cpu outside `x` other than its own
-/// that is neither inside a kernel step nor off, except by the kill TLB clear.
+/// that is neither inside a kernel step nor off.
 pub proof fn kill_process_step_implies_remote_cpu_views_within_domain(l: StepLabel, u: KernelU, u2: KernelU, d: CpuId, x: RwLockContainerPtr)
-    requires kill_process_label(l), labeled_step(l, u, u2, d), kernel_u_ownership_wf(u), steps_in_domain(u, d, x), u.container_map.dom().contains(x), !(l is KillProcessTlbCleared),
+    requires kill_process_label(l), labeled_step(l, u, u2, d), kernel_u_ownership_wf(u), steps_in_domain(u, d, x), u.container_map.dom().contains(x),
     ensures remote_cpu_views_within_domain(u, u2, d, x),
 {
     match l {
@@ -486,7 +517,7 @@ pub proof fn kill_process_step_implies_remote_cpu_views_within_domain(l: StepLab
         StepLabel::KillProcessEndpointReleased => { killed_thread_reclaim_implies_cpus_kept(u, u2, d); },
         StepLabel::KillProcessLockTable => { reveal(kill_process_lock_table_step); },
         StepLabel::KillProcessTableHidden => { reveal(kill_process_table_hidden_step); reveal(process_table_hidden_step); },
-        StepLabel::KillProcessTlbCleared => {},
+        StepLabel::KillProcessTlbCleared => { kill_process_tlb_cleared_step_implies_remote_cpu_views_within_domain(u, u2, d, x); },
         StepLabel::KillProcessFlushed => { reveal(kill_process_flushed_step); },
         StepLabel::KillProcessUnownFunctions => { reveal(kill_process_unown_functions_step); },
         StepLabel::KillProcessIommuLeaf => { reveal(kill_process_iommu_leaf_step); },
@@ -535,11 +566,11 @@ pub proof fn thread_exit_step_implies_remote_cpu_views_within_domain(l: StepLabe
     }
 }
 
-/// A kernel step that is no hardware step and no kill TLB clear, of a cpu of the domain rooted at `x`, changes the view of no
-/// cpu outside `x` other than its own that is neither inside a kernel step nor off.
+/// A kernel step that is no hardware step, of a cpu of the domain rooted at `x`, changes the view of no cpu outside `x` other
+/// than its own that is neither inside a kernel step nor off.
 pub proof fn kernel_step_implies_remote_cpu_views_within_domain(l: StepLabel, u: KernelU, u2: KernelU, d: CpuId, x: RwLockContainerPtr)
     requires
-        !hardware_label(l), !(l is KillProcessTlbCleared), labeled_step(l, u, u2, d), kernel_u_ownership_wf(u), steps_in_domain(u, d, x), u.container_map.dom().contains(x), u.container_map.dom().contains(x),
+        !hardware_label(l), labeled_step(l, u, u2, d), kernel_u_ownership_wf(u), steps_in_domain(u, d, x), u.container_map.dom().contains(x),
     ensures remote_cpu_views_within_domain(u, u2, d, x),
 {
     if map_4k_label(l) { map_4k_step_implies_remote_cpu_views_within_domain(l, u, u2, d, x); }

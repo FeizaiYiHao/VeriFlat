@@ -72,9 +72,8 @@ pub open spec fn hidden_translations_outside(u: KernelU, x: RwLockContainerPtr, 
         }) ==> !domain_maps_byte(u, y, a)
 }
 
-/// Every cpu other than `d` that the kernel step `l` of `d` drains, and that holds stores, is a cpu of `x`. A premise of
-/// `mem_ni_step` only for the kill TLB clear (`KillProcessTlbCleared`); for every other label it is proved
-/// (`kernel_step_implies_remote_cpu_views_within_domain`).
+/// Every cpu other than `d` that the kernel step `l` of `d` drains, and that holds stores, is a cpu of `x`; proved for every
+/// kernel label (`kernel_step_implies_remote_cpu_views_within_domain`, `remote_cpu_views_within_domain_implies_drains_within_domain`).
 pub open spec fn drains_within_domain(old: MemState, new_u: KernelU, l: StepLabel, d: CpuId, x: RwLockContainerPtr) -> bool {
     forall|c: CpuId| #![trigger old.bufs[c as int]] index_valid(NUM_CPUS, c) && c != d && drained(l, old.u, new_u, d, c) && old.bufs[c as int].len() > 0
         ==> in_domain(old.u, x, old.u.cpu_array[c as int].owning_container)
@@ -129,7 +128,7 @@ pub open spec fn mem_ni_step(old: MemState, new: MemState, label: MemLabel, c: C
     &&& store_buffers_covered(old)
     &&& mem_step(old, new, label, c) && mem_step_in_domain(label, old, c, x)
     &&& hidden_translations_outside(old.u, x, y)
-    &&& label matches MemLabel::Kernel { label: l } ==> (l is KillProcessTlbCleared ==> drains_within_domain(old, new.u, l, c, x)) && ni_honest_peer(old.u, l, c, x, y)
+    &&& label matches MemLabel::Kernel { label: l } ==> ni_honest_peer(old.u, l, c, x, y)
 }
 
 /// No container lies in two isolated domains.
@@ -370,7 +369,7 @@ pub proof fn kernel_mem_step_implies_view_kept_and_isolated(old: MemState, new: 
         _ => { trace_ni_at(seq![old.u, new.u], seq![l], seq![d], seq![x], x, y, 0, 1); },
     }
     assert(domain_view(new.u, y) =~~= domain_view(old.u, y));
-    if !hardware_label(l) && !(l is KillProcessTlbCleared) {
+    if !hardware_label(l) {
         kernel_step_implies_remote_cpu_views_within_domain(l, old.u, new.u, d, x);
         remote_cpu_views_within_domain_implies_drains_within_domain(old, new.u, l, d, x);
     }

@@ -47,7 +47,7 @@ pub(super) proof fn boot_subsystems_inv_eof(
     assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); };
     assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };
-    assert(cpu_hw_cr3_pcid_wf(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(PageTable::table_pages_wf); };
+    assert(cpu_hw_cr3_pcid_wf(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, krnl.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); reveal(PageTable::table_pages_wf); };
     assert(cpu_offline_flags_wf(krnl.cpu_offline_mp, krnl.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
     assert(cpu_op_wf(krnl.cpu_op.view().view(), krnl.cpu_arr)) by { reveal(cpu_op_wf); };
     assert(cpu_trap_frame_wf(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr)) by { reveal(cpu_trap_frame_wf); };

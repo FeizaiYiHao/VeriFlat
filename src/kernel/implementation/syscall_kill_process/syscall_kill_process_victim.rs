@@ -344,7 +344,7 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
         assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(remote).view().is_init() && krnl.cpu_arr.spec_index(remote).view().view().wf()) by {
             cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), remote);
         };
-        assert(krnl.cpu_hw_cr3_pcid[remote as int].owner_cpu() == remote) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, remote); };
+        assert(krnl.cpu_hw_cr3_pcid[remote as int].owner_cpu() == remote) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, krnl.cpu_op.view().view(), remote); };
         assert(krnl.cpu_arr.spec_index(remote).view().view().kernel_call_perm() == Some(remote) && !(krnl.cpu_op.view().view()[remote as int] is InStep)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, remote); };
         cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, remote); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, victim_ptr);
     }

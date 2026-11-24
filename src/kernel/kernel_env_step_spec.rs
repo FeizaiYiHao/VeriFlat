@@ -389,6 +389,7 @@ pub proof fn kernel_k_trap_enter_implies_inv_preserved(pre: KernelK, post: Kerne
 {
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+    assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); };
     assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by {
         let a = pre.cpu_trap_frame.view().view();
         let b = post.cpu_trap_frame.view().view();
@@ -405,6 +406,7 @@ pub proof fn kernel_k_trap_return_implies_inv_preserved(pre: KernelK, post: Kern
 {
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+    assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); };
 }
 
 pub proof fn kernel_k_trap_divert_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId)
@@ -415,6 +417,7 @@ pub proof fn kernel_k_trap_divert_implies_inv_preserved(pre: KernelK, post: Kern
 {
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+    assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); };
 }
 
 pub proof fn kernel_k_regs_changed_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers)

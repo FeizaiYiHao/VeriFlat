@@ -58,24 +58,23 @@
 //! leaf alignment `kernel_u_leaf_addr_aligned_wf` follows from the first), `store_buffers_covered` (proved above), the step
 //! itself, its attribution to `x` (`mem_step_in_domain`: a fill of any domain, a device write of a DID whose anchor owner is
 //! a process of `x`, any other step of a cpu of `x`), the honest-peer conditions of the noninterference crate
-//! (`ni_honest_peer`), and two premises:
-//! - P1 `hidden_translations_outside(u, x, y)`: a translation of the current key of a cpu of `x` at a VA where its current
-//!   process has no leaf of that size, and a 4K IOTLB translation of a DID of `x` at an IOVA where the anchor owner's IOMMU
-//!   table has no leaf, name no byte `y` maps. These are the hidden leaves of an unmap, kill, or exit not yet flushed.
-//! - P2 `drains_within_domain`, for the kill TLB clear (`KillProcessTlbCleared`) only: every other cpu that step drains and
-//!   that holds stores is a cpu of `x`. The kill step's specification says only that the cleared cpu is write-locked or runs
-//!   the kill target, and a cpu write-locked by another cpu outside a kernel step may hold stores; for every other
-//!   label a step of `x` changes the TLBs, mode, or current process of no other cpu outside `x` unless that cpu is inside a
-//!   kernel step or off (`drain`), so the fact is proved there.
+//! (`ni_honest_peer`), and one premise, `hidden_translations_outside(u, x, y)`: a translation of the current key of a cpu of
+//! `x` at a VA where its current process has no leaf of that size, and a 4K IOTLB translation of a DID of `x` at an IOVA
+//! where the anchor owner's IOMMU table has no leaf, name no byte `y` maps. These are the hidden leaves of an unmap, kill, or
+//! exit not yet flushed. That a kernel step of `x` drains no buffer holding stores of a cpu outside `x` but its own
+//! (`drains_within_domain`) is proved for every label (`drain`): a step of `x` changes the TLBs, mode, or current process of
+//! no other cpu outside `x` unless that cpu is inside a kernel step or off, and such a cpu has an empty buffer
+//! (`store_buffers_covered`); the kill TLB clear changes the TLBs of a cpu inside a kernel step or running the kill target,
+//! whose container lies in the killer's domain.
 //! Theorems: `mem_step_implies_view_kept_and_isolated` (a step of `x` keeps `isolated(x, y)` and the memory view of `y`),
 //! `third_domain_mem_step_implies_views_kept_and_isolated`, `mem_trace_ni_at` (traces of two domains),
 //! `pairwise_isolated_domains_mem_trace_implies_isolated_and_view_unchanged`, and `equal_mem_views_implies_equal_load_value`
 //! (equal memory views give equal loads through a translation of a leaf the loading process has; loads through hidden
 //! translations are not covered).
 //!
-//! Not proved: the hypotheses above and P1, P2; that loads return any particular value beyond the forwarding rule and the
-//! load theorem; anything about IOMMU translations other than the IOTLB entry a device write uses; the zero-fill of pages
-//! other than mmap leaves.
+//! Not proved: the hypotheses above and `hidden_translations_outside`; that loads return any particular value beyond the
+//! forwarding rule and the load theorem; anything about IOMMU translations other than the IOTLB entry a device write uses;
+//! the zero-fill of pages other than mmap leaves.
 #![feature(adt_const_params)]
 
 use vstd::prelude::*;

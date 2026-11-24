@@ -274,7 +274,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::KillProcessLockTable => kill_process_step_pre(old_u, cpu_id) && kill_process_lock_table_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessTableHidden => kill_process_step_pre(old_u, cpu_id) && kill_process_table_hidden_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessTlbCleared => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid, None)
-            && kill_process_tlb_cleared_cpu_write_locked_or_running(old_u, new_u, kill_target(old_u, cpu_id)),
+            && kill_process_tlb_cleared_cpu_in_step_or_running(old_u, new_u, kill_target(old_u, cpu_id)),
         StepLabel::KillProcessFlushed => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessUnownFunctions => kill_process_step_pre(old_u, cpu_id) && kill_process_unown_functions_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessIommuLeaf => kill_process_step_pre(old_u, cpu_id) && kill_process_iommu_leaf_step(old_u, new_u, cpu_id),

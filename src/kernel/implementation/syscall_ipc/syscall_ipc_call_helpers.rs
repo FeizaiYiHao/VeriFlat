@@ -146,7 +146,7 @@ pub(super) fn ipc_handoff_switch_to_thread(
             assert(pcid_valid(krnl.prc_mp.spec_index(next_process).view_rodata().view().pcid)) by {
                 process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
             };
-            pcid_needflush_wf_implies_array_inv(krnl.pcid_needflush); cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id);
+            pcid_needflush_wf_implies_array_inv(krnl.pcid_needflush); cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, krnl.cpu_op.view().view(), cpu_id);
             kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal(&*old(krnl), &before_switch); kernel_endpoint_nonlock_fields_unchanged_for_equal(old(krnl).ep_mp, before_switch.ep_mp);
             kernel_container_nonlock_fields_and_quotas_unchanged_for_equal(&*old(krnl), &before_switch);
         }

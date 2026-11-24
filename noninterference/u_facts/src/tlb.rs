@@ -74,7 +74,7 @@ pub proof fn kernel_inv_implies_current_pcid_names_current_pagetable(krnl: &Kern
     let p = kernel_k_to_kernel_u(*krnl).cpu_array[c as int].current_process->Some_0;
     process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, c);
     process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, p);
-    cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, c);
+    cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, krnl.cpu_op.view().view(), c);
 }
 
 /// For a valid cpu `c` running process `p` with a non-default PCID, the TLB of `c` under that PCID caches only non-empty
