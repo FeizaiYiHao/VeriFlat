@@ -51,6 +51,12 @@
 //! that IOMMU table.
 //! `pci_claim` joins the PCI family, a cpu inside `unmap_4k` has only RAM leaves left to clear, and `bounds` reads the step
 //! bounds of the BAR map and unmap syscalls, which stay out of the world, from their trace specs.
+//! Round 15: thread scheduling liveness. `run_queue` defines where a waiting thread stands (`waiting`, `shard_of`, `pos`),
+//! the run-queue invariant `queue_inv`, and `waiting_step`, what one world step does to a waiting thread; `run_steps` proves
+//! it for every world label. `run_measure` states part A without fairness: the run queues are FIFO, each head pop of a
+//! waiting thread's shard lowers its position, a Schedule of the shard's cpu at the head runs it, and it changes shard
+//! only from the head by a pull. `run_fair` states part B: under explicit fairness hypotheses a thread that is not
+//! blocked eventually runs, or is killed or gone.
 #![feature(adt_const_params)]
 
 use vstd::prelude::*;

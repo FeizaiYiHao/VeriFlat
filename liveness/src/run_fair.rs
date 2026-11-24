@@ -13,11 +13,17 @@
 //! (3) `killed_threads_leave_queues` and `killed_running_lost`: kills complete; a killed thread does not stay in a run queue
 //!     forever, and a cpu whose running thread or process is killed eventually loses it.
 //! (4) `container_eventually_served_forever`: `t`'s container eventually has an online cpu it owns that stays online and
-//!     owned from then on.
+//!     owned from then on. One fixed cpu is needed: if the container always has some online cpu but each goes Off again
+//!     before its next orphan-pull tick from the cursor of `t`'s orphan shard, (1) holds and no orphan pull reaches `t`.
 //! (5) `shard_service_lost_finitely`: the cpu of the shard `t` waits on goes Off or leaves `t`'s container only finitely
-//!     often while `t` waits on that shard. This one is not among the hypotheses the design names; without it the
-//!     statement is false in U (see the report: a shard cpu that comes online and goes Off again between its own ticks,
-//!     while the orphan pulls of the other cpus always fall into its online phases).
+//!     often while `t` waits on that shard. This one is not among the hypotheses the design names, and without it the
+//!     statement is false in U: let `t` head shard B of its container C, whose cpu A stays online. Repeat forever: B is
+//!     online and idle, so B's scheduler would switch to `t`, but before B takes that step A requests B offline and B takes
+//!     its offline check and goes Off; now A's orphan pull from cursor B would take `t`, but before A takes it A brings B
+//!     online again. Every scheduling entry of A and B reaches a state in which it would do nothing infinitely often, so (1)
+//!     holds with no step on `t`, and (2) to (4) hold. Weak fairness cannot exclude this churn; strong fairness of the
+//!     tick entries (an entry that would act infinitely often acts infinitely often) or a glue order in U that makes an
+//!     onlined cpu schedule before its next offline check would.
 //! The start state satisfies the run-queue invariant and carries no `kill_container` mark (no cpu and no cpu set marked);
 //! `kill_container` is not a world syscall, and no world step sets or clears these marks.
 use vstd::prelude::*;
