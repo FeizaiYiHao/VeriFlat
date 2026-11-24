@@ -1085,8 +1085,9 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
 
 /// A section that flushes cpu `c`'s TLB for `pcid` and changes only cpu state, TLBs, needflush flags, and page-table ghost
 /// state that keeps every table's lock mode, mappings, and window locks changes only the TLB projection, and, if it changes
-/// it, clears what `c` caches under `pcid` down to what it may cache in the state with `pre`'s page tables.
-pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c: CpuId, pcid: Pcid, flushed: bool)
+/// it, clears what `c` caches under `pcid` down to what it may cache in the state with `pre`'s page tables, on a cpu `c` that
+/// is write-locked or runs `prc`.
+pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c: CpuId, pcid: Pcid, flushed: bool, prc: RwLockProcessPtr)
     requires
         post.inv(),
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
@@ -1106,10 +1107,12 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
         post.cpu_tlb.view() == if flushed { pre.cpu_tlb.view().insert((c, pcid), post.cpu_tlb.spec_index((c, pcid))) } else { pre.cpu_tlb.view() },
         (KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*post }).inv(),
         flushed ==> cpu_tlb_within_may_cache(KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*post }, c, pcid, post.cpu_tlb.spec_index((c, pcid)), post.cpu_tlb.structure_cache((c, pcid))),
+        flushed ==> pre.cpu_arr.spec_index(c).value.wlocked() || pre.cpu_arr.spec_index(c).value.view().view().current_process == Some(prc),
     ensures
         kernel_k_to_kernel_u(*post) == (KernelU { cpu_tlb: post.cpu_tlb.view(), ..kernel_k_to_kernel_u(*pre) }),
         (kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post)) == (pre.cpu_tlb.view() == post.cpu_tlb.view()),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) ==> kernel_u_cpu_tlb_cleared(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), pcid, None),
+        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) ==> kill_process_tlb_cleared_cpu_write_locked_or_running(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), prc),
 {
     reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
     kernel_cpu_tlb_updated_implies_u_step(pre, post); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -1124,6 +1127,7 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
             if pre_u.cpu_tlb.dom().contains((c, pcid)) && pre_u.cpu_tlb[(c, pcid)] == post.cpu_tlb.spec_index((c, pcid)) { assert_maps_equal!(pre_u.cpu_tlb, post.cpu_tlb.view(), key => {}); }
         };
         assert_sets_equal!(post.cpu_tlb.view().dom().filter(|key: (CpuId, Pcid)| !pre_u.cpu_tlb.dom().contains(key) || pre_u.cpu_tlb[key] != post.cpu_tlb.view()[key]), set![(c, pcid)]);
+        reveal(kill_process_tlb_cleared_cpu_write_locked_or_running); kernel_cpu_projection_at(pre, c);
     }
 }
 
@@ -1137,6 +1141,7 @@ pub(crate) proof fn kill_trace_push_tlb_flush(
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         steps.view() == record_user_view_change(before, step_pre, step_post),
         step_pre != step_post ==> kernel_u_cpu_tlb_cleared(step_pre, step_post, pcid, None),
+        step_pre != step_post ==> kill_process_tlb_cleared_cpu_write_locked_or_running(step_pre, step_post, kill_target(step_pre, cpu_id)),
         kill_process_step_pre(step_pre, cpu_id),
         kill_process_flush_step_pre(step_pre, cpu_id),
         step_pre.process_map[kill_target(step_pre, cpu_id)].pcid == pcid,

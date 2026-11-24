@@ -196,6 +196,7 @@ pub(crate) fn kill_reclaim_flush(
         assert({
             &&& krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3
             &&& krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid)
+            &&& krnl.pt_mp.spec_index(pagetable).view().higher.proc_ptr == target
             &&& page_ptr_valid(cr3)
             &&& pcid_valid(pcid)
             &&& pcid != KERNEL_DEFAULT_PCID
@@ -260,7 +261,7 @@ pub(crate) fn kill_reclaim_flush(
         let flushed = kill_reclaim_flush_cpu_tlb(krnl, Tracked(&mut *lctx), c, cpu_id, pagetable, cr3, pcid, Tracked(cpu_perm), Tracked(pagetable_perm));
         proof {
             let tlb_k = *krnl;
-            kill_tlb_flush_step_from_k(&iter_k, &tlb_k, c, pcid, flushed);
+            kill_tlb_flush_step_from_k(&iter_k, &tlb_k, c, pcid, flushed, target);
             if tlb_k.cpu_tlb.view() == iter_k.cpu_tlb.view() { krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps); }
             else { krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps); }
             kill_step_pre_from_k(&iter_k, &iter_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: false }, scope);
@@ -290,7 +291,8 @@ pub(crate) fn kill_reclaim_flush(
 
 /// Flush `pcid` on cpu `c` under its needflush lock and drop `c` from the stale-CPU record of the write-held page table
 /// `pagetable` with `cr3` and `pcid`; returns whether the hardware cr3/pcid word of `c` names the table. What `c` may
-/// cache after a flush is stated in the state before the record drop, whose tables differ only in that record.
+/// cache after a flush is stated in the state before the record drop, whose tables differ only in that record. A flushed
+/// cpu is write-locked or runs the table's process.
 pub(crate) fn kill_reclaim_flush_cpu_tlb(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, c: usize, cpu_id: CpuId, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(pagetable_perm): Tracked<&LockPerm>,
@@ -351,12 +353,28 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
         (KernelK { pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, ..*final(krnl) }).inv(),
         flushed ==> cpu_tlb_within_may_cache(KernelK { pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, ..*final(krnl) }, c, pcid, final(krnl).cpu_tlb.spec_index((c, pcid)),
             final(krnl).cpu_tlb.structure_cache((c, pcid))),
+        flushed ==> old(krnl).cpu_arr.spec_index(c).value.wlocked()
+            || old(krnl).cpu_arr.spec_index(c).value.view().view().current_process == Some(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr),
 {
     hide(typed_lock_maps_aligned);
     broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(c, pcid, Tracked(&mut *lctx));
     let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, c, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
     let flushed = hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid;
+    assert(flushed ==> old(krnl).cpu_arr.spec_index(c).value.wlocked()
+        || old(krnl).cpu_arr.spec_index(c).value.view().view().current_process == Some(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr)) by {
+        let cpu = old(krnl).cpu_arr.spec_index(c).value.view().view();
+        cpu_hw_cr3_pcid_wf_at(old(krnl).cpu_hw_cr3_pcid, old(krnl).cpu_arr, old(krnl).pcid_needflush, c);
+        cpu_array_wf_at(old(krnl).cpu_arr, old(krnl).dflt_pt.view(), c); process_cpu_wf_at(old(krnl).prc_mp, old(krnl).cpu_arr, c);
+        if flushed && cpu.current_cr3 == cr3 && cpu.current_pcid == pcid {
+            let pt = old(krnl).prc_mp.spec_index(cpu.current_process->Some_0).view().pagetable;
+            process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, cpu.current_process->Some_0);
+            pagetable_perms_wf_at(old(krnl).pt_mp, pt); pagetable_perms_wf_at(old(krnl).pt_mp, pagetable);
+            whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).higher.wf_l4_cr3_at(); whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).higher.wf_l4_cr3_at();
+            pagetable_pages_wf_closure_page_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, pt, cpu.current_cr3);
+            pagetable_pages_wf_closure_page_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, pagetable, cr3);
+        }
+    };
     if flushed {
         if c == cpu_id {
             flush_local_pcid_and_clear(krnl, c, pcid, cr3, Tracked(&*lctx), Tracked(&needflush_perm), Tracked(cpu_perm));
