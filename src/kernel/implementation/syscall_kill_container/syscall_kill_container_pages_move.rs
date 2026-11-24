@@ -201,8 +201,9 @@ pub(crate) fn kill_container_pages_move_4k(
     }
 }
 
-/// Move every page in the global pool of the marked container's 2M allocator `a2` to the global pool of the killer's
-/// container's 2M allocator together with one page of 2M quota, one container kill step per page.
+/// With no 4K quota left in the marked container's 4K allocator `a4`, move every page in the global pool of its 2M allocator
+/// `a2` to the global pool of the killer's container's 2M allocator together with one page of 2M quota, one container kill
+/// step per page.
 pub(crate) fn kill_container_pages_move_2m(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
@@ -229,6 +230,7 @@ pub(crate) fn kill_container_pages_move_2m(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
         !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
+        old(krnl).allc_4k_mp.spec_index(a4).quota.view().value == 0,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -250,6 +252,7 @@ pub(crate) fn kill_container_pages_move_2m(
         forall|i: CpuId| #![trigger final(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
             ==> final(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view() == old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view(),
         final(krnl).allc_4k_mp.spec_index(a4).global_pool.view() == old(krnl).allc_4k_mp.spec_index(a4).global_pool.view(),
+        final(krnl).allc_4k_mp.spec_index(a4).quota.view().value == 0,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -336,6 +339,7 @@ pub(crate) fn kill_container_pages_move_2m(
             forall|i: CpuId| #![trigger krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
                 ==> krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view() == old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view(),
             krnl.allc_4k_mp.spec_index(a4).global_pool.view() == old(krnl).allc_4k_mp.spec_index(a4).global_pool.view(),
+            krnl.allc_4k_mp.spec_index(a4).quota.view().value == 0,
         decreases n - moved,
     {
         proof { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); }
@@ -375,7 +379,9 @@ pub(crate) fn kill_container_pages_move_2m(
     }
 }
 
-/// Move every page in the global pool of the marked container's 1G allocator `a1` to the global pool of the killer's container's 1G allocator together with one page of 1G quota, one container kill step per page.
+/// With no 4K or 2M quota left in the marked container's allocators `a4` and `a2`, move every page in the global pool of its 1G
+/// allocator `a1` to the global pool of the killer's container's 1G allocator together with one page of 1G quota, one container
+/// kill step per page.
 pub(crate) fn kill_container_pages_move_1g(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
@@ -402,6 +408,7 @@ pub(crate) fn kill_container_pages_move_1g(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
         !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
+        old(krnl).allc_4k_mp.spec_index(a4).quota.view().value == 0 && old(krnl).allc_2m_mp.spec_index(a2).quota.view().value == 0,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -511,6 +518,7 @@ pub(crate) fn kill_container_pages_move_1g(
             forall|i: CpuId| #![trigger krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
                 ==> krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view() == old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view(),
             krnl.allc_4k_mp.spec_index(a4).global_pool.view() == old(krnl).allc_4k_mp.spec_index(a4).global_pool.view(),
+            krnl.allc_4k_mp.spec_index(a4).quota.view().value == 0 && krnl.allc_2m_mp.spec_index(a2).quota.view().value == 0,
         decreases n - moved,
     {
         proof { allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, a1); }

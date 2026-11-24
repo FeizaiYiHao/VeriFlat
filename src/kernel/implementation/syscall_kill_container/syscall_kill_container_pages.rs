@@ -1,6 +1,10 @@
 use vstd::prelude::*;
 use crate::*;
 use super::super::syscall_kill_process::syscall_kill_process_spec::KillTraceCtx;
+#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
+use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
+#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
+use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
 use super::syscall_kill_container_pages_lock::kill_container_pages_lock;
 use super::syscall_kill_container_pages_drain::kill_container_pages_drain;
 use super::syscall_kill_container_pages_move::{kill_container_pages_move_4k, kill_container_pages_move_2m, kill_container_pages_move_1g};
@@ -15,8 +19,9 @@ use super::syscall_kill_container_pages_spec::*;
 verus! {
 /// Move every free page of the marked container `ctn_ptr` to the killer's container `owner_ptr`: write-hold the
 /// marked container's 4K and 2M allocator caches and both containers' 4K, 2M, and 1G global pools and quotas, drain the
-/// caches into the marked container's pools, move each pooled page with one page of quota in its own step, and start
-/// retiring the container, which then holds no quota; 1G caches hold no page.
+/// caches into the marked container's pools, move each pooled page with one page of quota in its own step, 4K pages first,
+/// then 2M, then 1G, each size once no quota of the smaller sizes is left, and start retiring the container, which then
+/// holds no quota; 1G caches hold no page.
 pub(crate) fn kill_container_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, Tracked(cpu_perm): Tracked<&LockPerm>,
@@ -102,9 +107,23 @@ pub(crate) fn kill_container_pages(
     kill_container_pages_move_4k(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&caches_4k), Tracked(&caches_2m), Tracked(&pools_4k), Tracked(&pools_2m),
         Tracked(&quotas_4k), Tracked(&quotas_2m), Tracked(&pools_1g), Tracked(&quotas_1g), Ghost(start), Ghost(pre), Ghost(ctx));
+    proof {
+        let caches = krnl.allc_4k_mp.spec_index(a4).cpu_caches;
+        assert(krnl.allc_4k_mp.spec_index(a4).quota.view().value == 0) by {
+            allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(caches.view());
+            container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, ctn_ptr);
+        };
+    }
     kill_container_pages_move_2m(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&caches_4k), Tracked(&caches_2m), Tracked(&pools_4k), Tracked(&pools_2m),
         Tracked(&quotas_4k), Tracked(&quotas_2m), Tracked(&pools_1g), Tracked(&quotas_1g), Ghost(start), Ghost(pre), Ghost(ctx));
+    proof {
+        let caches = krnl.allc_2m_mp.spec_index(a2).cpu_caches;
+        assert(krnl.allc_2m_mp.spec_index(a2).quota.view().value == 0) by {
+            allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(caches.view());
+            container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, ctn_ptr);
+        };
+    }
     kill_container_pages_move_1g(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&caches_4k), Tracked(&caches_2m), Tracked(&pools_4k), Tracked(&pools_2m),
         Tracked(&quotas_4k), Tracked(&quotas_2m), Tracked(&pools_1g), Tracked(&quotas_1g), Ghost(start), Ghost(pre), Ghost(ctx));

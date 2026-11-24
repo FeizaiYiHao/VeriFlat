@@ -122,11 +122,11 @@ pub(crate) fn kill_container_retire_commit(
             &&& final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom().remove(ro.allocator_ptr_4k)
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)]
                 final(krnl).allc_4k_mp.dom().contains(a) && a != owner_ro.allocator_ptr_4k ==> final(krnl).allc_4k_mp.spec_index(a).quota.view() == old(krnl).allc_4k_mp.spec_index(a).quota.view()
-            &&& old(krnl).allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view() < final(krnl).allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view()
+            &&& old(krnl).allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view() + 5 == final(krnl).allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view()
             &&& final(krnl).allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom().remove(ro.allocator_ptr_2m)
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_2m_mp.spec_index(a)]
                 final(krnl).allc_2m_mp.dom().contains(a) && a != owner_ro.allocator_ptr_2m ==> final(krnl).allc_2m_mp.spec_index(a).quota.view() == old(krnl).allc_2m_mp.spec_index(a).quota.view()
-            &&& old(krnl).allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view() < final(krnl).allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view()
+            &&& old(krnl).allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view() + 2 == final(krnl).allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view()
             &&& final(krnl).allc_1g_mp.dom() == old(krnl).allc_1g_mp.dom().remove(ro.allocator_ptr_1g)
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)]
                 final(krnl).allc_1g_mp.dom().contains(a) ==> final(krnl).allc_1g_mp.spec_index(a).quota.view() == old(krnl).allc_1g_mp.spec_index(a).quota.view()

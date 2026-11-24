@@ -237,7 +237,7 @@ pub(super) fn schedule_switch_unlock_and_record(
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap));
             reveal(kernel_context_switch_fields); reveal(scheduler_context_switch_eof_transition_framing);
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-            broadcast use kernel_process_nonlock_fields_unchanged_transitive;
+            reveal(kernel_process_nonlock_fields_unchanged); broadcast use kernel_process_nonlock_fields_unchanged_transitive;
         };
         steps.end_kernel_step_context_switch(&*krnl, &*lctx, cpu_id, next_thread, flushed_pcid);
         assert(schedule_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, true, flushed_pcid)) by {

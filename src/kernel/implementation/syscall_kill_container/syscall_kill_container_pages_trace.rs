@@ -8,7 +8,7 @@ use super::super::syscall_kill_process::syscall_kill_process_spec::kill_killer;
 verus! {
 /// The killer on `cpu_id` write-holding its cpu, its cpu's container, its process `prc_ptr`, itself `thrd_ptr`,
 /// and the marked container `ctn_ptr` below its cpu's container whose free pages it moves satisfies the container
-/// kill's step precondition on `krnl` with that container at its pages.
+/// kill's step precondition on `krnl` with that container at its pages, whose 4K and 2M quota are its allocators' quotas.
 pub(crate) proof fn kill_container_pages_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
 )
@@ -34,6 +34,8 @@ pub(crate) proof fn kill_container_pages_pre_from_k(
             &&& kill_container_target(u, cpu_id) == ctn_ptr
             &&& kill_container_stage(u, cpu_id) is Pages
             &&& u.cpu_array[cpu_id as int].owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container
+            &&& u.container_map[ctn_ptr].quota_4k == krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value
+            &&& u.container_map[ctn_ptr].quota_2m == krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m).quota.view().value
         }),
 {
     let owner = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
@@ -47,7 +49,8 @@ pub(crate) proof fn kill_container_pages_pre_from_k(
 }
 
 /// Moving one free page of `size`, which spans the pages `moved` of the marked container `ctn_ptr`, together with
-/// one page of `size` of quota to the killer's container `owner_ptr` is a middle step of the container kill.
+/// one page of `size` of quota to the killer's container `owner_ptr`, a 2M page once `ctn_ptr` has no 4K quota left and a 1G
+/// page once it has no 4K or 2M quota left, is a middle step of the container kill.
 pub(crate) proof fn kill_container_move_page_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, moved: Set<PagePtr>, size: PageSize,
 )
@@ -63,6 +66,8 @@ pub(crate) proof fn kill_container_move_page_step_from_u(
             let target = pre.container_map[ctn_ptr];
             let owner = pre.container_map[owner_ptr];
             &&& 0 < match size { PageSize::SZ4k => target.quota_4k, PageSize::SZ2m => target.quota_2m, PageSize::SZ1g => target.quota_1g }
+            &&& size is SZ2m ==> target.quota_4k == 0
+            &&& size is SZ1g ==> target.quota_4k == 0 && target.quota_2m == 0
             &&& post == (KernelU {
                 container_map: pre.container_map.insert(ctn_ptr, match size {
                     PageSize::SZ4k => ContainerU { owned_pages: target.owned_pages.difference(moved), quota_4k: (target.quota_4k - 1) as usize, ..target },

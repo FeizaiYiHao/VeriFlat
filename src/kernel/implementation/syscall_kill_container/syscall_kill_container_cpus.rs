@@ -438,8 +438,8 @@ fn kill_container_pages_enter(
     }
 }
 
-/// Move the cpu `cpu_i` of the marked target `ctn_ptr`, which the held marked set `set_ptr` holds (closed when
-/// `closed`), to the killer's container `owner_ptr` in one step, dropping the target's offline request for it.
+/// Move the cpu `cpu_i` of the marked target `ctn_ptr`, the lowest-numbered cpu the held marked set `set_ptr` holds (closed
+/// when `closed`), to the killer's container `owner_ptr` in one step, dropping the target's offline request for it.
 fn kill_container_move_cpu(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
     ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, set_ptr: RwLockCpuSetPtr, cpu_i: CpuId, closed: bool,
@@ -487,6 +487,7 @@ fn kill_container_move_cpu(
         set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id,
         index_valid(NUM_CPUS, cpu_i),
         old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(cpu_i),
+        forall|j: CpuId| #![trigger old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j)] j < cpu_i ==> !old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j),
         closed == old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.closed_view().contains(cpu_i),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures

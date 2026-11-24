@@ -17,7 +17,8 @@ pub open spec fn context_switch_flushed_pcid(pre: KernelK, cpu_id: CpuId, next_t
 
 #[verifier::opaque]
 /// The live head `next_thread` of shard `cpu_id` of the CPU's container replaces the live thread running on
-/// `cpu_id`, which is requeued at the tail of that shard, and at most the `(cpu_id, flushed_pcid)` TLB entry is flushed.
+/// `cpu_id`, which is requeued at the tail of that shard, and at most the `(cpu_id, flushed_pcid)` TLB entry is flushed,
+/// where `flushed_pcid` is the next thread's process's PCID and that process is not the one running on `cpu_id`.
 pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let previous = cpu.current_thread;
@@ -69,6 +70,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
         None => pre.cpu_tlb.structure_caches(),
     }
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& flushed_pcid matches Some(pcid) ==> pcid == pre.prc_mp.spec_index(next_process).view_rodata().view().pcid && cpu.current_process != Some(next_process)
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& !(cpu.state is Off)
     &&& pre.ctn_mp.dom().contains(cpu.owning_container)
@@ -445,6 +447,7 @@ pub open spec fn kernel_ipc_call_handoff_fields(
         None => pre.cpu_tlb.structure_caches(),
     }
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& flushed_pcid matches Some(pcid) ==> pcid == pre.prc_mp.spec_index(callee.view().owning_proc).view_rodata().view().pcid && cpu.current_process != Some(callee.view().owning_proc)
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(caller_ptr)
@@ -672,6 +675,7 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
         None => pre.cpu_tlb.structure_caches(),
     }
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& flushed_pcid matches Some(pcid) ==> pcid == pre.prc_mp.spec_index(caller.view().owning_proc).view_rodata().view().pcid && cpu.current_process != Some(caller.view().owning_proc)
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(callee_ptr)

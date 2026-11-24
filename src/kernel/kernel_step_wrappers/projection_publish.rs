@@ -60,6 +60,8 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
         before.ctn_mp.spec_index(container).view_rodata().view().pcid_allocator == pcid_allocator,
         after.pcid_allc_mp.unchanged_except(&before.pcid_allc_mp, pcid_allocator),
         PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(pcid),
+        forall|id: Pcid| #![trigger PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(id)]
+            PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(id) ==> pcid <= id,
         after.pcid_allc_mp.spec_index(pcid_allocator).view().alloc_ensures(&before.pcid_allc_mp.spec_index(pcid_allocator).view(), child, pcid),
         after.pcid_allc_mp.spec_index(pcid_allocator).locking_thread() is None,
         after.pt_mp.dom() == before.pt_mp.dom().insert(table),
@@ -107,6 +109,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             &&& pre.container_map.dom().contains(container)
             &&& pre.thread_map[thread].quota_4k >= cost
             &&& pre.container_map[container].free_pcids.contains(pcid)
+            &&& forall|p: Pcid| #![trigger pre.container_map[container].free_pcids.contains(p)] pre.container_map[container].free_pcids.contains(p) ==> pcid <= p
             &&& post.container_map[container].free_pcids == pre.container_map[container].free_pcids.remove(pcid)
             &&& post.process_map.dom() == pre.process_map.dom().insert(child)
             &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {
@@ -194,6 +197,8 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
         before.ctn_mp.spec_index(container).view_rodata().view().pcid_allocator == pcid_allocator,
         after.pcid_allc_mp.unchanged_except(&before.pcid_allc_mp, pcid_allocator),
         PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(pcid),
+        forall|id: Pcid| #![trigger PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(id)]
+            PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(id) ==> pcid <= id,
         after.pcid_allc_mp.spec_index(pcid_allocator).view().alloc_ensures(&before.pcid_allc_mp.spec_index(pcid_allocator).view(), child, pcid),
         after.pcid_allc_mp.spec_index(pcid_allocator).locking_thread() is None,
     ensures
@@ -201,6 +206,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             &&& pre.container_map[container].free_pcids.contains(pcid)
+            &&& forall|p: Pcid| #![trigger pre.container_map[container].free_pcids.contains(p)] pre.container_map[container].free_pcids.contains(p) ==> pcid <= p
             &&& post.container_map[container].free_pcids == pre.container_map[container].free_pcids.remove(pcid)
             &&& post.container_map == pre.container_map.insert(container, ContainerU {
                 owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, pcid_allocator_lock: LockStateU::Unlocked,
