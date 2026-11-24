@@ -190,8 +190,8 @@ pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// While the killer write-holds the target's cpu set, one unlocked Idle or Off cpu of the target moves, in the same state,
-/// to the killer's container, and the target drops its offline request for that cpu.
+/// While the killer write-holds the target's cpu set, the lowest-numbered cpu the target still owns, an unlocked Idle or Off
+/// cpu, moves, in the same state, to the killer's container, and the target drops its offline request for that cpu.
 #[verifier::opaque]
 pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -205,6 +205,7 @@ pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cp
     &&& forall|i: CpuId| #![trigger moved.contains(i)] moved.contains(i) ==> {
         let cpu = old_u.cpu_array[i as int];
         &&& cpu.owning_container == ctn_ptr
+        &&& forall|j: int| #![trigger old_u.cpu_array[j]] 0 <= j < i ==> old_u.cpu_array[j].owning_container != ctn_ptr
         &&& cpu.state is Idle || cpu.state is Off
         &&& cpu.lock_state is Unlocked
         &&& new_u.cpu_array[i as int] == (CpuU { owning_container: owner_ptr, ..cpu })
