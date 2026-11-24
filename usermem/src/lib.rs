@@ -4,16 +4,18 @@
 //! (`mem`), and one FIFO store buffer per cpu (`bufs`, oldest first); store buffers and memory are top-level components, not
 //! part of a cpu record. A step `mem_step(old, new, label, cpu)` is one of
 //! - `Kernel { label }`: `labeled_step(label, old.u, new.u, cpu)` of the noninterference crate; the buffers of the drain set
-//!   (`drained`) are written to memory, cpu by cpu in increasing id and each oldest first, and emptied; at the three mmap leaf
-//!   steps (`Mmap4kLeaf`, `Mmap2mLeaf`, `Mmap1gLeaf`) the frame of the installed leaf is then zeroed. The drain set is empty for
-//!   the eight hardware labels (trap enter, return, divert, register and return-value writes, CPU and IOMMU TLB fills, context
-//!   cache fills); for every other label it is the acting cpu together with every other cpu whose TLB, mode (`op`), or current
-//!   process the step changes.
+//!   (`drained`) are written to memory in some interleaving that keeps each cpu's own order, oldest first, and fixes none
+//!   between cpus (`drain_order`; increasing cpu id is one, `increasing_cpu_drain_implies_kernel_mem_step`), and emptied; at
+//!   the three mmap leaf steps (`Mmap4kLeaf`, `Mmap2mLeaf`, `Mmap1gLeaf`) the frame of the installed leaf is then zeroed. The
+//!   drain set is empty for the eight hardware labels (trap enter, return, divert, register and return-value writes, CPU and
+//!   IOMMU TLB fills, context cache fills); for every other label it is the acting cpu together with every other cpu whose
+//!   TLB, mode (`op`), or current process the step changes.
 //! - `StoreIssued { s }`: a cpu in user mode buffers a store through a writable translation of its current process's PCID.
 //! - `StoreCommitted`: the oldest store of a cpu's buffer is written to memory and leaves the buffer.
 //! - `Load { .. }`: a cpu in user mode reads through a translation of its current process's PCID; each byte is the youngest
 //!   buffered store of that cpu covering it, else memory. Nothing changes.
-//! - `DmaWritten { .. }`: a device writes arbitrary bytes through a writable 4K IOTLB entry of its domain, in one step.
+//! - `DmaWritten { .. }`: a device writes arbitrary bytes through a writable 4K IOTLB entry of its domain, which the IOTLB
+//!   holds, in one step.
 //! The user and device steps leave `u` unchanged.
 //!
 //! Hypotheses. The model is the machine above under the following hardware rules, which its definition encodes and which are
@@ -42,8 +44,8 @@
 //! per-label fact that a kernel step keeps the PCID of every process alive before and after it is proved from the step
 //! specifications (`pcid`). In the user projection of a kernel satisfying the kernel invariant (`mapped`), every pending
 //! store targets a frame that a leaf of its writer's page table maps at the store's VA (a BAR page, or a page in the mapped
-//! state of the store's size listing that table and VA), and every device write through a domain the IOTLB holds targets a
-//! Mapped4k page listing the domain's IOMMU table and the IOVA.
+//! state of the store's size listing that table and VA), and every device write targets a Mapped4k page listing the
+//! domain's IOMMU table and the IOVA.
 //!
 //! Not proved: the hypotheses above; that loads return any particular value beyond the forwarding rule; isolation of user
 //! memory beyond the per-store mapping fact of `mapped`; anything about IOMMU translations other than the IOTLB entry a

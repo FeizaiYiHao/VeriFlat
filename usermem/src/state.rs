@@ -101,4 +101,15 @@ pub proof fn mem_after_stores_changed_implies_covering_store(mem: IMap<PAddr, u8
 pub proof fn no_stores_implies_mem_kept(mem: IMap<PAddr, u8>)
     ensures mem_after_stores(mem, Seq::<PendingStore>::empty()) == mem,
 {}
+
+/// Writing `a + b` is writing `a`, then `b`.
+pub proof fn stores_concat_implies_mem_after_stores_sequential(mem: IMap<PAddr, u8>, a: Seq<PendingStore>, b: Seq<PendingStore>)
+    ensures mem_after_stores(mem, a + b) == mem_after_stores(mem_after_stores(mem, a), b),
+    decreases b.len(),
+{
+    if b.len() == 0 { assert(a + b =~= a); } else {
+        assert((a + b).drop_last() =~= a + b.drop_last());
+        stores_concat_implies_mem_after_stores_sequential(mem, a, b.drop_last());
+    }
+}
 } // verus!

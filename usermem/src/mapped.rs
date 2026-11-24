@@ -24,12 +24,12 @@ pub proof fn kernel_inv_implies_pending_store_frame_mapped(krnl: KernelK, st: Me
     kernel_inv_implies_usable_tlb_entry_names_mapped_page(&krnl, c, s.size, s.base_va);
 }
 
-/// In the user projection of a well-formed kernel, a device write of a domain `did` that the IOTLB holds targets a page in the
+/// In the user projection of a well-formed kernel, a device write of a domain `did` targets a page in the
 /// Mapped4k state whose IOMMU mappings list (`it`, `iova`), where `it` is the IOMMU table carrying `did`, owned by the process
 /// owning the B/D/F that anchors `did`.
 pub proof fn kernel_inv_implies_dma_write_frame_iommu_mapped(krnl: KernelK, old: MemState, new: MemState, did: VtdDomainId, iova: VAddr, frame: PAddr,
     offset: nat, bytes: Seq<u8>, c: CpuId)
-    requires krnl.inv(), old.u == kernel_k_to_kernel_u(krnl), old.u.iommu_tlb.dom().contains(did), mem_step(old, new, MemLabel::DmaWritten { did, iova, frame, offset, bytes }, c),
+    requires krnl.inv(), old.u == kernel_k_to_kernel_u(krnl), mem_step(old, new, MemLabel::DmaWritten { did, iova, frame, offset, bytes }, c),
     ensures
         ({
             let anchor = pci_bdf_of_did(did);

@@ -1,5 +1,5 @@
-//! The step relation `mem_step`: the kernel step with its drain set and the zeroing of fresh mmap leaves, and the user and
-//! device steps.
+//! The step relation `mem_step`: the kernel step with its drain set, written in an unspecified order, and the zeroing of
+//! fresh mmap leaves, and the user and device steps.
 use vstd::prelude::*;
 use crate::*;
 
@@ -32,13 +32,36 @@ pub open spec fn drained_buffers(bufs: Seq<Seq<PendingStore>>, l: StepLabel, u: 
     Seq::new(bufs.len(), |c: int| if drained(l, u, u2, d, c as CpuId) { Seq::<PendingStore>::empty() } else { bufs[c] })
 }
 
-/// `mem` after the buffers of the cpus `0..n` of the drain set are written, cpu by cpu in increasing id, each oldest first.
+/// The stores at the source positions `order` of `bufs`, in that order: position `(c, j)` is store `j` of cpu `c`'s buffer.
+pub open spec fn stores_in_order(bufs: Seq<Seq<PendingStore>>, order: Seq<(CpuId, int)>) -> Seq<PendingStore> { Seq::new(order.len(), |k: int| bufs[order[k].0 as int][order[k].1]) }
+
+/// `order` is an order in which the drain set of the step `l` of cpu `d` from `u` to `u2` writes its buffers `bufs`: it lists
+/// every store of every drained cpu exactly once, only those, and each cpu's stores oldest first. It fixes no order between
+/// different cpus.
+pub open spec fn drain_order(order: Seq<(CpuId, int)>, bufs: Seq<Seq<PendingStore>>, l: StepLabel, u: KernelU, u2: KernelU, d: CpuId) -> bool {
+    &&& forall|k: int| #![trigger order[k]] 0 <= k < order.len() ==> index_valid(NUM_CPUS, order[k].0) && drained(l, u, u2, d, order[k].0) && 0 <= order[k].1 < bufs[order[k].0 as int].len()
+    &&& forall|k1: int, k2: int| #![trigger order[k1], order[k2]] 0 <= k1 < k2 < order.len() && order[k1].0 == order[k2].0 ==> order[k1].1 < order[k2].1
+    &&& forall|c: CpuId, j: int| #![trigger order.contains((c, j))] index_valid(NUM_CPUS, c) && drained(l, u, u2, d, c) && 0 <= j < bufs[c as int].len() ==> order.contains((c, j))
+}
+
+/// `mem` after the buffers of the cpus `0..n` of the drain set are written, cpu by cpu in increasing id, each oldest first:
+/// one admissible drain order (`increasing_cpu_drain_implies_kernel_mem_step`).
 pub open spec fn drained_memory(mem: IMap<PAddr, u8>, bufs: Seq<Seq<PendingStore>>, l: StepLabel, u: KernelU, u2: KernelU, d: CpuId, n: nat) -> IMap<PAddr, u8>
     decreases n,
 {
     if n == 0 { mem } else {
         let prev = drained_memory(mem, bufs, l, u, u2, d, (n - 1) as nat);
         if drained(l, u, u2, d, (n - 1) as CpuId) { mem_after_stores(prev, bufs[n - 1]) } else { prev }
+    }
+}
+
+/// The source positions of the drained buffers of the cpus `0..n`, cpu by cpu in increasing id, each oldest first.
+pub open spec fn increasing_cpu_drain_order(bufs: Seq<Seq<PendingStore>>, l: StepLabel, u: KernelU, u2: KernelU, d: CpuId, n: nat) -> Seq<(CpuId, int)>
+    decreases n,
+{
+    if n == 0 { Seq::empty() } else {
+        let prev = increasing_cpu_drain_order(bufs, l, u, u2, d, (n - 1) as nat);
+        if drained(l, u, u2, d, (n - 1) as CpuId) { prev + Seq::new(bufs[n - 1].len(), |j: int| ((n - 1) as CpuId, j)) } else { prev }
     }
 }
 
@@ -59,16 +82,21 @@ pub open spec fn mmap_leaf_frame(l: StepLabel, u: KernelU, u2: KernelU, d: CpuId
 /// `mem` with the `size` bytes from `addr` on set to zero.
 pub open spec fn mem_zeroed(mem: IMap<PAddr, u8>, addr: PAddr, size: nat) -> IMap<PAddr, u8> { mem_overwrite(mem, addr as int, Seq::new(size, |i: int| 0u8)) }
 
-/// The kernel step `l` of cpu `d`: the step of `labeled_step`, the drain set written and emptied, then the fresh frame of an
-/// mmap leaf step zeroed.
+/// `mem` with the fresh frame of an mmap leaf step `l` of cpu `d` from `u` to `u2` zeroed; `mem` for every other label.
+pub open spec fn leaf_zeroed_memory(mem: IMap<PAddr, u8>, l: StepLabel, u: KernelU, u2: KernelU, d: CpuId) -> IMap<PAddr, u8> {
+    match mmap_leaf_frame(l, u, u2, d) {
+        Some(leaf) => mem_zeroed(mem, leaf.0, leaf.1),
+        None => mem,
+    }
+}
+
+/// The kernel step `l` of cpu `d`: the step of `labeled_step`, the drain set written in some drain order and emptied, then the
+/// fresh frame of an mmap leaf step zeroed.
 pub open spec fn kernel_mem_step(old: MemState, new: MemState, l: StepLabel, d: CpuId) -> bool {
-    let mem1 = drained_memory(old.mem, old.bufs, l, old.u, new.u, d, NUM_CPUS as nat);
     &&& labeled_step(l, old.u, new.u, d)
     &&& new.bufs == drained_buffers(old.bufs, l, old.u, new.u, d)
-    &&& new.mem == match mmap_leaf_frame(l, old.u, new.u, d) {
-        Some(leaf) => mem_zeroed(mem1, leaf.0, leaf.1),
-        None => mem1,
-    }
+    &&& exists|order: Seq<(CpuId, int)>| #![trigger drain_order(order, old.bufs, l, old.u, new.u, d)]
+        drain_order(order, old.bufs, l, old.u, new.u, d) && new.mem == leaf_zeroed_memory(mem_after_stores(old.mem, stores_in_order(old.bufs, order)), l, old.u, new.u, d)
 }
 
 /// Cpu `c` runs in user mode and `s` goes through a writable translation of its current process's PCID, which is not the
@@ -95,8 +123,10 @@ pub open spec fn load_pre(u: KernelU, c: CpuId, size: PageSize, frame: PAddr, va
     &&& 0 < len && offset + len <= page_size_bytes(size)
 }
 
-/// The IOTLB of domain `did` caches a writable 4K translation at `iova` naming `frame`, and the write stays inside that page.
+/// The IOTLB holds domain `did`, caches a writable 4K translation of it at `iova` naming `frame`, and the write stays inside
+/// that page.
 pub open spec fn dma_pre(u: KernelU, did: VtdDomainId, iova: VAddr, frame: PAddr, offset: nat, bytes: Seq<u8>) -> bool {
+    &&& u.iommu_tlb.dom().contains(did)
     &&& tlb_writable_at(u.iommu_tlb[did], PageSize::SZ4k, iova, frame)
     &&& offset + bytes.len() <= 0x1000
 }
@@ -146,4 +176,76 @@ pub open spec fn behavior_step(b: Execution<MemSnap>, i: nat) -> bool {
 
 /// A behaviour of the machine from empty buffers.
 pub open spec fn mem_behavior(b: Execution<MemSnap>) -> bool { buffers_empty(b(0).st) && forall|i: nat| #[trigger] behavior_step(b, i) }
+
+/// The source positions of the drained buffers of the cpus `0..n` in increasing cpu id list only stores of drained cpus below
+/// `n`, each cpu's stores oldest first, and writing them in that order is `drained_memory`.
+pub proof fn increasing_cpu_drain_order_implies_drain_order_prefix(mem: IMap<PAddr, u8>, bufs: Seq<Seq<PendingStore>>, l: StepLabel, u: KernelU, u2: KernelU, d: CpuId, n: nat)
+    requires n <= NUM_CPUS,
+    ensures
+        ({
+            let order = increasing_cpu_drain_order(bufs, l, u, u2, d, n);
+            &&& mem_after_stores(mem, stores_in_order(bufs, order)) == drained_memory(mem, bufs, l, u, u2, d, n)
+            &&& forall|k: int| #![trigger order[k]] 0 <= k < order.len() ==> order[k].0 < n && drained(l, u, u2, d, order[k].0) && 0 <= order[k].1 < bufs[order[k].0 as int].len()
+            &&& forall|k1: int, k2: int| #![trigger order[k1], order[k2]] 0 <= k1 < k2 < order.len() && order[k1].0 == order[k2].0 ==> order[k1].1 < order[k2].1
+        }),
+    decreases n,
+{
+    if n > 0 {
+        let m = (n - 1) as nat;
+        let prev = increasing_cpu_drain_order(bufs, l, u, u2, d, m);
+        increasing_cpu_drain_order_implies_drain_order_prefix(mem, bufs, l, u, u2, d, m);
+        if drained(l, u, u2, d, m as CpuId) {
+            let seg = Seq::new(bufs[m as int].len(), |j: int| (m as CpuId, j));
+            let order = prev + seg;
+            assert(stores_in_order(bufs, order) =~= stores_in_order(bufs, prev) + bufs[m as int]);
+            stores_concat_implies_mem_after_stores_sequential(mem, stores_in_order(bufs, prev), bufs[m as int]);
+            assert forall|k: int| #![trigger order[k]] 0 <= k < order.len() implies order[k].0 < n && drained(l, u, u2, d, order[k].0) && 0 <= order[k].1 < bufs[order[k].0 as int].len() by {
+                if k < prev.len() { assert(order[k] == prev[k]); } else { assert(order[k] == seg[k - prev.len()]); }
+            };
+            assert forall|k1: int, k2: int| #![trigger order[k1], order[k2]] 0 <= k1 < k2 < order.len() && order[k1].0 == order[k2].0 implies order[k1].1 < order[k2].1 by {
+                if k2 < prev.len() { assert(order[k1] == prev[k1] && order[k2] == prev[k2]); } else if k1 < prev.len() { assert(order[k1] == prev[k1] && order[k2] == seg[k2 - prev.len()]); } else {
+                    assert(order[k1] == seg[k1 - prev.len()] && order[k2] == seg[k2 - prev.len()]);
+                }
+            };
+        }
+    }
+}
+
+/// Store `j` of a drained cpu `c` below `n` sits in the increasing-id order of the cpus `0..n` right after the stores of the
+/// cpus below `c`.
+pub proof fn drained_store_implies_increasing_cpu_drain_order_position(bufs: Seq<Seq<PendingStore>>, l: StepLabel, u: KernelU, u2: KernelU, d: CpuId, n: nat, c: CpuId, j: int)
+    requires n <= NUM_CPUS, c < n, drained(l, u, u2, d, c), 0 <= j < bufs[c as int].len(),
+    ensures
+        ({
+            let order = increasing_cpu_drain_order(bufs, l, u, u2, d, n);
+            let k = increasing_cpu_drain_order(bufs, l, u, u2, d, c as nat).len() + j;
+            0 <= k < order.len() && order[k] == (c, j)
+        }),
+    decreases n,
+{
+    let m = (n - 1) as nat;
+    let prev = increasing_cpu_drain_order(bufs, l, u, u2, d, m);
+    let k = increasing_cpu_drain_order(bufs, l, u, u2, d, c as nat).len() + j;
+    if c < m {
+        drained_store_implies_increasing_cpu_drain_order_position(bufs, l, u, u2, d, m, c, j);
+        if drained(l, u, u2, d, m as CpuId) { assert((prev + Seq::new(bufs[m as int].len(), |j: int| (m as CpuId, j)))[k] == prev[k]); }
+    } else { assert((prev + Seq::new(bufs[m as int].len(), |j: int| (m as CpuId, j)))[k] == (c, j)); }
+}
+
+/// Writing the drain set cpu by cpu in increasing id, each oldest first, is one admissible drain order: a step of the fixed
+/// increasing-id drain is a kernel step, so the relation holds wherever the fixed-order one did.
+pub proof fn increasing_cpu_drain_implies_kernel_mem_step(old: MemState, new: MemState, l: StepLabel, d: CpuId)
+    requires
+        labeled_step(l, old.u, new.u, d), new.bufs == drained_buffers(old.bufs, l, old.u, new.u, d),
+        new.mem == leaf_zeroed_memory(drained_memory(old.mem, old.bufs, l, old.u, new.u, d, NUM_CPUS as nat), l, old.u, new.u, d),
+    ensures kernel_mem_step(old, new, l, d),
+{
+    let order = increasing_cpu_drain_order(old.bufs, l, old.u, new.u, d, NUM_CPUS as nat);
+    increasing_cpu_drain_order_implies_drain_order_prefix(old.mem, old.bufs, l, old.u, new.u, d, NUM_CPUS as nat);
+    assert forall|c: CpuId, j: int| #![trigger order.contains((c, j))] index_valid(NUM_CPUS, c) && drained(l, old.u, new.u, d, c) && 0 <= j < old.bufs[c as int].len() implies order.contains((c, j)) by {
+        drained_store_implies_increasing_cpu_drain_order_position(old.bufs, l, old.u, new.u, d, NUM_CPUS as nat, c, j);
+        assert(order[increasing_cpu_drain_order(old.bufs, l, old.u, new.u, d, c as nat).len() + j] == (c, j));
+    };
+    assert(drain_order(order, old.bufs, l, old.u, new.u, d));
+}
 } // verus!

@@ -204,21 +204,15 @@ pub open spec fn byte_change_explained(old: MemState, new: MemState, label: MemL
     }
 }
 
-/// A byte the drains of the cpus `0..n` change is covered by a store of one of them.
-pub proof fn drained_memory_changed_implies_drained_store(mem: IMap<PAddr, u8>, bufs: Seq<Seq<PendingStore>>, l: StepLabel, u: KernelU, u2: KernelU, d: CpuId, n: nat, a: PAddr)
-    -> (w: (CpuId, int))
-    requires n <= NUM_CPUS, drained_memory(mem, bufs, l, u, u2, d, n)[a] != mem[a],
-    ensures w.0 < n, drained(l, u, u2, d, w.0), 0 <= w.1 < bufs[w.0 as int].len(), store_covers(bufs[w.0 as int][w.1], a),
-    decreases n,
+/// A byte that writing the drain set in a drain order changes is covered by a store of a drained cpu.
+pub proof fn drain_order_changed_byte_implies_drained_store(mem: IMap<PAddr, u8>, bufs: Seq<Seq<PendingStore>>, order: Seq<(CpuId, int)>, l: StepLabel, u: KernelU, u2: KernelU,
+    d: CpuId, a: PAddr) -> (w: (CpuId, int))
+    requires drain_order(order, bufs, l, u, u2, d), mem_after_stores(mem, stores_in_order(bufs, order))[a] != mem[a],
+    ensures index_valid(NUM_CPUS, w.0), drained(l, u, u2, d, w.0), 0 <= w.1 < bufs[w.0 as int].len(), store_covers(bufs[w.0 as int][w.1], a),
 {
-    let prev = drained_memory(mem, bufs, l, u, u2, d, (n - 1) as nat);
-    let x = (n - 1) as CpuId;
-    if drained(l, u, u2, d, x) && mem_after_stores(prev, bufs[n - 1])[a] != prev[a] {
-        let j = mem_after_stores_changed_implies_covering_store(prev, bufs[n - 1], a);
-        (x, j)
-    } else {
-        drained_memory_changed_implies_drained_store(mem, bufs, l, u, u2, d, (n - 1) as nat, a)
-    }
+    let k = mem_after_stores_changed_implies_covering_store(mem, stores_in_order(bufs, order), a);
+    assert(0 <= k < order.len());
+    order[k]
 }
 
 /// Byte-change classification: across any step from a state satisfying the invariant, a byte changes only by a commit or
@@ -229,12 +223,14 @@ pub proof fn mem_step_implies_byte_change_explained(old: MemState, new: MemState
 {
     match label {
         MemLabel::Kernel { label: l } => {
-            let mem1 = drained_memory(old.mem, old.bufs, l, old.u, new.u, c, NUM_CPUS as nat);
+            let order = choose|order: Seq<(CpuId, int)>| #![trigger drain_order(order, old.bufs, l, old.u, new.u, c)]
+                drain_order(order, old.bufs, l, old.u, new.u, c) && new.mem == leaf_zeroed_memory(mem_after_stores(old.mem, stores_in_order(old.bufs, order)), l, old.u, new.u, c);
+            let mem1 = mem_after_stores(old.mem, stores_in_order(old.bufs, order));
             let leaf = mmap_leaf_frame(l, old.u, new.u, c);
             if !leaf_zeroed_byte(old, new, l, c, a) {
                 if leaf is Some { mem_overwrite_index_implies_byte(mem1, leaf->Some_0.0 as int, Seq::new(leaf->Some_0.1, |i: int| 0u8), a); }
                 assert(mem1[a] != old.mem[a]);
-                let w = drained_memory_changed_implies_drained_store(old.mem, old.bufs, l, old.u, new.u, c, NUM_CPUS as nat, a);
+                let w = drain_order_changed_byte_implies_drained_store(old.mem, old.bufs, order, l, old.u, new.u, c, a);
                 assert(store_covered(old.u, w.0, old.bufs[w.0 as int][w.1]));
             }
         },
@@ -254,7 +250,9 @@ pub proof fn mmap_leaf_step_implies_frame_zero(old: MemState, new: MemState, l: 
     ensures new.mem[a] == 0,
 {
     let leaf = mmap_leaf_frame(l, old.u, new.u, d)->Some_0;
-    let mem1 = drained_memory(old.mem, old.bufs, l, old.u, new.u, d, NUM_CPUS as nat);
+    let order = choose|order: Seq<(CpuId, int)>| #![trigger drain_order(order, old.bufs, l, old.u, new.u, d)]
+        drain_order(order, old.bufs, l, old.u, new.u, d) && new.mem == leaf_zeroed_memory(mem_after_stores(old.mem, stores_in_order(old.bufs, order)), l, old.u, new.u, d);
+    let mem1 = mem_after_stores(old.mem, stores_in_order(old.bufs, order));
     mem_overwrite_index_implies_byte(mem1, leaf.0 as int, Seq::new(leaf.1, |i: int| 0u8), a);
 }
 } // verus!
