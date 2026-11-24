@@ -90,7 +90,7 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==>
-                kernel_u_cpu_tlb_cleared(final(steps).view()[j].old_u, final(steps).view()[j].new_u, pcid),
+                kernel_u_cpu_tlb_cleared(final(steps).view()[j].old_u, final(steps).view()[j].new_u, pcid, None),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
@@ -116,7 +116,7 @@ impl KernelK {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
             kernel_cpu_tlb_updated_implies_u_step(&steps.snapshot_k(), &*self);
         };
-        assert(steps.snapshot_u() != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(steps.snapshot_u(), kernel_k_to_kernel_u(*self), pcid)) by {
+        assert(steps.snapshot_u() != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(steps.snapshot_u(), kernel_k_to_kernel_u(*self), pcid, None)) by {
             reveal(kernel_u_cpu_tlb_cleared); kernel_u_domains_projection(&steps.snapshot_k()); kernel_u_domains_projection(&*self);
             if steps.snapshot_u() != kernel_k_to_kernel_u(*self) {
                 kernel_cpu_tlb_within_may_cache_projection(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));

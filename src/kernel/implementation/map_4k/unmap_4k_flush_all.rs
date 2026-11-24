@@ -313,7 +313,10 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
             let ghost krnl_i = *krnl;
             let ghost lctx_i = *lctx;
             let ghost steps_i = *steps;
-            proof { flush_pagetable_tlbs_eol_held_objects(*old(krnl), *krnl, &held, old(steps), steps, snaps, cpu_id as nat, pagetable, pcid, local_cpu, thrd_ptr, ctn_ptr, WRITE); }
+            proof {
+                flush_pagetable_tlbs_eol_held_objects(*old(krnl), *krnl, &held, old(steps), steps, snaps, cpu_id as nat, pagetable, pcid, local_cpu, thrd_ptr, ctn_ptr, WRITE);
+                assert(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, cpu_id); };
+            }
             let Ghost(rec) = flush_pagetable_tlb_on_cpu::<WRITE>(krnl, pagetable, cr3, pcid, cpu_id, local_cpu, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, Tracked(table_perm),
                 Ghost(*old(krnl)), Ghost(held), Ghost(ctn_ptr));
             proof {

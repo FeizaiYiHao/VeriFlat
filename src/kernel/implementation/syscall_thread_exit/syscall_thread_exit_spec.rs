@@ -236,7 +236,7 @@ pub open spec fn thread_exit_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_
         ..old_u
     };
     &&& !(old_u.container_map.spec_index(thread.owning_container).cpu_set_lock is WriteLocked)
-    &&& new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
+    &&& new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid, Some(thread.owning_container))
 }
 
 /// Recording the flush changes the thread's progress and releases this cpu's read hold on the cpu set of the thread's

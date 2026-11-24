@@ -59,6 +59,7 @@ pub(super) proof fn mmap_1g_leaf_step_from_k(
         mmap_1g_leaf_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
 {
     kernel_thread_quota_1g_progress_and_1g_mapping_added_pagetable_wlocked_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr, va);
+    kernel_owned_page_implies_u_frame_named_by_no_current_translation(*pre, PageSize::SZ1g, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(va).addr);
     reveal(mmap_1g_leaf_step_pre); reveal(mmap_1g_leaf_step);
 }
 

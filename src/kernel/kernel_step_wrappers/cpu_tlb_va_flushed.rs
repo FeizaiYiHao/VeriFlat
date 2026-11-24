@@ -26,21 +26,22 @@ pub proof fn kernel_cpu_tlb_va_range_flushed_implies_u_va_range_flushed(krnl: &K
     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_user_projection(*krnl)) by { reveal(kernel_k_to_kernel_u); };
 }
 
-/// A section that changes only the TLB projection, by a per-address flush of the entry of cpu `cpu_id` for `pcid` in K, is
-/// that flush in the projection.
-pub proof fn kernel_cpu_tlb_va_flushed_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool)
+/// A section that changes only the TLB projection, by a per-address flush of the entry of cpu `cpu_id`, owned by the container
+/// `ctn`, for `pcid` in K, is that flush in the projection.
+pub proof fn kernel_cpu_tlb_va_flushed_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, ctn: RwLockContainerPtr)
     requires
         post.inv(),
         index_valid(NUM_CPUS, cpu_id),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn,
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
         kernel_k_to_kernel_u(*post) == (KernelU { cpu_tlb: post.cpu_tlb.view(), ..kernel_k_to_kernel_u(*pre) }),
         post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         cpu_tlb_va_range_flushed(*post, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))),
     ensures
-        kernel_u_cpu_tlb_va_flushed(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, pcid, va, count, stride_2m),
+        kernel_u_cpu_tlb_va_flushed(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, pcid, va, count, stride_2m, ctn),
 {
-    reveal(kernel_u_cpu_tlb_va_flushed); kernel_u_domains_projection(pre);
+    reveal(kernel_u_cpu_tlb_va_flushed); kernel_u_domains_projection(pre); kernel_cpu_projection_at(pre, cpu_id);
     kernel_cpu_tlb_va_range_flushed_implies_u_va_range_flushed(post, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)),
         post.cpu_tlb.structure_cache((cpu_id, pcid)));
 }
@@ -48,7 +49,7 @@ pub proof fn kernel_cpu_tlb_va_flushed_implies_u_step(pre: &KernelK, post: &Kern
 impl KernelK {
     /// The per-address twin of `kernel_step_boundary_cpu_tlb_updated_cpu_set_rlocked`: the recorded step adds the running
     /// cpu to the readers of the cpu set of the container `ctn_ptr` in the projection and, at most, flushes the `count`
-    /// addresses, 4K or 2M apart by `stride_2m`, from `va` in the TLB entry of cpu `cpu_id` for `pcid`.
+    /// addresses, 4K or 2M apart by `stride_2m`, from `va` in the TLB entry for `pcid` of cpu `cpu_id`, which `ctn_ptr` owns.
     pub proof fn kernel_step_boundary_cpu_tlb_va_flushed_cpu_set_rlocked(
         tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, flushed: bool,
         ctn_ptr: RwLockContainerPtr,
@@ -78,6 +79,7 @@ impl KernelK {
             flushed ==> pcid != KERNEL_DEFAULT_PCID,
             flushed ==> cpu_tlb_va_range_flushed(*old(self), cpu_id, pcid, va, count, stride_2m, old(steps).snapshot_k().cpu_tlb.spec_index((cpu_id, pcid)), old(self).cpu_tlb.spec_index((cpu_id, pcid)),
                 old(self).cpu_tlb.structure_cache((cpu_id, pcid))),
+            flushed ==> old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
             old(self).ctn_mp.dom().contains(ctn_ptr),
             old(self).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
             old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
@@ -90,7 +92,7 @@ impl KernelK {
             forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> {
                 let old_u = final(steps).view()[j].old_u;
                 let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(old(lctx).cpu_id()), ..old_u.container_map[ctn_ptr] }), ..old_u };
-                final(steps).view()[j].new_u == locked || kernel_u_cpu_tlb_va_flushed(locked, final(steps).view()[j].new_u, cpu_id, pcid, va, count, stride_2m)
+                final(steps).view()[j].new_u == locked || kernel_u_cpu_tlb_va_flushed(locked, final(steps).view()[j].new_u, cpu_id, pcid, va, count, stride_2m, ctn_ptr)
             },
             old(steps).snapshot_u().container_map.dom().contains(ctn_ptr),
             kernel_k_to_kernel_u(*old(self)) == (KernelU {
@@ -130,7 +132,7 @@ impl KernelK {
         assert(kernel_k_to_kernel_u(*self) == (KernelU { cpu_tlb: self.cpu_tlb.view(), ..locked })) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); kernel_cpu_tlb_updated_implies_u_step(&mid, &*self);
         };
-        if flushed { kernel_cpu_tlb_va_flushed_implies_u_step(&mid, &*self, cpu_id, pcid, va, count, stride_2m); } else { kernel_u_domains_projection(&snap); }
+        if flushed { kernel_cpu_tlb_va_flushed_implies_u_step(&mid, &*self, cpu_id, pcid, va, count, stride_2m, ctn_ptr); } else { kernel_u_domains_projection(&snap); }
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);

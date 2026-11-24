@@ -1094,7 +1094,7 @@ pub(super) proof fn thread_exit_trace_from_tlb_flush(
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid, Some(ctn_ptr))
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& old_u.thread_map.dom().contains(thrd_ptr)

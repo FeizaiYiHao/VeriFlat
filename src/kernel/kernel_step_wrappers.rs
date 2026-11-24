@@ -86,6 +86,8 @@ pub mod killed_owner_sets_empty;
 pub mod thread_quota_exchange;
 /// K->U lemmas of sections that install or remove one IO 4K or 2M leaf together with its BAR mapping record.
 pub mod pci_bar_mapping;
+/// K->U lemmas that an owned 4K, 2M or 1G frame is named by no translation a cpu may use right now and by no IOTLB translation.
+pub mod current_translation_frame;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -126,6 +128,7 @@ pub use pagetable_l3_hidden::*;
 pub use killed_owner_sets_empty::*;
 pub use thread_quota_exchange::*;
 pub use pci_bar_mapping::*;
+pub use current_translation_frame::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

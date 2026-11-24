@@ -202,7 +202,7 @@ pub proof fn unmap_4k_tlb_flush_step_from_k(entry: &KernelK, old_u: KernelU, new
         old_u.process_map[entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc].pcid == kernel_k_to_kernel_u(*entry).process_map[entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc].pcid,
         ({
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, pcid)
+            new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, pcid, Some(ctn_ptr))
         }),
     ensures
         unmap_4k_tlb_flush_step(old_u, new_u, local_cpu),
@@ -228,7 +228,7 @@ pub proof fn unmap_4k_tlb_va_flush_step_from_k(
         old_u.process_map[entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc].pcid == kernel_k_to_kernel_u(*entry).process_map[entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc].pcid,
         ({
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            new_u == locked || kernel_u_cpu_tlb_va_flushed(locked, new_u, cpu_id, pcid, va, count, stride_2m)
+            new_u == locked || kernel_u_cpu_tlb_va_flushed(locked, new_u, cpu_id, pcid, va, count, stride_2m, ctn_ptr)
         }),
     ensures
         unmap_4k_tlb_va_flush_step(old_u, new_u, local_cpu, va, count, stride_2m),
@@ -509,7 +509,7 @@ pub proof fn unmap_4k_tlb_flush_steps_from_k(steps: Seq<KernelStep>, start: int,
             let entry_u = kernel_k_to_kernel_u(*entry);
             let prc_ptr = entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            &&& steps[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps[j].new_u, pcid)
+            &&& steps[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps[j].new_u, pcid, Some(ctn_ptr))
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& old_u.thread_map.dom().contains(thrd_ptr)
@@ -589,7 +589,7 @@ pub proof fn unmap_4k_range_steps_from_tlb_flush(
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid, Some(ctn_ptr))
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& old_u.thread_map.dom().contains(thrd_ptr)
@@ -778,7 +778,7 @@ pub proof fn unmap_4k_tlb_flush_range_steps_from_k(
             let old_u = steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(*entry);
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid, Some(ctn_ptr))
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& old_u.thread_map.dom().contains(thrd_ptr)

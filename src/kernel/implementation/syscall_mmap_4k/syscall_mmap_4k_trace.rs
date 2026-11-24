@@ -409,6 +409,7 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_
     let addr = post.process_map.spec_index(prc_ptr).pagetable->Some_0.mapping_4k.spec_index(va).addr;
     kernel_owned_4k_page_implies_u_outside_iommu_4k_mappings(*krnl, addr);
     kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(*krnl, addr); kernel_owned_4k_page_implies_u_outside_1g_mapping_frames(*krnl, addr);
+    kernel_owned_page_implies_u_frame_named_by_no_current_translation(*krnl, PageSize::SZ4k, addr);
     reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
 }
 

@@ -40,6 +40,27 @@ pub open spec fn cpu_runs_live_thread_at_entry(old_u: KernelU, cpu_id: CpuId) ->
     &&& !thread.killed
 }
 
+/// No translation a cpu may use right now and no IOTLB translation names a byte of the `size` frame at `frame`: no 4K, 2M or
+/// 1G entry that a valid cpu caches under the non-default PCID of its current process, and no 4K entry that the IOTLB caches
+/// for a domain, overlaps `[frame, frame + size)`.
+pub open spec fn kernel_u_frame_named_by_no_current_translation(u: KernelU, size: PageSize, frame: PAddr) -> bool {
+    let end = frame + match size { PageSize::SZ4k => 0x1000int, PageSize::SZ2m => 0x200000int, PageSize::SZ1g => 0x40000000int };
+    &&& forall|c: CpuId, pcid: Pcid, va: VAddr| #![trigger u.cpu_tlb[(c, pcid)].tlb_4k[va]]
+        index_valid(NUM_CPUS, c) && u.cpu_array[c as int].current_process is Some && u.process_map.dom().contains(u.cpu_array[c as int].current_process->Some_0)
+        && u.process_map[u.cpu_array[c as int].current_process->Some_0].pcid == pcid && pcid != KERNEL_DEFAULT_PCID && u.cpu_tlb[(c, pcid)].tlb_4k.dom().contains(va)
+        ==> !(frame < u.cpu_tlb[(c, pcid)].tlb_4k[va].addr + 0x1000 && u.cpu_tlb[(c, pcid)].tlb_4k[va].addr < end)
+    &&& forall|c: CpuId, pcid: Pcid, va: VAddr| #![trigger u.cpu_tlb[(c, pcid)].tlb_2m[va]]
+        index_valid(NUM_CPUS, c) && u.cpu_array[c as int].current_process is Some && u.process_map.dom().contains(u.cpu_array[c as int].current_process->Some_0)
+        && u.process_map[u.cpu_array[c as int].current_process->Some_0].pcid == pcid && pcid != KERNEL_DEFAULT_PCID && u.cpu_tlb[(c, pcid)].tlb_2m.dom().contains(va)
+        ==> !(frame < u.cpu_tlb[(c, pcid)].tlb_2m[va].addr + 0x200000 && u.cpu_tlb[(c, pcid)].tlb_2m[va].addr < end)
+    &&& forall|c: CpuId, pcid: Pcid, va: VAddr| #![trigger u.cpu_tlb[(c, pcid)].tlb_1g[va]]
+        index_valid(NUM_CPUS, c) && u.cpu_array[c as int].current_process is Some && u.process_map.dom().contains(u.cpu_array[c as int].current_process->Some_0)
+        && u.process_map[u.cpu_array[c as int].current_process->Some_0].pcid == pcid && pcid != KERNEL_DEFAULT_PCID && u.cpu_tlb[(c, pcid)].tlb_1g.dom().contains(va)
+        ==> !(frame < u.cpu_tlb[(c, pcid)].tlb_1g[va].addr + 0x40000000 && u.cpu_tlb[(c, pcid)].tlb_1g[va].addr < end)
+    &&& forall|did: VtdDomainId, va: VAddr| #![trigger u.iommu_tlb[did].tlb_4k[va]]
+        u.iommu_tlb.dom().contains(did) && u.iommu_tlb[did].tlb_4k.dom().contains(va) ==> !(frame < u.iommu_tlb[did].tlb_4k[va].addr + 0x1000 && u.iommu_tlb[did].tlb_4k[va].addr < end)
+}
+
 /// `va` keys an entry of `o` in its 4K, 2M or 1G mappings or its window locks that `n` no longer keys.
 pub open spec fn process_table_key_dropped(o: PageTableU, n: PageTableU, va: VAddr) -> bool {
     ||| o.mapping_4k.dom().contains(va) && !n.mapping_4k.dom().contains(va)
