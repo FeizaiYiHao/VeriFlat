@@ -230,7 +230,8 @@ pub open spec fn kill_container_pages_step(old_u: KernelU, new_u: KernelU, cpu_i
 
 /// One free page of `size` moves from the target to the killer's container: the target's owned pages lose the 4K pages
 /// it spans and the killer's container gains them, and one page of `size` of quota moves with it. The moved set is the
-/// 4K pages of one aligned 2M or 1G page; the step only counts them, and their alignment lives in the K state.
+/// 4K pages of one aligned 2M or 1G page; the step only counts them, and their alignment lives in the K state. Sizes move
+/// in order 4K, 2M, 1G: a 2M page moves only once the target has no 4K quota left, a 1G page once it has no 4K or 2M quota.
 #[verifier::opaque]
 pub open spec fn kill_container_move_page_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, size: PageSize) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -244,6 +245,8 @@ pub open spec fn kill_container_move_page_step(old_u: KernelU, new_u: KernelU, c
     &&& kept.subset_of(target.owned_pages)
     &&& moved.len() == match size { PageSize::SZ4k => 1nat, PageSize::SZ2m => 512nat, PageSize::SZ1g => 512 * 512nat }
     &&& 0 < match size { PageSize::SZ4k => target.quota_4k, PageSize::SZ2m => target.quota_2m, PageSize::SZ1g => target.quota_1g }
+    &&& size is SZ2m ==> target.quota_4k == 0
+    &&& size is SZ1g ==> target.quota_4k == 0 && target.quota_2m == 0
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(ctn_ptr, match size {
             PageSize::SZ4k => ContainerU { owned_pages: kept, quota_4k: (target.quota_4k - 1) as usize, ..target },
@@ -271,8 +274,8 @@ pub open spec fn kill_container_retire_stage_step(old_u: KernelU, new_u: KernelU
 }
 
 /// Retiring the empty target, whose PCID allocator is free, removes it from the container map, from its parent's
-/// children, and from every ancestor's subtree; the killer's container takes over every page the target owns and its
-/// 4K and 2M quota rise by amounts left open, and the kill walks the parent again.
+/// children, and from every ancestor's subtree; the killer's container takes over every page the target owns, its 4K
+/// quota rises by the five 4K object pages and its 2M quota by the two 2M object pages, and the kill walks the parent again.
 #[verifier::opaque]
 pub open spec fn kill_container_retire_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -289,8 +292,8 @@ pub open spec fn kill_container_retire_step(old_u: KernelU, new_u: KernelU, cpu_
     &&& target.parent is Some
     &&& old_u.container_map.dom().contains(parent_ptr)
     &&& owner_ptr != ctn_ptr
-    &&& owner.quota_4k < quota_4k
-    &&& owner.quota_2m < quota_2m
+    &&& owner.quota_4k + 5 == quota_4k
+    &&& owner.quota_2m + 2 == quota_2m
     &&& new_u == (KernelU {
         container_map: Map::new(old_u.container_map.dom().remove(ctn_ptr), |c: RwLockContainerPtr| {
             let container = old_u.container_map[c];

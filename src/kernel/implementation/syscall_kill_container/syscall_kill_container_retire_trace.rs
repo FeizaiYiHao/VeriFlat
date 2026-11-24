@@ -64,7 +64,7 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
 
 /// Retiring the empty marked container `ctn_ptr` with parent `parent_ptr`, from `pre` with its PCID allocator free
 /// through `locked` with that allocator write-held by `cpu_id`, which gives its pages to the killer's container and
-/// raises that container's 4K and 2M quota to `quota_4k` and `quota_2m`, and walking the parent again is a middle step
+/// raises that container's 4K and 2M quota by 5 and 2 to `quota_4k` and `quota_2m`, and walking the parent again is a middle step
 /// of the container kill.
 pub(crate) proof fn kill_container_retire_step_from_u(
     pre: KernelU, locked: KernelU, retired: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr,
@@ -84,8 +84,8 @@ pub(crate) proof fn kill_container_retire_step_from_u(
         locked.container_map[ctn_ptr].owned_processes.is_empty(),
         locked.container_map[ctn_ptr].parent == Some(parent_ptr),
         locked.container_map.dom().contains(parent_ptr),
-        locked.container_map[owner_ptr].quota_4k < quota_4k,
-        locked.container_map[owner_ptr].quota_2m < quota_2m,
+        locked.container_map[owner_ptr].quota_4k + 5 == quota_4k,
+        locked.container_map[owner_ptr].quota_2m + 2 == quota_2m,
         ({
             let target = locked.container_map[ctn_ptr];
             retired == (KernelU {
