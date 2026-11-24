@@ -52,9 +52,9 @@ pub proof fn cpu_current_pcid_pagetable_match_at(cpu_arr: CpuLockedArray, dflt_p
 { reveal(cpu_array_wf); reveal(process_cpu_wf); reveal(process_pagetable_wf); }
 
 /// Each cpu owns its hardware cr3/pcid word, which equals the cpu's recorded (current_cr3, current_pcid) except while
-/// the cpu and that PCID's needflush entry are write-held by the cpu itself.
+/// the cpu, inside a kernel step, and that PCID's needflush entry are write-held by the cpu itself.
 #[verifier::opaque]
-pub open spec fn cpu_hw_cr3_pcid_wf(cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_arr: CpuLockedArray, pcid_needflush: PcidNeedFlushArray) -> bool {
+pub open spec fn cpu_hw_cr3_pcid_wf(cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_arr: CpuLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_op: Seq<CpuOpState>) -> bool {
     forall|cpu_id: CpuId|
         #![trigger cpu_hw_cr3_pcid[cpu_id as int].view()]
         #![trigger cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()]
@@ -70,13 +70,14 @@ pub open spec fn cpu_hw_cr3_pcid_wf(cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_arr:
                 &&& cpu_arr.spec_index(cpu_id).view().wlocked()
                 &&& entry.wlocked()
                 &&& entry.view_ghost() == Some(cpu_id)
+                &&& cpu_op[cpu_id as int] is InStep
             })
         }
 }
 
-pub proof fn cpu_hw_cr3_pcid_wf_at(cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_arr: CpuLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_id: CpuId)
+pub proof fn cpu_hw_cr3_pcid_wf_at(cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_arr: CpuLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_op: Seq<CpuOpState>, cpu_id: CpuId)
     requires
-        cpu_hw_cr3_pcid_wf(cpu_hw_cr3_pcid, cpu_arr, pcid_needflush),
+        cpu_hw_cr3_pcid_wf(cpu_hw_cr3_pcid, cpu_arr, pcid_needflush, cpu_op),
         index_valid(NUM_CPUS, cpu_id),
     ensures
         ({
@@ -90,6 +91,7 @@ pub proof fn cpu_hw_cr3_pcid_wf_at(cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_arr: 
                 &&& cpu_arr.spec_index(cpu_id).view().wlocked()
                 &&& entry.wlocked()
                 &&& entry.view_ghost() == Some(cpu_id)
+                &&& cpu_op[cpu_id as int] is InStep
             })
         }),
 { reveal(cpu_hw_cr3_pcid_wf); }

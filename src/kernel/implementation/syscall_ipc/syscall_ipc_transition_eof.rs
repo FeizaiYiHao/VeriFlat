@@ -44,7 +44,7 @@ proof fn ipc_block_current_eof_subsystems(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view()),
     ensures post.subsystems_inv(),
 {
     reveal(ipc_block_current_eof_transition_framing);
@@ -95,7 +95,7 @@ proof fn ipc_block_current_eof_memory(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view()),
     ensures post.memory_management_inv(),
 {
     reveal(ipc_block_current_eof_transition_framing);
@@ -140,7 +140,7 @@ proof fn ipc_block_current_eof_cpu_wf(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view()),
         post.subsystems_inv(),
     ensures
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
@@ -192,7 +192,7 @@ proof fn ipc_block_current_eof_process_management_inv(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view()),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -255,7 +255,7 @@ pub(super) proof fn ipc_block_current_eof(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view()),
     ensures post.inv(),
 {
     reveal(ipc_block_current_eof_transition_framing);

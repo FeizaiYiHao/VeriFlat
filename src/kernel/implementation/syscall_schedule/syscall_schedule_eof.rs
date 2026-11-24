@@ -315,7 +315,7 @@ proof fn scheduler_context_switch_eof_cpu_hw_cr3_pcid(pre: KernelK, post: Kernel
         post.sched_mp.spec_index(sched_ptr).shards.inv(),
         post.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.wf(),
     ensures
-        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view()),
 {
     hide(Seq::contains);
     reveal(scheduler_context_switch_eof_transition_framing);

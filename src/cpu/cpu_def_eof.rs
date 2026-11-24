@@ -4,7 +4,8 @@ use crate::*;
 verus! {
 /// EOF closure of `block_current`: loading the default table with `KERNEL_DEFAULT_PCID` and clearing its flush flag keeps `pcid_needflush_wf` and
 /// `cpu_hw_cr3_pcid_wf`.
-pub(super) proof fn block_current_eof(pre_cpus: CpuLockedArray, post_cpus: CpuLockedArray, pre_needflush: PcidNeedFlushArray, post_needflush: PcidNeedFlushArray, pre_hw: CpuHwCr3PcidArray, post_hw: CpuHwCr3PcidArray, cpu_id: CpuId, default_cr3: PageTableRoot)
+pub(super) proof fn block_current_eof(pre_cpus: CpuLockedArray, post_cpus: CpuLockedArray, pre_needflush: PcidNeedFlushArray, post_needflush: PcidNeedFlushArray, pre_hw: CpuHwCr3PcidArray, post_hw: CpuHwCr3PcidArray,
+    cpu_op: Seq<CpuOpState>, cpu_id: CpuId, default_cr3: PageTableRoot)
     requires
         index_valid(NUM_CPUS, cpu_id),
         page_ptr_valid(default_cr3),
@@ -25,11 +26,12 @@ pub(super) proof fn block_current_eof(pre_cpus: CpuLockedArray, post_cpus: CpuLo
         post_cpus.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID,
     ensures
         pcid_needflush_wf(pre_needflush) ==> pcid_needflush_wf(post_needflush),
-        cpu_hw_cr3_pcid_wf(pre_hw, pre_cpus, pre_needflush) ==> cpu_hw_cr3_pcid_wf(post_hw, post_cpus, post_needflush),
+        cpu_hw_cr3_pcid_wf(pre_hw, pre_cpus, pre_needflush, cpu_op) ==> cpu_hw_cr3_pcid_wf(post_hw, post_cpus, post_needflush, cpu_op),
 { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); }
 
 /// EOF closure of `switch_to_thread`: loading `(cr3, pcid)` and clearing its flush flag keeps `pcid_needflush_wf` and `cpu_hw_cr3_pcid_wf`.
-pub(super) proof fn switch_to_thread_eof(pre_cpus: CpuLockedArray, post_cpus: CpuLockedArray, pre_needflush: PcidNeedFlushArray, post_needflush: PcidNeedFlushArray, pre_hw: CpuHwCr3PcidArray, post_hw: CpuHwCr3PcidArray, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid)
+pub(super) proof fn switch_to_thread_eof(pre_cpus: CpuLockedArray, post_cpus: CpuLockedArray, pre_needflush: PcidNeedFlushArray, post_needflush: PcidNeedFlushArray, pre_hw: CpuHwCr3PcidArray, post_hw: CpuHwCr3PcidArray,
+    cpu_op: Seq<CpuOpState>, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid)
     requires
         index_valid(NUM_CPUS, cpu_id),
         page_ptr_valid(cr3),
@@ -51,6 +53,6 @@ pub(super) proof fn switch_to_thread_eof(pre_cpus: CpuLockedArray, post_cpus: Cp
         post_cpus.spec_index(cpu_id).view().view().view().current_pcid == pcid,
     ensures
         pcid_needflush_wf(pre_needflush) ==> pcid_needflush_wf(post_needflush),
-        cpu_hw_cr3_pcid_wf(pre_hw, pre_cpus, pre_needflush) ==> cpu_hw_cr3_pcid_wf(post_hw, post_cpus, post_needflush),
+        cpu_hw_cr3_pcid_wf(pre_hw, pre_cpus, pre_needflush, cpu_op) ==> cpu_hw_cr3_pcid_wf(post_hw, post_cpus, post_needflush, cpu_op),
 { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); }
 } // verus!

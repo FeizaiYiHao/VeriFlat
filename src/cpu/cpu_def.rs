@@ -495,7 +495,8 @@ impl CpuLockedArray {
         self.wunlock_sti(cpu_id, Tracked(&mut *lctx), Tracked(lock_perm), Ghost(KernelObjId::Cpu(cpu_id)));
     }
 
-    pub fn block_current(&mut self, cpu_id: CpuId, default_cr3: PageTableRoot, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, hw_cr3_pcid: &mut CpuHwCr3PcidArray, needflush_perm: Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>)
+    pub fn block_current(&mut self, cpu_id: CpuId, default_cr3: PageTableRoot, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, hw_cr3_pcid: &mut CpuHwCr3PcidArray, Ghost(cpu_op): Ghost<Seq<CpuOpState>>,
+        needflush_perm: Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>)
         requires
             old(self).inv(),
             old(tlb).inv(),
@@ -522,7 +523,7 @@ impl CpuLockedArray {
         ensures
             pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*final(needflush)),
             final(needflush).inv(),
-            cpu_hw_cr3_pcid_wf(*old(hw_cr3_pcid), *old(self), *old(needflush)) ==> cpu_hw_cr3_pcid_wf(*final(hw_cr3_pcid), *final(self), *final(needflush)),
+            cpu_hw_cr3_pcid_wf(*old(hw_cr3_pcid), *old(self), *old(needflush), cpu_op) ==> cpu_hw_cr3_pcid_wf(*final(hw_cr3_pcid), *final(self), *final(needflush), cpu_op),
             final(hw_cr3_pcid)[cpu_id as int].inv(),
             final(hw_cr3_pcid)[cpu_id as int].view() == (default_cr3, KERNEL_DEFAULT_PCID),
             final(hw_cr3_pcid)[cpu_id as int].owner_cpu() == old(hw_cr3_pcid)[cpu_id as int].owner_cpu(),
@@ -578,7 +579,7 @@ impl CpuLockedArray {
         entry.set(false);
         proof {
             assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())) by { reveal(LockedArray2D::typed_lock_map_aligned); };
-            block_current_eof(*old(self), *self, *old(needflush), *needflush, *old(hw_cr3_pcid), *hw_cr3_pcid, cpu_id, default_cr3);
+            block_current_eof(*old(self), *self, *old(needflush), *needflush, *old(hw_cr3_pcid), *hw_cr3_pcid, cpu_op, cpu_id, default_cr3);
             let flushed = tlb.spec_index((cpu_id, KERNEL_DEFAULT_PCID));
             if pending { assert(flushed.tlb_4k =~= Map::empty() && flushed.tlb_2m =~= Map::empty() && flushed.tlb_1g =~= Map::empty()); }
         }
@@ -718,7 +719,7 @@ impl CpuLockedArray {
         ensures
             pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*final(needflush)),
             final(needflush).inv(),
-            cpu_hw_cr3_pcid_wf(*old(hw_cr3_pcid), *old(self), *old(needflush)) ==> cpu_hw_cr3_pcid_wf(*final(hw_cr3_pcid), *final(self), *final(needflush)),
+            cpu_hw_cr3_pcid_wf(*old(hw_cr3_pcid), *old(self), *old(needflush), k.cpu_op.view().view()) ==> cpu_hw_cr3_pcid_wf(*final(hw_cr3_pcid), *final(self), *final(needflush), k.cpu_op.view().view()),
             final(hw_cr3_pcid)[cpu_id as int].inv(),
             final(hw_cr3_pcid)[cpu_id as int].view() == (cr3, pcid),
             final(hw_cr3_pcid)[cpu_id as int].owner_cpu() == old(hw_cr3_pcid)[cpu_id as int].owner_cpu(),
@@ -793,7 +794,7 @@ impl CpuLockedArray {
         entry.set(false);
         proof {
             assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())) by { reveal(LockedArray2D::typed_lock_map_aligned); };
-            switch_to_thread_eof(*old(self), *self, *old(needflush), *needflush, *old(hw_cr3_pcid), *hw_cr3_pcid, cpu_id, cr3, pcid);
+            switch_to_thread_eof(*old(self), *self, *old(needflush), *needflush, *old(hw_cr3_pcid), *hw_cr3_pcid, k.cpu_op.view().view(), cpu_id, cr3, pcid);
         }
     }
 

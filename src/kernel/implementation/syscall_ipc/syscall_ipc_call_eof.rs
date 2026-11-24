@@ -279,7 +279,9 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by {
+            reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf);
+        };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); thread_perms_wf_implies_node_slot_addrs(pre.thrd_mp, callee_ptr); };
@@ -916,7 +918,9 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by {
+            reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf);
+        };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); thread_perms_wf_implies_node_slot_addrs(pre.thrd_mp, caller_ptr); };
