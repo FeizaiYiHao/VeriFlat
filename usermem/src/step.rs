@@ -11,9 +11,10 @@ pub open spec fn hardware_label(l: StepLabel) -> bool {
     ||| l is CpuTlbFilled || l is IommuTlbFilled || l is IommuContextCacheFilled
 }
 
-/// Every TLB of cpu `c`, under every PCID, is in `u2` what it is in `u`, present or absent alike.
+/// Every TLB key of cpu `c` is present in `u2` exactly when in `u`, and every present one holds in `u2` what it holds in `u`.
 pub open spec fn cpu_tlbs_kept(u: KernelU, u2: KernelU, c: CpuId) -> bool {
-    forall|p: Pcid| #![trigger u2.cpu_tlb[(c, p)]] u2.cpu_tlb.dom().contains((c, p)) == u.cpu_tlb.dom().contains((c, p)) && u2.cpu_tlb[(c, p)] == u.cpu_tlb[(c, p)]
+    forall|p: Pcid| #![trigger u2.cpu_tlb.dom().contains((c, p))] #![trigger u.cpu_tlb.dom().contains((c, p))]
+        u2.cpu_tlb.dom().contains((c, p)) == u.cpu_tlb.dom().contains((c, p)) && (u.cpu_tlb.dom().contains((c, p)) ==> u2.cpu_tlb[(c, p)] == u.cpu_tlb[(c, p)])
 }
 
 /// Cpu `c` keeps its TLBs, its mode, and its current process across the step.
@@ -100,14 +101,14 @@ pub open spec fn kernel_mem_step(old: MemState, new: MemState, l: StepLabel, d: 
 }
 
 /// Cpu `c` runs in user mode and `s` goes through a writable translation of its current process's PCID, which is not the
-/// default PCID, and lies inside its page.
+/// default PCID and keys a TLB of `c`, and lies inside its page.
 pub open spec fn store_issued_pre(u: KernelU, c: CpuId, s: PendingStore) -> bool {
     let cpu = u.cpu_array[c as int];
     &&& index_valid(NUM_CPUS, c)
     &&& cpu.op is User
     &&& cpu.current_process is Some && u.process_map.dom().contains(cpu.current_process->Some_0) && u.process_map[cpu.current_process->Some_0].pcid == s.pcid
     &&& s.pcid != KERNEL_DEFAULT_PCID
-    &&& tlb_writable_at(u.cpu_tlb[(c, s.pcid)], s.size, s.base_va, s.frame)
+    &&& u.cpu_tlb.dom().contains((c, s.pcid)) && tlb_writable_at(u.cpu_tlb[(c, s.pcid)], s.size, s.base_va, s.frame)
     &&& 0 < s.bytes.len() && s.offset + s.bytes.len() <= page_size_bytes(s.size)
 }
 

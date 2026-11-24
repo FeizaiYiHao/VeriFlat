@@ -6,13 +6,13 @@ use crate::pcid::*;
 
 verus! {
 /// Cpu `c` is neither inside a kernel step nor off, and `s` goes through a writable translation of its current process's
-/// PCID, which is not the default PCID, and lies inside its page.
+/// PCID, which is not the default PCID and keys a TLB of `c`, and lies inside its page.
 pub open spec fn store_covered(u: KernelU, c: CpuId, s: PendingStore) -> bool {
     let cpu = u.cpu_array[c as int];
     &&& !(cpu.op is InStep) && !(cpu.op is Off)
     &&& cpu.current_process is Some && u.process_map[cpu.current_process->Some_0].pcid == s.pcid
     &&& s.pcid != KERNEL_DEFAULT_PCID
-    &&& tlb_writable_at(u.cpu_tlb[(c, s.pcid)], s.size, s.base_va, s.frame)
+    &&& u.cpu_tlb.dom().contains((c, s.pcid)) && tlb_writable_at(u.cpu_tlb[(c, s.pcid)], s.size, s.base_va, s.frame)
     &&& 0 < s.bytes.len() && s.offset + s.bytes.len() <= page_size_bytes(s.size)
 }
 

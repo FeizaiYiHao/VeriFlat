@@ -1,4 +1,5 @@
-//! User-memory model, stage 1: physical memory and per-cpu store buffers around the kernel's user-visible steps.
+//! User-memory model: physical memory and per-cpu store buffers around the kernel's user-visible steps, and noninterference
+//! over them.
 //!
 //! The machine. A `MemState` is the user state `KernelU` of the kernel, a total map from physical byte addresses to bytes
 //! (`mem`), and one FIFO store buffer per cpu (`bufs`, oldest first); store buffers and memory are top-level components, not
@@ -9,8 +10,9 @@
 //!   the three mmap leaf steps (`Mmap4kLeaf`, `Mmap2mLeaf`, `Mmap1gLeaf`) the frame of the installed leaf is then zeroed. The
 //!   drain set is empty for the eight hardware labels (trap enter, return, divert, register and return-value writes, CPU and
 //!   IOMMU TLB fills, context cache fills); for every other label it is the acting cpu together with every other cpu whose
-//!   TLB, mode (`op`), or current process the step changes.
-//! - `StoreIssued { s }`: a cpu in user mode buffers a store through a writable translation of its current process's PCID.
+//!   TLB (a key added, removed, or changed), mode (`op`), or current process the step changes.
+//! - `StoreIssued { s }`: a cpu in user mode buffers a store through a writable translation of its current process's PCID,
+//!   which keys a TLB of that cpu.
 //! - `StoreCommitted`: the oldest store of a cpu's buffer is written to memory and leaves the buffer.
 //! - `Load { .. }`: a cpu in user mode reads through a translation of its current process's PCID; each byte is the youngest
 //!   buffered store of that cpu covering it, else memory. Nothing changes.
@@ -47,9 +49,32 @@
 //! state of the store's size listing that table and VA), and every device write targets a Mapped4k page listing the
 //! domain's IOMMU table and the IOVA.
 //!
-//! Not proved: the hypotheses above; that loads return any particular value beyond the forwarding rule; isolation of user
-//! memory beyond the per-store mapping fact of `mapped`; anything about IOMMU translations other than the IOTLB entry a
-//! device write uses; the zero-fill of pages other than mmap leaves.
+//! Noninterference over memory (`ni`). The memory view `mem_domain_view(st, root)` of a domain is its `domain_view`, the
+//! store buffer of each of its cpus, and every physical byte that a 4K, 2M, or 1G page-table leaf or 4K IOMMU-table leaf of
+//! one of its processes maps (`domain_maps_byte`); TLBs are not in the view, and the only isolation invariant is the
+//! noninterference crate's `isolated`. A step of cpu `c` of `x` toward `y` is taken under `mem_ni_step`: the user-level
+//! facts `kernel_u_ownership_wf` (both states), `kernel_u_current_tlb_matches_present_wf` and
+//! `kernel_u_iotlb_matches_present_wf` (all three proved from the kernel invariant in `noninterference/u_facts`, and the
+//! leaf alignment `kernel_u_leaf_addr_aligned_wf` follows from the first), `store_buffers_covered` (proved above), the step
+//! itself, its attribution to `x` (`mem_step_in_domain`: a fill of any domain, a device write of a DID whose anchor owner is
+//! a process of `x`, any other step of a cpu of `x`), the honest-peer conditions of the noninterference crate
+//! (`ni_honest_peer`), and two premises:
+//! - P1 `hidden_translations_outside(u, x, y)`: a translation of the current key of a cpu of `x` at a VA where its current
+//!   process has no leaf of that size, and a 4K IOTLB translation of a DID of `x` at an IOVA where the anchor owner's IOMMU
+//!   table has no leaf, name no byte `y` maps. These are the hidden leaves of an unmap, kill, or exit not yet flushed.
+//! - P2 `drains_within_domain`, for the kill TLB clear (`KillProcessTlbCleared`) only: every other cpu that step drains and
+//!   that holds stores is a cpu of `x`. The kill step's specification does not say whose cpu it clears; for every other
+//!   label a step of `x` changes the TLBs, mode, or current process of no other cpu outside `x` unless that cpu is inside a
+//!   kernel step or off (`drain`), so the fact is proved there.
+//! Theorems: `mem_step_implies_view_kept_and_isolated` (a step of `x` keeps `isolated(x, y)` and the memory view of `y`),
+//! `third_domain_mem_step_implies_views_kept_and_isolated`, `mem_trace_ni_at` (traces of two domains),
+//! `pairwise_isolated_domains_mem_trace_implies_isolated_and_view_unchanged`, and `equal_mem_views_implies_equal_load_value`
+//! (equal memory views give equal loads through a translation of a leaf the loading process has; loads through hidden
+//! translations are not covered).
+//!
+//! Not proved: the hypotheses above and P1, P2; that loads return any particular value beyond the forwarding rule and the
+//! load theorem; anything about IOMMU translations other than the IOTLB entry a device write uses; the zero-fill of pages
+//! other than mmap leaves.
 #![feature(adt_const_params)]
 
 use vstd::prelude::*;
@@ -63,6 +88,8 @@ pub mod step;
 pub mod pcid;
 pub mod invariant;
 pub mod mapped;
+pub mod ni;
+pub mod drain;
 
 pub use state::*;
 pub use step::*;

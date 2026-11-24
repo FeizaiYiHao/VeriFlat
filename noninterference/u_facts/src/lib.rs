@@ -7,9 +7,11 @@ use vstd::prelude::*;
 
 pub mod ownership;
 pub mod tlb;
+pub mod memory;
 
 pub use ownership::*;
 pub use tlb::*;
+pub use memory::*;
 
 verus! {
 global size_of usize == 8;
