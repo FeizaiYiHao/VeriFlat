@@ -750,6 +750,7 @@ pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
     if pre.thrd_mp.dom().contains(caller_ptr) { kernel_thread_user_projection_at(pre, caller_ptr); } if pre.thrd_mp.dom().contains(callee_ptr) { kernel_thread_user_projection_at(pre, callee_ptr); }
     if pre.ep_mp.dom().contains(ep_ptr) { kernel_endpoint_user_projection_at(pre, ep_ptr); }
     if pre.prc_mp.dom().contains(pre.thrd_mp.spec_index(caller_ptr).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thrd_mp.spec_index(caller_ptr).view().owning_proc); }
+    if pre.prc_mp.dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thrd_mp.spec_index(callee_ptr).view().owning_proc); }
     kernel_ipc_call_handoff_fields_implies_u_cpu_array(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid);
     kernel_container_nonlock_fields_and_locks_unchanged_implies_u_container_map(pre, post);
     kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process_map(pre, post);
@@ -819,6 +820,7 @@ pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
     if pre.thrd_mp.dom().contains(caller_ptr) { kernel_thread_user_projection_at(pre, caller_ptr); }
     if pre.ep_mp.dom().contains(ep_ptr) { kernel_endpoint_user_projection_at(pre, ep_ptr); }
     if pre.prc_mp.dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thrd_mp.spec_index(callee_ptr).view().owning_proc); }
+    if pre.prc_mp.dom().contains(pre.thrd_mp.spec_index(caller_ptr).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thrd_mp.spec_index(caller_ptr).view().owning_proc); }
     let endpoint = pre_u.endpoint_map.spec_index(ep_ptr);
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map.insert(ep_ptr, EndpointU {

@@ -97,7 +97,8 @@ pub open spec fn mmap_1g_hide_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& !progress->Mmap1g_flushed
 }
 
-/// Hiding drops windows under the range's 1G slots from the table's window locks, keeps every other window with its lock state, records the hide in progress, and changes nothing else.
+/// Hiding drops from the table's window locks every window under one 1G slot of the range and no other window, keeps every other window with its lock state,
+/// records the hide in progress, and changes nothing else.
 #[verifier::opaque]
 pub open spec fn mmap_1g_hide_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -112,6 +113,9 @@ pub open spec fn mmap_1g_hide_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     &&& forall|w: WindowVa| #![trigger table.pagetable_window_locks.dom().contains(w)] table.pagetable_window_locks.dom().contains(w)
         && !range.view().contains(spec_index2va((spec_v2l4index(w.va), spec_v2l3index(w.va), 0, 0))) ==> new_locks.dom().contains(w)
     &&& forall|w: WindowVa| #![trigger new_locks.dom().contains(w)] new_locks.dom().contains(w) ==> new_locks[w] == table.pagetable_window_locks[w]
+    &&& forall|a: WindowVa, b: WindowVa| #![trigger table.pagetable_window_locks.dom().contains(a), table.pagetable_window_locks.dom().contains(b)]
+        table.pagetable_window_locks.dom().contains(a) && !new_locks.dom().contains(a) && table.pagetable_window_locks.dom().contains(b)
+            ==> new_locks.dom().contains(b) == (spec_v2l4index(b.va) != spec_v2l4index(a.va) || spec_v2l3index(b.va) != spec_v2l3index(a.va))
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(hidden), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: new_locks, ..table }), ..process }),

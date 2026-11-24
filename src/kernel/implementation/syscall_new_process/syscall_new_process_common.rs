@@ -118,6 +118,8 @@ fn new_process_lock_entry(
             &&& final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view() == old(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view()
             &&& typed_lock_map_contains_mode(final(lctx).pcid_allocator_lock_map(), x.pcid_allocator_ptr, TypedLockMode::Write)
             &&& final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view().pcid_is_free(x.pcid)
+            &&& forall|id: Pcid| #![trigger PcidAllocator::free_pcids(final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view().ref_counters.view()).contains(id)]
+                PcidAllocator::free_pcids(final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view().ref_counters.view()).contains(id) ==> x.pcid <= id
             &&& x.pcid_allocator_lock_perm.view().state() is WriteLock
             &&& x.pcid_allocator_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& x.pcid_allocator_lock_perm.view().lock_id() == final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).locking_thread()->Write_lock_id

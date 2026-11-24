@@ -150,7 +150,8 @@ pub open spec fn kernel_u_only_process2thread_quota_1g_changed(old_u: KernelU, n
 }
 
 /// The live head `next_thread` of shard `cpu_id` replaces the live thread running on `cpu_id`, which is requeued at
-/// the tail of that shard.
+/// the tail of that shard; a flushed PCID is the next thread's process's, flushed only when that process is not the one
+/// running on `cpu_id`.
 #[verifier::opaque]
 pub open spec fn kernel_u_context_switch_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -200,6 +201,7 @@ pub open spec fn kernel_u_context_switch_changed(old_u: KernelU, new_u: KernelU,
         ..old_u
     })
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache_u(new_u, cpu_id, pcid, new_u.cpu_tlb[(cpu_id, pcid)])
+    &&& flushed_pcid matches Some(pcid) ==> pcid == old_u.process_map.spec_index(next.owning_proc).pcid && cpu.current_process != Some(next.owning_proc)
 }
 
 /// The Idle cpu `cpu_id`, whose own shard is empty, takes the live head `thread` of shard `victim`, the lowest
@@ -325,7 +327,8 @@ pub open spec fn kernel_u_ipc_block_changed(
 }
 
 /// The live caller running on `cpu_id` hands its CPU to the live receive-call head `callee_ptr` of the
-/// endpoint at `ep_idx`, which records the caller and runs; the caller waits for the reply.
+/// endpoint at `ep_idx`, which records the caller and runs; the caller waits for the reply. A flushed PCID is the
+/// callee's process's, flushed only when that process is not the caller's.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_call_handoff_changed(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
@@ -372,6 +375,7 @@ pub open spec fn kernel_u_ipc_call_handoff_changed(
         ..old_u
     })
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache_u(new_u, cpu_id, pcid, new_u.cpu_tlb[(cpu_id, pcid)])
+    &&& flushed_pcid matches Some(pcid) ==> pcid == old_u.process_map.spec_index(callee.owning_proc).pcid && cpu.current_process != Some(callee.owning_proc)
 }
 
 /// The live receive-call thread running on `cpu_id` accepts the live calling head `caller_ptr` of the endpoint
@@ -417,7 +421,8 @@ pub open spec fn kernel_u_ipc_accept_call_changed(
 }
 
 /// The live callee running on `cpu_id` replies to its recorded caller `caller_ptr`, which resumes on `cpu_id`,
-/// and waits for the next call on the endpoint at `ep_idx`.
+/// and waits for the next call on the endpoint at `ep_idx`. A flushed PCID is the caller's process's, flushed only when
+/// that process is not the callee's.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_reply_handoff_changed(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
@@ -464,6 +469,7 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
         ..old_u
     })
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache_u(new_u, cpu_id, pcid, new_u.cpu_tlb[(cpu_id, pcid)])
+    &&& flushed_pcid matches Some(pcid) ==> pcid == old_u.process_map.spec_index(caller.owning_proc).pcid && cpu.current_process != Some(caller.owning_proc)
 }
 
 /// The live endpoint head waiting opposite to the live caller running on `cpu_id` is dequeued and scheduled
@@ -1087,9 +1093,9 @@ pub open spec fn kernel_u_thread_exit_changed(old_u: KernelU, new_u: KernelU, cp
     })
 }
 
-/// One killed dangling thread, write-locked by `cpu_id` and linked to no thread, leaves the thread map and its
-/// container's thread set, and the container owning its page regains one 4K quota; the kernel chooses the dangling
-/// thread (R1).
+/// One killed dangling thread, write-locked by `cpu_id`, linked to no thread, and holding no descriptor, leaves the thread
+/// map and its container's thread set, and the container owning its page regains one 4K quota; the kernel chooses the
+/// dangling thread (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
@@ -1102,6 +1108,7 @@ pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: Kerne
             &&& dangling.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& dangling.caller is None
             &&& dangling.callee is None
+            &&& forall|j: int| #![trigger dangling.endpoint_descriptors[j]] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> dangling.endpoint_descriptors[j] is None
             &&& new_u == (KernelU {
                 container_map: Map::new(old_u.container_map.dom(), |c: RwLockContainerPtr| {
                     let container = old_u.container_map[c];
@@ -1140,8 +1147,8 @@ pub open spec fn kernel_u_endpoint_released(old_u: KernelU, new_u: KernelU, thrd
     &&& new_u == (KernelU { container_map: new_u.container_map, thread_map: new_u.thread_map, endpoint_map: new_u.endpoint_map, ..old_u })
 }
 
-/// One killed thread write-locked by `cpu_id` releases one descriptor: the descriptor is cleared and its unlocked
-/// endpoint, still held elsewhere, drops the reference; the kernel chooses the thread and the descriptor (R1).
+/// One killed thread write-locked by `cpu_id` releases its lowest descriptor holding an endpoint: the descriptor is cleared
+/// and its unlocked endpoint, still held elsewhere, drops the reference; the kernel chooses the thread (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
@@ -1155,6 +1162,7 @@ pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: Kerne
         &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
             let ep_ptr = thread.endpoint_descriptors[index]->Some_0;
             let endpoint = old_u.endpoint_map[ep_ptr];
+            &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] 0 <= j < index ==> thread.endpoint_descriptors[j] is None
             &&& thread.endpoint_descriptors[index] is Some
             &&& old_u.endpoint_map.dom().contains(ep_ptr)
             &&& endpoint.lock_state is Unlocked
@@ -1168,9 +1176,9 @@ pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: Kerne
     }
 }
 
-/// One killed thread write-locked by `cpu_id` releases the descriptor holding the last reference of its unlocked
-/// endpoint: the descriptor is cleared and the endpoint is released; the kernel chooses the thread and the descriptor
-/// (R1).
+/// One killed thread write-locked by `cpu_id` releases its lowest descriptor holding an endpoint, which holds the last
+/// reference of its unlocked endpoint: the descriptor is cleared and the endpoint is released; the kernel chooses the
+/// thread (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_killed_endpoint_released(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
@@ -1182,6 +1190,7 @@ pub open spec fn kernel_u_killed_endpoint_released(old_u: KernelU, new_u: Kernel
         &&& thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
         &&& dropped.len() == 1
         &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
+            &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] 0 <= j < index ==> thread.endpoint_descriptors[j] is None
             &&& kernel_u_endpoint_released(old_u, new_u, thrd_ptr, index)
             &&& new_u.thread_map == old_u.thread_map.insert(thrd_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread })
         }

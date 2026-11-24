@@ -79,6 +79,8 @@ pub proof fn merge_2m_recorded_step_implies_extended_trace(before: Seq<KernelSte
     requires
         0 <= start <= before.len(),
         count < n,
+        index_valid(NUM_CPUS, cpu_id),
+        (pre.cpu_arr.spec_index(cpu_id).view().locking_thread() is None) == (count == 0),
         merge_2m_syscall_trace(before.subrange(start, before.len() as int), cpu_id, n, RetValueType::SuccessUsize { value: count }),
         after == before.push(KernelStep { old_u: kernel_k_to_kernel_u(pre), new_u: kernel_k_to_kernel_u(post) }),
         merge_2m_step_pre(kernel_k_to_kernel_u(pre), cpu_id),
@@ -86,7 +88,7 @@ pub proof fn merge_2m_recorded_step_implies_extended_trace(before: Seq<KernelSte
     ensures
         merge_2m_syscall_trace(after.subrange(start, after.len() as int), cpu_id, n, RetValueType::SuccessUsize { value: (count + 1) as usize }),
 {
-    reveal(merge_2m_syscall_trace);
+    kernel_cpu_projection_at(&pre, cpu_id); reveal(merge_2m_syscall_trace);
     assert_seqs_equal!(after.subrange(start, after.len() as int),
         before.subrange(start, before.len() as int).push(KernelStep { old_u: kernel_k_to_kernel_u(pre), new_u: kernel_k_to_kernel_u(post) }));
 }

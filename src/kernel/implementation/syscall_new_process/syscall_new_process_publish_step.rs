@@ -82,6 +82,8 @@ pub(super) fn end_new_process_publish_step(
         old(steps).snapshot_k().ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator == pcid_allc_ptr,
         old(krnl).pcid_allc_mp.unchanged_except(&old(steps).snapshot_k().pcid_allc_mp, pcid_allc_ptr),
         PcidAllocator::free_pcids(old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(pcid),
+        forall|id: Pcid| #![trigger PcidAllocator::free_pcids(old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(id)]
+            PcidAllocator::free_pcids(old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(id) ==> pcid <= id,
         old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view().alloc_ensures(&old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allc_ptr).view(), child_ptr, pcid),
         old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None,
         old(krnl).pt_mp.dom() == old(steps).snapshot_k().pt_mp.dom().insert(target_pagetable_ptr),

@@ -6,7 +6,7 @@ verus! {
 /// Retiring the container `ctn_ptr` with parent `parent_ptr` drops it with its scheduler, cpu set, offline
 /// request table, PCID allocator, and allocators from the projection, drops it from its parent's children and from the
 /// subtree of every container in its upper tree, gives its pages to `owner_ptr`, and raises the 4K and 2M quota of
-/// `owner_ptr`'s allocators. Pages are not projected; every process, thread, cpu, and endpoint keeps its state.
+/// `owner_ptr`'s allocators by 5 and 2. Pages are not projected; every process, thread, cpu, and endpoint keeps its state.
 pub proof fn kernel_container_retired_implies_u_step(pre: &KernelK, post: &KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr)
     requires
         container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
@@ -50,13 +50,13 @@ pub proof fn kernel_container_retired_implies_u_step(pre: &KernelK, post: &Kerne
         post.allc_4k_mp.dom() == pre.allc_4k_mp.dom().remove(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k),
         forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a)]
             post.allc_4k_mp.dom().contains(a) && a != pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k ==> post.allc_4k_mp.spec_index(a).quota.view() == pre.allc_4k_mp.spec_index(a).quota.view(),
-        pre.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
-            < post.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view(),
+        pre.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view() + 5
+            == post.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view(),
         post.allc_2m_mp.dom() == pre.allc_2m_mp.dom().remove(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m),
         forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_2m_mp.spec_index(a)]
             post.allc_2m_mp.dom().contains(a) && a != pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m ==> post.allc_2m_mp.spec_index(a).quota.view() == pre.allc_2m_mp.spec_index(a).quota.view(),
-        pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
-            < post.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view(),
+        pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view() + 2
+            == post.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view(),
         post.allc_1g_mp.dom() == pre.allc_1g_mp.dom().remove(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g),
         forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_1g_mp.spec_index(a)] post.allc_1g_mp.dom().contains(a) ==> post.allc_1g_mp.spec_index(a).quota.view() == pre.allc_1g_mp.spec_index(a).quota.view(),
     ensures
@@ -68,8 +68,8 @@ pub proof fn kernel_container_retired_implies_u_step(pre: &KernelK, post: &Kerne
             let quota_2m = post.allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view();
             &&& a.container_map.dom().contains(ctn_ptr)
             &&& a.container_map.dom().contains(owner_ptr)
-            &&& a.container_map[owner_ptr].quota_4k < quota_4k
-            &&& a.container_map[owner_ptr].quota_2m < quota_2m
+            &&& a.container_map[owner_ptr].quota_4k + 5 == quota_4k
+            &&& a.container_map[owner_ptr].quota_2m + 2 == quota_2m
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
                 container_map: Map::new(a.container_map.dom().remove(ctn_ptr), |c: RwLockContainerPtr| {
                     let container = a.container_map[c];

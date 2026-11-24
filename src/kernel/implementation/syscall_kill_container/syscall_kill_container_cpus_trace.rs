@@ -55,9 +55,12 @@ pub(crate) proof fn kill_container_cpus_pre_from_k(
     reveal(kill_container_step_pre);
 }
 
-/// The unlocked cpu `moved`, which is not Running and belongs to `ctn_ptr`, projects so.
+/// The unlocked cpu `moved`, which is not Running and is the lowest-numbered cpu `ctn_ptr` still owns, projects so.
 pub(crate) proof fn kill_container_move_cpu_pre_from_k(krnl: &KernelK, moved: CpuId, ctn_ptr: RwLockContainerPtr)
     requires
+        krnl.inv(),
+        forall|j: CpuId| #![trigger krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view().owned_cpus.view().contains(j)]
+            j < moved ==> !krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view().owned_cpus.view().contains(j),
         index_valid(NUM_CPUS, moved),
         krnl.cpu_arr.spec_index(moved).view().locking_thread() is None,
         !(krnl.cpu_arr.spec_index(moved).view().view().view().state is Running),
@@ -70,7 +73,8 @@ pub(crate) proof fn kill_container_move_cpu_pre_from_k(krnl: &KernelK, moved: Cp
             &&& cpu.state is Idle || cpu.state is Off
             &&& cpu.lock_state is Unlocked
         }),
-{ kernel_cpu_projection_at(krnl, moved); }
+        forall|j: int| #![trigger kernel_k_to_kernel_u(*krnl).cpu_array[j]] 0 <= j < moved ==> kernel_k_to_kernel_u(*krnl).cpu_array[j].owning_container != ctn_ptr,
+{ kernel_cpu_projection_at(krnl, moved); kernel_u_cpu_array_projection(krnl); reveal(container_cpu_wf); }
 
 /// Marking and write-locking the cpu set of the marked target `ctn_ptr`, which has no child containers and no
 /// processes, and moving the kill on to its cpus is a middle step of the container kill.
@@ -105,6 +109,7 @@ pub(crate) proof fn kill_container_move_cpu_step_from_u(pre: KernelU, post: Kern
         owner_ptr != ctn_ptr,
         index_valid(NUM_CPUS, moved),
         pre.cpu_array[moved as int].owning_container == ctn_ptr,
+        forall|j: int| #![trigger pre.cpu_array[j]] 0 <= j < moved ==> pre.cpu_array[j].owning_container != ctn_ptr,
         pre.cpu_array[moved as int].state is Idle || pre.cpu_array[moved as int].state is Off,
         pre.cpu_array[moved as int].lock_state is Unlocked,
         ({

@@ -71,6 +71,9 @@ pub(super) proof fn mmap_1g_hide_range_steps_from_k(
         range.wf(),
         0 <= i < range.len,
         forall|w: WindowVa| #![trigger removed.contains(w)] removed.contains(w) ==> spec_index2va((spec_v2l4index(w.va), spec_v2l3index(w.va), 0, 0)) == range.view()[i],
+        forall|a: WindowVa, b: WindowVa| #![trigger removed.contains(a), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(b)]
+            removed.contains(a) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(b)
+                ==> removed.contains(b) == (spec_v2l4index(b.va) == spec_v2l4index(a.va) && spec_v2l3index(b.va) == spec_v2l3index(a.va)),
         pre.pt_mp.dom().contains(pagetable),
         *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, thrd_mp: post.thrd_mp, ..*pre }),
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
@@ -93,7 +96,7 @@ pub(super) proof fn mmap_1g_hide_range_steps_from_k(
     kernel_pagetable_l3_hidden_and_progress_changed_implies_u_step(pre, post, pagetable, removed, thrd_ptr);
     mmap_1g_clear_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, range, hidden, false);
     assert(mmap_1g_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id)) by {
-        reveal(mmap_1g_range_step); reveal(mmap_1g_hide_step);
+        kernel_process_projection_at(pre, prc_ptr); reveal(mmap_1g_range_step); reveal(mmap_1g_hide_step);
     };
 }
 

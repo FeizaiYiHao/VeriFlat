@@ -35,6 +35,8 @@ pub(super) fn publish_staged_process_with_iommu(
         old(krnl).pcid_allc_mp.dom().contains(pcid_allc_ptr),
         typed_lock_map_contains_mode(old(lctx).pcid_allocator_lock_map(), pcid_allc_ptr, TypedLockMode::Write),
         old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view().pcid_is_free(pcid),
+        forall|id: Pcid| #![trigger PcidAllocator::free_pcids(old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(id)]
+            PcidAllocator::free_pcids(old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(id) ==> pcid <= id,
         pcid_allocator_lock_perm.view().state() is WriteLock,
         pcid_allocator_lock_perm.view().thread_id() == old(lctx).thread_id(),
         pcid_allocator_lock_perm.view().lock_id() == old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread()->Write_lock_id,

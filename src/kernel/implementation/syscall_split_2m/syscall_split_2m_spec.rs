@@ -48,7 +48,8 @@ pub open spec fn split_2m_step(pre: KernelU, post: KernelU, cpu_id: CpuId) -> bo
     })
 }
 
-/// Every recorded section converts one block; the final section also releases the sources, CPU, and thread.
+/// Every recorded section converts one block; only the first section starts with the cpu unlocked, so every section but
+/// the last keeps the cpu write-held, and the final section also releases the sources, CPU, and thread.
 #[verifier::opaque]
 pub open spec fn split_2m_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, n: usize, ret: RetValueType) -> bool {
     if ret is SuccessUsize {
@@ -57,6 +58,7 @@ pub open spec fn split_2m_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, n
         &&& forall|i: int| #![trigger trace[i]] 0 <= i < trace.len() ==> {
             &&& split_2m_step_pre(trace[i].old_u, cpu_id)
             &&& split_2m_step(trace[i].old_u, trace[i].new_u, cpu_id)
+            &&& (trace[i].old_u.cpu_array[cpu_id as int].lock_state is Unlocked) == (i == 0)
         }
     } else { trace.len() == 0 }
 }
