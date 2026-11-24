@@ -81,6 +81,7 @@ impl PcidAllocator {
             ret is Some ==> self.pcid_is_free(ret->Some_0),
             ret is Some ==> forall|id: Pcid| #![trigger self.ref_counters.spec_index(id)] KERNEL_DEFAULT_PCID < id < ret->Some_0 ==> !self.pcid_is_free(id),
             ret is None ==> forall|id: Pcid| #![trigger self.ref_counters.spec_index(id)] pcid_valid(id) ==> !self.pcid_is_free(id),
+            ret is Some ==> forall|id: Pcid| #![trigger Self::free_pcids(self.ref_counters.view()).contains(id)] Self::free_pcids(self.ref_counters.view()).contains(id) ==> ret->Some_0 <= id,
     {
         let mut id = KERNEL_DEFAULT_PCID + 1;
         while id < PCID_MAX
@@ -88,6 +89,7 @@ impl PcidAllocator {
                 self.wf(),
                 KERNEL_DEFAULT_PCID < id <= PCID_MAX,
                 forall|candidate: Pcid| #![trigger self.ref_counters.spec_index(candidate)] KERNEL_DEFAULT_PCID < candidate < id ==> !self.pcid_is_free(candidate),
+                forall|candidate: Pcid| #![trigger Self::free_pcids(self.ref_counters.view()).contains(candidate)] Self::free_pcids(self.ref_counters.view()).contains(candidate) ==> id <= candidate,
             decreases PCID_MAX - id,
         {
             if *self.ref_counters.get(id) == 0 {

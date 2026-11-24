@@ -224,6 +224,7 @@ pub(super) proof fn new_process_publish_step_from_u(
             &&& pre.container_map.dom().contains(ctn_ptr)
             &&& pre.thread_map[thrd_ptr].quota_4k >= cost
             &&& pre.container_map[ctn_ptr].free_pcids.contains(pcid)
+            &&& forall|p: Pcid| #![trigger pre.container_map[ctn_ptr].free_pcids.contains(p)] pre.container_map[ctn_ptr].free_pcids.contains(p) ==> pcid <= p
             &&& post.container_map[ctn_ptr].free_pcids == pre.container_map[ctn_ptr].free_pcids.remove(pcid)
             &&& post.process_map.dom() == pre.process_map.dom().insert(child_ptr)
             &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {

@@ -129,7 +129,7 @@ pub open spec fn new_process_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
 }
 
 /// Publication creates the child as the process's last child with empty write-locked tables,
-/// consumes one free PCID of the container and the thread's 4K quota for the child's pages,
+/// consumes the container's lowest free PCID and the thread's 4K quota for the child's pages,
 /// releases the process and the PCID allocator, and starts sharing the recorded range into the child.
 #[verifier::opaque]
 pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
@@ -153,6 +153,7 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& !old_u.process_map.dom().contains(child)
     &&& thread.quota_4k >= cost
     &&& old_u.container_map[container].free_pcids.contains(cp)
+    &&& forall|p: Pcid| #![trigger old_u.container_map[container].free_pcids.contains(p)] old_u.container_map[container].free_pcids.contains(p) ==> cp <= p
     &&& new_u.process_map.dom() == old_u.process_map.dom().insert(child)
     &&& forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> new_u.process_map[p] == (ProcessU {
         lock_state: if p == parent { LockStateU::Unlocked } else { old_u.process_map[p].lock_state },
