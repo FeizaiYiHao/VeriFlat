@@ -121,8 +121,8 @@ pub open spec fn mem_step(old: MemState, new: MemState, label: MemLabel, c: CpuI
     }
 }
 
-/// HYPOTHESIS of the stage-1 theorems, about the kernel's user state, to be derived from the kernel invariants in a later
-/// stage: a CPU TLB fill under a non-default PCID never replaces a translation that TLB already caches with a different one.
+/// A CPU TLB fill under a non-default PCID never replaces a translation that TLB already caches with a different one; it
+/// follows from `kernel_u_current_tlb_matches_present_wf` (`current_tlb_matches_present_implies_fill_keeps_cached_translations`).
 pub open spec fn cpu_tlb_fill_keeps_cached_translations(u: KernelU, l: StepLabel) -> bool {
     l is CpuTlbFilled && l->CpuTlbFilled_pcid != KERNEL_DEFAULT_PCID ==> {
         let tlb = u.cpu_tlb[(l->CpuTlbFilled_cpu_id, l->CpuTlbFilled_pcid)];
@@ -136,13 +136,12 @@ pub open spec fn cpu_tlb_fill_keeps_cached_translations(u: KernelU, l: StepLabel
 /// Every buffer is empty and there is one per cpu.
 pub open spec fn buffers_empty(st: MemState) -> bool { st.bufs.len() == NUM_CPUS && forall|c: int| #![trigger st.bufs[c]] 0 <= c < NUM_CPUS ==> st.bufs[c].len() == 0 }
 
-/// The step from index `i` of `b`: a machine step between well-formed user states whose CPU TLB fill, if any, keeps the
-/// translations its TLB caches.
+/// The step from index `i` of `b`: a machine step between well-formed user states.
 pub open spec fn behavior_step(b: Execution<MemSnap>, i: nat) -> bool {
     &&& mem_step(b(i).st, b(i + 1).st, b(i).label, b(i).cpu)
     &&& kernel_u_ownership_wf(b(i).st.u)
     &&& kernel_u_ownership_wf(b(i + 1).st.u)
-    &&& b(i).label is Kernel ==> cpu_tlb_fill_keeps_cached_translations(b(i).st.u, b(i).label->Kernel_label)
+    &&& kernel_u_current_tlb_matches_present_wf(b(i).st.u)
 }
 
 /// A behaviour of the machine from empty buffers.

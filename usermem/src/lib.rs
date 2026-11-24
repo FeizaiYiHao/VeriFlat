@@ -25,11 +25,13 @@
 //! - H3: buffers are FIFO; loads forward from the youngest matching store; `syscall`, `sysret`, and TLB fills do not drain.
 //! - H4: every device write lands while the IOTLB entry translating it is present (VT-d drains on invalidation).
 //! - H5: the kernel writes user memory only by zeroing at the three mmap leaf steps.
-//! - H7: every state satisfies the user-level well-formedness the other proof crates assume (`kernel_u_ownership_wf`), and
-//!   buffers start empty.
-//! In addition the theorems take one hypothesis about the kernel's user state that the user-level facts do not yet provide,
-//! `cpu_tlb_fill_keeps_cached_translations`: a CPU TLB fill under a non-default PCID never replaces a translation that TLB
-//! already caches with a different one. A later stage derives it from the kernel invariants.
+//! - H7: every state satisfies the user-level well-formedness the other proof crates assume (`kernel_u_ownership_wf`) and
+//!   `kernel_u_current_tlb_matches_present_wf` (a cpu's TLB under its current process's PCID agrees with every present leaf
+//!   of that process's table), and buffers start empty. Both hold in the user projection of every kernel state satisfying
+//!   the kernel invariant: `kernel_wf_implies_u_ownership_wf` and `kernel_inv_implies_u_current_tlb_matches_present_wf` of
+//!   the user-level facts crate (`noninterference/u_facts`).
+//! From H7 a CPU TLB fill under a non-default PCID never replaces a translation that TLB already caches with a different one
+//! (`current_tlb_matches_present_implies_fill_keeps_cached_translations`).
 //!
 //! Proved (`invariant`): `store_buffers_covered`, every buffered store is covered by a writable translation of its cpu's
 //! current process's PCID and that cpu is neither inside a kernel step nor off, holds at every index of every behaviour
@@ -38,11 +40,14 @@
 //! has an empty buffer. Every byte that changes across a step changes by a commit or drain of such a store, by a device
 //! write, or by the zeroing of an mmap leaf step, and right after an mmap leaf step the installed frame is all zero. The
 //! per-label fact that a kernel step keeps the PCID of every process alive before and after it is proved from the step
-//! specifications (`pcid`).
+//! specifications (`pcid`). In the user projection of a kernel satisfying the kernel invariant (`mapped`), every pending
+//! store targets a frame that a leaf of its writer's page table maps at the store's VA (a BAR page, or a page in the mapped
+//! state of the store's size listing that table and VA), and every device write through a domain the IOTLB holds targets a
+//! Mapped4k page listing the domain's IOMMU table and the IOVA.
 //!
-//! Not proved: the hypotheses above; that loads return any particular value beyond the forwarding rule; anything about
-//! which process may read or write which frame (isolation of user memory) or about IOMMU translations other than the IOTLB
-//! entry a device write uses; the zero-fill of pages other than mmap leaves.
+//! Not proved: the hypotheses above; that loads return any particular value beyond the forwarding rule; isolation of user
+//! memory beyond the per-store mapping fact of `mapped`; anything about IOMMU translations other than the IOTLB entry a
+//! device write uses; the zero-fill of pages other than mmap leaves.
 #![feature(adt_const_params)]
 
 use vstd::prelude::*;
@@ -55,6 +60,7 @@ pub mod state;
 pub mod step;
 pub mod pcid;
 pub mod invariant;
+pub mod mapped;
 
 pub use state::*;
 pub use step::*;

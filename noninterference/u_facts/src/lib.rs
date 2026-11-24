@@ -6,8 +6,10 @@
 use vstd::prelude::*;
 
 pub mod ownership;
+pub mod tlb;
 
 pub use ownership::*;
+pub use tlb::*;
 
 verus! {
 global size_of usize == 8;

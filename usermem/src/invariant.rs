@@ -57,6 +57,33 @@ pub proof fn fill_keeps_cached_translations_implies_writable_kept(u: KernelU, l:
     }
 }
 
+/// A CPU TLB fill from a state whose current TLBs agree with the present leaves of their tables keeps the translations its
+/// TLB caches: under a non-default PCID it adds only present leaves of the table of the filling cpu's current process, and
+/// only under that process's PCID.
+pub proof fn current_tlb_matches_present_implies_fill_keeps_cached_translations(u: KernelU, u2: KernelU, l: StepLabel, d: CpuId)
+    requires kernel_u_current_tlb_matches_present_wf(u), labeled_step(l, u, u2, d),
+    ensures cpu_tlb_fill_keeps_cached_translations(u, l),
+{
+    if l is CpuTlbFilled && l->CpuTlbFilled_pcid != KERNEL_DEFAULT_PCID {
+        let (c, pcid, added) = (l->CpuTlbFilled_cpu_id, l->CpuTlbFilled_pcid, l->CpuTlbFilled_added);
+        let p = u.cpu_array[c as int].current_process;
+        let tlb = u.cpu_tlb[(c, pcid)];
+        reveal(kernel_u_cpu_tlb_filled_step);
+        reveal(kernel_u_current_tlb_matches_present_wf);
+        if p is Some && u.process_map.dom().contains(p->Some_0) && u.process_map[p->Some_0].pcid == pcid && u.process_map[p->Some_0].pagetable is Some {
+            assert forall|va: VAddr| #![trigger added.tlb_4k[va]] tlb.tlb_4k.dom().contains(va) && added.tlb_4k.dom().contains(va) implies added.tlb_4k[va] == tlb.tlb_4k[va] by {
+                assert(added.tlb_4k().dom().contains(va)); assert(spec_tlb_entry_equal_to_map_entry(tlb.tlb_4k[va], u.process_map[p->Some_0].pagetable->Some_0.mapping_4k[va]));
+            };
+            assert forall|va: VAddr| #![trigger added.tlb_2m[va]] tlb.tlb_2m.dom().contains(va) && added.tlb_2m.dom().contains(va) implies added.tlb_2m[va] == tlb.tlb_2m[va] by {
+                assert(added.tlb_2m().dom().contains(va)); assert(spec_tlb_entry_equal_to_map_entry(tlb.tlb_2m[va], u.process_map[p->Some_0].pagetable->Some_0.mapping_2m[va]));
+            };
+            assert forall|va: VAddr| #![trigger added.tlb_1g[va]] tlb.tlb_1g.dom().contains(va) && added.tlb_1g.dom().contains(va) implies added.tlb_1g[va] == tlb.tlb_1g[va] by {
+                assert(added.tlb_1g().dom().contains(va)); assert(spec_tlb_entry_equal_to_map_entry(tlb.tlb_1g[va], u.process_map[p->Some_0].pagetable->Some_0.mapping_1g[va]));
+            };
+        }
+    }
+}
+
 /// A kernel step keeps the invariant.
 pub proof fn kernel_step_implies_store_buffers_covered(old: MemState, new: MemState, l: StepLabel, d: CpuId)
     requires
@@ -86,12 +113,14 @@ pub proof fn kernel_step_implies_store_buffers_covered(old: MemState, new: MemSt
 /// Every step keeps the invariant.
 pub proof fn mem_step_implies_store_buffers_covered(old: MemState, new: MemState, label: MemLabel, c: CpuId)
     requires
-        store_buffers_covered(old), kernel_u_ownership_wf(old.u), kernel_u_ownership_wf(new.u), mem_step(old, new, label, c),
-        label is Kernel ==> cpu_tlb_fill_keeps_cached_translations(old.u, label->Kernel_label),
+        store_buffers_covered(old), kernel_u_ownership_wf(old.u), kernel_u_ownership_wf(new.u), kernel_u_current_tlb_matches_present_wf(old.u), mem_step(old, new, label, c),
     ensures store_buffers_covered(new),
 {
     match label {
-        MemLabel::Kernel { label: l } => { kernel_step_implies_store_buffers_covered(old, new, l, c); },
+        MemLabel::Kernel { label: l } => {
+            current_tlb_matches_present_implies_fill_keeps_cached_translations(old.u, new.u, l, c);
+            kernel_step_implies_store_buffers_covered(old, new, l, c);
+        },
         MemLabel::StoreIssued { s } => {
             assert forall|x: CpuId, j: int| #![trigger new.bufs[x as int][j]] index_valid(NUM_CPUS, x) && 0 <= j < new.bufs[x as int].len() implies store_covered(new.u, x, new.bufs[x as int][j]) by {
                 if x == c && j == old.bufs[c as int].len() { assert(new.bufs[x as int][j] == s); } else { assert(new.bufs[x as int][j] == old.bufs[x as int][j]); }
