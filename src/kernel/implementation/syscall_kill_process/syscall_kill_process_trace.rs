@@ -1109,7 +1109,7 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
     ensures
         kernel_k_to_kernel_u(*post) == (KernelU { cpu_tlb: post.cpu_tlb.view(), ..kernel_k_to_kernel_u(*pre) }),
         (kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post)) == (pre.cpu_tlb.view() == post.cpu_tlb.view()),
-        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) ==> kernel_u_cpu_tlb_cleared(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), pcid),
+        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) ==> kernel_u_cpu_tlb_cleared(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), pcid, None),
 {
     reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
     kernel_cpu_tlb_updated_implies_u_step(pre, post); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -1136,7 +1136,7 @@ pub(crate) proof fn kill_trace_push_tlb_flush(
         0 <= start <= before.len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         steps.view() == record_user_view_change(before, step_pre, step_post),
-        step_pre != step_post ==> kernel_u_cpu_tlb_cleared(step_pre, step_post, pcid),
+        step_pre != step_post ==> kernel_u_cpu_tlb_cleared(step_pre, step_post, pcid, None),
         kill_process_step_pre(step_pre, cpu_id),
         kill_process_flush_step_pre(step_pre, cpu_id),
         step_pre.process_map[kill_target(step_pre, cpu_id)].pcid == pcid,

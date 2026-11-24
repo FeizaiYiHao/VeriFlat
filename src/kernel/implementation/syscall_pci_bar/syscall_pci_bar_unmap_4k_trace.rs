@@ -215,7 +215,7 @@ pub(super) proof fn unmap_pci_bar_4k_tlb_flush_steps_from_k(
             let entry_u = kernel_k_to_kernel_u(*entry);
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr,
                 ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
-            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid, Some(ctn_ptr))
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& old_u.thread_map.dom().contains(thrd_ptr)
