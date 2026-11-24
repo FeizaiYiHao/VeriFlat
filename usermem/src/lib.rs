@@ -63,7 +63,8 @@
 //!   process has no leaf of that size, and a 4K IOTLB translation of a DID of `x` at an IOVA where the anchor owner's IOMMU
 //!   table has no leaf, name no byte `y` maps. These are the hidden leaves of an unmap, kill, or exit not yet flushed.
 //! - P2 `drains_within_domain`, for the kill TLB clear (`KillProcessTlbCleared`) only: every other cpu that step drains and
-//!   that holds stores is a cpu of `x`. The kill step's specification does not say whose cpu it clears; for every other
+//!   that holds stores is a cpu of `x`. The kill step's specification says only that the cleared cpu is write-locked or runs
+//!   the kill target, and a cpu write-locked by another cpu outside a kernel step may hold stores; for every other
 //!   label a step of `x` changes the TLBs, mode, or current process of no other cpu outside `x` unless that cpu is inside a
 //!   kernel step or off (`drain`), so the fact is proved there.
 //! Theorems: `mem_step_implies_view_kept_and_isolated` (a step of `x` keeps `isolated(x, y)` and the memory view of `y`),
