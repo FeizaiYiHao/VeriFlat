@@ -141,8 +141,8 @@ pub open spec fn process_pci_functions_unowned(old_u: KernelU, new_u: KernelU, p
     })
 }
 
-/// Exactly one 4K mapping leaves the write-locked IOMMU table of process `prc_ptr` and every other entry stays; the kernel
-/// chooses the IOVA.
+/// Exactly one 4K mapping leaves the write-locked IOMMU table of process `prc_ptr` and every other entry stays; it is the
+/// least mapped IOVA.
 pub open spec fn process_iommu_leaf_removed(old_u: KernelU, new_u: KernelU, prc_ptr: RwLockProcessPtr) -> bool {
     let process = old_u.process_map[prc_ptr];
     let iommu_table = process.iommu_table->Some_0;
@@ -152,6 +152,8 @@ pub open spec fn process_iommu_leaf_removed(old_u: KernelU, new_u: KernelU, prc_
     &&& iommu_table.lock_state is WriteLocked
     &&& kept.subset_of(iommu_table.mapping_4k.dom())
     &&& removed.len() == 1
+    &&& forall|iova: VAddr, other: VAddr| #![trigger removed.contains(iova), iommu_table.mapping_4k.dom().contains(other)]
+        removed.contains(iova) && iommu_table.mapping_4k.dom().contains(other) ==> iova <= other
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU { iommu_table: Some(PageTableU { mapping_4k: iommu_table.mapping_4k.restrict(kept), ..iommu_table }), ..process }),
         ..old_u

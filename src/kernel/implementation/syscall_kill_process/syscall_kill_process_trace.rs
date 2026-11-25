@@ -837,6 +837,8 @@ pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu
         pre.process_map.dom().contains(target),
         pre.process_map[target].iommu_table is Some,
         pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(iova),
+        forall|other: VAddr| #![trigger pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(other)]
+            pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(other) ==> iova <= other,
         post == (KernelU {
             process_map: pre.process_map.insert(target, ProcessU {
                 iommu_table: Some(PageTableU { mapping_4k: pre.process_map[target].iommu_table->Some_0.mapping_4k.remove(iova), ..pre.process_map[target].iommu_table->Some_0 }),

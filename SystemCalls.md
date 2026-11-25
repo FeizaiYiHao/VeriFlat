@@ -2100,7 +2100,8 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   flush step.
 - IOMMU leaf (`thread_exit_iommu_leaf_step`): pre
   `reclaim(ThreadExitReclaim { flushed: true })` and `IT(P)` write-locked;
-  effect: exactly one 4K mapping (the kernel chooses the IOVA) leaves `IT(P)`.
+  effect: exactly one 4K mapping, the one with the least mapped IOVA, leaves
+  `IT(P)`.
   The detached `IT(P)` has no DID, so no IOTLB domain caches its leaves: in
   K the present leaf is removed directly and its page returned to its
   owner's 4K allocator cache, accumulating the refund in the thread's pending
@@ -2348,7 +2349,7 @@ children and no threads)
     leaf steps follow the CPU refunds, then their own refund; there is no IOMMU
     flush step.
   - IOMMU leaf (`kill_process_iommu_leaf_step`): `Reclaim { flushed: true }`;
-    one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. `IT(L)` has
+    one 4K mapping, the one with the least mapped IOVA, leaves `IT(L)`. `IT(L)` has
     no DID (the unown step dropped it, or it had no attached function), so no
     IOTLB domain caches its leaves: in K the present leaf is removed directly
     and its page freed (`reclaim_detached_iommu_4k_page`); in a container

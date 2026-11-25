@@ -686,6 +686,8 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: Kerne
         pre.process_map[prc_ptr].iommu_table is Some,
         pre.process_map[prc_ptr].iommu_table->Some_0.lock_state is WriteLocked,
         pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom().contains(iova),
+        forall|other: VAddr| #![trigger pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom().contains(other)]
+            pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom().contains(other) ==> iova <= other,
         post == (KernelU {
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
                 iommu_table: Some(PageTableU { mapping_4k: pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.remove(iova), ..pre.process_map[prc_ptr].iommu_table->Some_0 }),
@@ -710,7 +712,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: Kerne
 /// after its reclaim precondition, and changes the projection.
 pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
-    pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, iova: VAddr,
+    pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, iova: VAddr, indices: (L4Index, L3Index, L2Index, L1Index),
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -739,6 +741,13 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
         post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,
         pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova),
         pre.it_mp.spec_index(iommu_table).view().mapping_4k()[iova].present,
+        pre.it_mp.spec_index(iommu_table).view().inv(),
+        pei_valid(indices.0), pei_valid(indices.1), pei_valid(indices.2), pei_valid(indices.3),
+        iova == spec_index2va(indices),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+            #![trigger pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && !spec_l4_index_path_le(indices, (l4i, l3i, l2i, l1i))
+                ==> !pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().remove(iova),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -752,6 +761,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
     thread_exit_iommu_leaf_step_pre_from_k(post, lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, iommu_table);
     kernel_iommu_table_4k_mapping_removed_implies_u_step(pre, post, iommu_table, iova, thrd_ptr);
     reveal(thread_exit_reclaim_step_pre);
+    iommu_table_4k_unmapped_below_path_implies_u_iommu_keys_at_or_above(pre, iommu_table, indices);
     thread_exit_iommu_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, iova);
 }
 

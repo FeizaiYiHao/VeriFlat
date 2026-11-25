@@ -354,7 +354,7 @@ pub open spec fn kill_process_unown_functions_step(old_u: KernelU, new_u: Kernel
 }
 
 /// An IOMMU leaf step removes exactly one 4K mapping from the target's write-locked IOMMU table and keeps every other
-/// entry; the kernel chooses the IOVA.
+/// entry; it is the least mapped IOVA.
 #[verifier::opaque]
 pub open spec fn kill_process_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true })
