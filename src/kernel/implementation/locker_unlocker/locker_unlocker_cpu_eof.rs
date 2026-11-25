@@ -15,6 +15,7 @@ pub(super) proof fn wlock_cpu_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, ho
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         entered ==> holder == cpu_id,
         post.cpu_op.view().view() == if entered { pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep) } else { pre.cpu_op.view().view() },
+        post.cpu_op.view().store_buffers() == if entered { pre.cpu_op.view().store_buffers().insert(cpu_id, Set::<PendingStore>::empty()) } else { pre.cpu_op.view().store_buffers() },
         ({
             let pre_lock = pre.cpu_arr.spec_index(cpu_id).view();
             let post_lock = post.cpu_arr.spec_index(cpu_id).view();
@@ -43,6 +44,8 @@ pub(super) proof fn wlock_cpu_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, ho
     };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
 }
 
 /// Closes `inv()` after `wunlock_cpu`: the released remote slot was outside a kernel step, and its hardware cr3/pcid
@@ -94,6 +97,7 @@ pub(super) proof fn wunlock_own_cpu_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
         pre.cpu_hw_cr3_pcid[cpu_id as int].view() == (pre.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ..pre }),
         post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(pre.cpu_arr.spec_index(cpu_id).view().view().view().state)),
+        post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers(),
         post.cpu_arr.inv(),
         post.cpu_arr.view().len() == pre.cpu_arr.view().len(),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
@@ -120,5 +124,7 @@ pub(super) proof fn wunlock_own_cpu_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
     };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
 }
 } // verus!

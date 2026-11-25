@@ -21,6 +21,15 @@ pub const VTD_DOMAIN_COUNT: usize = 65_536;
 
 pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAIN_COUNT }
 
+/// A DMA request a device has issued and the remapping hardware has not completed: translated through the 4K IOTLB entry of
+/// domain `did` at `iova`, it reads (`write` false) or writes (`write` true) the frame at `frame`.
+pub ghost struct PendingDma {
+    pub did: VtdDomainId,
+    pub iova: VAddr,
+    pub frame: PAddr,
+    pub write: bool,
+}
+
 /// One logical IOTLB, one logical context cache, and one logical set of paging-structure caches for all remapping units:
 /// they share the one root table, and the hooks invalidate every unit.
 /// IOTLB entries are tagged by DID; each domain reuses the CPU `SingleTLB` shape keyed by IOVA.
@@ -30,11 +39,13 @@ pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAI
 /// `CAP.CM = 0` they hold only entries of successful walks (6.2.5.5). K only.
 /// The ATS/device-TLB is not state: every present context entry has translation type 0 (see `IommuRootTable::wf`).
 /// Managed table well-formedness excludes W-only entries, making the present/R refill abstraction valid.
+/// `pending_dma` holds the DMA requests the remapping units have translated and not completed.
 /// Sealed hardware state: only the invalidation primitives below write it, and only the boot glue constructs it.
 pub struct IommuTLB {
     domain_tlbs: Ghost<Map<VtdDomainId, SingleTLB>>,
     context_cache: Ghost<Map<PciBdf, (PageTableRoot, VtdDomainId)>>,
     structure_caches: Ghost<Map<VtdDomainId, PagingStructureCache>>,
+    pending_dma: Ghost<Set<PendingDma>>,
 }
 
 impl IommuTLB {
@@ -46,12 +57,14 @@ impl IommuTLB {
             forall|did: VtdDomainId| #![trigger ret.spec_index(did)] vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),
             ret.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty(),
             forall|did: VtdDomainId| #![trigger ret.structure_cache(did)] vtd_domain_id_valid(did) ==> ret.structure_cache(did).is_empty(),
+            ret.pending_dma() == Set::<PendingDma>::empty(),
     {
         let ghost domain_ids = Set::range(0usize, VTD_DOMAIN_COUNT);
         let ret = Self {
             domain_tlbs: Ghost(Map::new(domain_ids, |_did: VtdDomainId| SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })),
             context_cache: Ghost(Map::empty()),
             structure_caches: Ghost(Map::new(domain_ids, |_did: VtdDomainId| PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() })),
+            pending_dma: Ghost(Set::empty()),
         };
         assert(ret.inv()) by { reveal(IommuTLB::inv); }
         ret
@@ -61,7 +74,8 @@ impl IommuTLB {
     /// order VT-d requires: a domain-selective IOTLB invalidation drops the domain's paging-structure-cache entries too
     /// (VT-d 5.20, 6.5.1.2). The root-table lock serializes it with the context-entry update that makes it necessary. The
     /// unit may refill the domain, its paging-structure caches, and the context entries tagged `did` at once with what `k`,
-    /// the kernel state whose IOTLB this is, presents.
+    /// the kernel state whose IOTLB this is, presents. The IOTLB invalidation drains the domain's pending DMA requests (DR and
+    /// DW set, VT-d 5.20, 6.5.4).
     #[verifier::external_body]
     pub fn invalidate_domain(&mut self, did: VtdDomainId, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
@@ -80,17 +94,20 @@ impl IommuTLB {
                 == Map::new(old(self).context_cache().dom().filter(|bdf: PciBdf| old(self).context_cache()[bdf].1 != did), |bdf: PciBdf| old(self).context_cache()[bdf]),
             forall|bdf: PciBdf| #![trigger final(self).context_cache().dom().contains(bdf)] final(self).context_cache().dom().contains(bdf) && final(self).context_cache()[bdf].1 == did
                 ==> iommu_context_cache_entry_present(k, bdf, final(self).context_cache()[bdf]),
+            final(self).pending_dma() == old(self).pending_dma().filter(|r: PendingDma| r.did != did),
     {
         unsafe { veriflat_iommu_invalidate_domain(did); }
         self.domain_tlbs = Ghost(self.domain_tlbs.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
         self.structure_caches = Ghost(self.structure_caches.view().insert(did, PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() }));
         self.context_cache = Ghost(Map::new(self.context_cache.view().dom().filter(|bdf: PciBdf| self.context_cache.view()[bdf].1 != did), |bdf: PciBdf| self.context_cache.view()[bdf]));
+        self.pending_dma = Ghost(self.pending_dma.view().filter(|r: PendingDma| r.did != did));
     }
 
     /// Empties only the DID's IOTLB domain and its paging-structure caches (a domain-selective IOTLB invalidation drops both,
     /// VT-d 5.20, 6.5.1.2); the context cache is untouched. The unit may refill the domain and its paging-structure caches
     /// at once with what `k`, the kernel state whose IOTLB this is, presents.
-    /// A held IOMMU-table lock serializes it with the leaf update that makes it necessary.
+    /// A held IOMMU-table lock serializes it with the leaf update that makes it necessary. The invalidation drains the domain's
+    /// pending DMA requests (DR and DW set, VT-d 5.20, 6.5.4).
     #[verifier::external_body]
     pub fn invalidate_iotlb_domain(&mut self, did: VtdDomainId, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
@@ -106,15 +123,20 @@ impl IommuTLB {
             final(self).structure_caches() == old(self).structure_caches().insert(did, final(self).structure_cache(did)),
             iommu_structure_cache_within_may_cache(k, did, final(self).structure_cache(did)),
             final(self).context_cache() == old(self).context_cache(),
+            final(self).pending_dma() == old(self).pending_dma().filter(|r: PendingDma| r.did != did),
     {
         unsafe { veriflat_iommu_invalidate_iotlb_domain(did); }
         self.domain_tlbs = Ghost(self.domain_tlbs.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
         self.structure_caches = Ghost(self.structure_caches.view().insert(did, PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() }));
+        self.pending_dma = Ghost(self.pending_dma.view().filter(|r: PendingDma| r.did != did));
     }
 
     pub closed spec fn view(&self) -> Map<VtdDomainId, SingleTLB> { self.domain_tlbs.view() }
 
     pub closed spec fn context_cache(&self) -> Map<PciBdf, (PageTableRoot, VtdDomainId)> { self.context_cache.view() }
+
+    /// The DMA requests the remapping units have translated and not completed; K only.
+    pub closed spec fn pending_dma(&self) -> Set<PendingDma> { self.pending_dma.view() }
 
     /// The paging-structure caches of every domain; K only.
     pub closed spec fn structure_caches(&self) -> Map<VtdDomainId, PagingStructureCache> { self.structure_caches.view() }

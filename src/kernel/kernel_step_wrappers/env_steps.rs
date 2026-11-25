@@ -137,6 +137,30 @@ pub proof fn kernel_k_iommu_context_cache_filled_implies_u_step(pre: &KernelK, p
     ensures kernel_u_iommu_context_cache_filled_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post)),
 { reveal(kernel_u_iommu_context_cache_filled_step); reveal(kernel_k_to_kernel_u); }
 
+/// A user store issued on cpu `cpu_id` changes no projection: store buffers are not user-visible.
+pub proof fn kernel_k_user_store_issued_implies_u_unchanged(pre: &KernelK, post: &KernelK, cpu_id: CpuId, s: PendingStore)
+    requires kernel_k_user_store_issued(*pre, *post, cpu_id, s),
+    ensures kernel_k_to_kernel_u(*post) == kernel_k_to_kernel_u(*pre),
+{ reveal(kernel_k_to_kernel_u); }
+
+/// A user store committed from cpu `cpu_id`'s store buffer changes no projection.
+pub proof fn kernel_k_user_store_committed_implies_u_unchanged(pre: &KernelK, post: &KernelK, cpu_id: CpuId, s: PendingStore)
+    requires kernel_k_user_store_committed(*pre, *post, cpu_id, s),
+    ensures kernel_k_to_kernel_u(*post) == kernel_k_to_kernel_u(*pre),
+{ reveal(kernel_k_to_kernel_u); }
+
+/// A DMA request issued by the device at `bdf` changes no projection: pending DMA is not user-visible.
+pub proof fn kernel_k_dma_issued_implies_u_unchanged(pre: &KernelK, post: &KernelK, bdf: PciBdf, r: PendingDma)
+    requires kernel_k_dma_issued(*pre, *post, bdf, r),
+    ensures kernel_k_to_kernel_u(*post) == kernel_k_to_kernel_u(*pre),
+{ reveal(kernel_k_to_kernel_u); }
+
+/// A completed DMA request changes no projection.
+pub proof fn kernel_k_dma_completed_implies_u_unchanged(pre: &KernelK, post: &KernelK, r: PendingDma)
+    requires kernel_k_dma_completed(*pre, *post, r),
+    ensures kernel_k_to_kernel_u(*post) == kernel_k_to_kernel_u(*pre),
+{ reveal(kernel_k_to_kernel_u); }
+
 /// A trap entry on cpu `cpu_id` projects to the user trap entry: the frame of its trap-frame slot takes the registers the
 /// running thread had in user mode, so no thread's registers change.
 pub proof fn kernel_k_trap_enter_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, kernel_regs: Registers)

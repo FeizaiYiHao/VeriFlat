@@ -223,6 +223,7 @@ pub open spec fn kernel_k_iommu_tlb_filled(pre: KernelK, post: KernelK, did: Vtd
         pml4e: cache.pml4e.union_prefer_right(added_cache.pml4e), pdpte: cache.pdpte.union_prefer_right(added_cache.pdpte), pde: cache.pde.union_prefer_right(added_cache.pde) })
     &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] #![trigger pre.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
     &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
+    &&& post.iommu_tlb.pending_dma() == pre.iommu_tlb.pending_dma()
 }
 
 /// The context cache caches the present context entry of `bdf`; nothing else changes.
@@ -233,6 +234,7 @@ pub open spec fn kernel_k_iommu_context_cache_filled(pre: KernelK, post: KernelK
     &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] #![trigger pre.iommu_tlb.spec_index(x)] post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
     &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches()
     &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache().insert(bdf, entry)
+    &&& post.iommu_tlb.pending_dma() == pre.iommu_tlb.pending_dma()
 }
 
 /// Cpu `cpu_id` leaves user mode for its trap path at `syscall` or an interrupt gate: the trap handler saves the cpu's
@@ -243,6 +245,7 @@ pub open spec fn kernel_k_trap_enter(pre: KernelK, post: KernelK, cpu_id: CpuId,
     &&& pre.cpu_op.view().view()[cpu_id as int] is User
     &&& post == (KernelK { cpu_op: post.cpu_op, cpu_regs: post.cpu_regs, cpu_trap_frame: post.cpu_trap_frame, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap)
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers()
     &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view().update(cpu_id as int, kernel_regs)
     &&& post.cpu_trap_frame.view().view().dom() == pre.cpu_trap_frame.view().view().dom()
     &&& post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id)
@@ -257,6 +260,7 @@ pub open spec fn kernel_k_trap_return(pre: KernelK, post: KernelK, cpu_id: CpuId
     &&& pre.cpu_op.view().view()[cpu_id as int] is Trap
     &&& post == (KernelK { cpu_op: post.cpu_op, cpu_regs: post.cpu_regs, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::User)
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers()
     &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view().update(cpu_id as int, pre.cpu_trap_frame.view().view()[cpu_id].value())
 }
 
@@ -267,6 +271,7 @@ pub open spec fn kernel_k_trap_divert(pre: KernelK, post: KernelK, cpu_id: CpuId
     &&& pre.cpu_arr.spec_index(cpu_id).view().being_killed()
     &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle)
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers()
 }
 
 /// User code on cpu `cpu_id`, which runs in user mode, changes the cpu's registers to `regs`; nothing else changes.
@@ -287,6 +292,62 @@ pub open spec fn kernel_k_trap_return_values_written(pre: KernelK, post: KernelK
     &&& post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id)
     &&& post.cpu_trap_frame.view().view()[cpu_id].addr() == pre.cpu_trap_frame.view().view()[cpu_id].addr()
     &&& post.cpu_trap_frame.view().view()[cpu_id].value() == (Registers { rax, rdx, rsi, ..pre.cpu_trap_frame.view().view()[cpu_id].value() })
+}
+
+/// Cpu `cpu_id`, in user mode, issues the user store `s`: translated through the writable TLB entry of size `s.size` at
+/// `s.base_va` under the non-default PCID of its hardware cr3/pcid word, it will write into the frame at `s.frame`. The
+/// store waits in the cpu's store buffer; nothing else changes.
+pub open spec fn kernel_k_user_store_issued(pre: KernelK, post: KernelK, cpu_id: CpuId, s: PendingStore) -> bool {
+    let tlb = single_tlb_of_size(pre.cpu_tlb.spec_index((cpu_id, s.pcid)), s.size);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view()[cpu_id as int] is User
+    &&& pcid_valid(s.pcid)
+    &&& s.pcid != KERNEL_DEFAULT_PCID
+    &&& pre.cpu_hw_cr3_pcid[cpu_id as int].view().1 == s.pcid
+    &&& tlb.dom().contains(s.base_va)
+    &&& tlb[s.base_va].write
+    &&& tlb[s.base_va].addr == s.frame
+    &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers().insert(cpu_id, pre.cpu_op.view().store_buffer(cpu_id).insert(s))
+}
+
+/// The store buffer of cpu `cpu_id` writes its pending user store `s` to memory; nothing else changes.
+pub open spec fn kernel_k_user_store_committed(pre: KernelK, post: KernelK, cpu_id: CpuId, s: PendingStore) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().store_buffer(cpu_id).contains(s)
+    &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers().insert(cpu_id, pre.cpu_op.view().store_buffer(cpu_id).remove(s))
+}
+
+/// The device at B/D/F `bdf` issues the DMA request `r`: the remapping units translate it through the domain the context
+/// cache names for `bdf` and that domain's 4K IOTLB entry at `r.iova`, writable for a write, to the frame at `r.frame`.
+/// The request stays pending until it completes; nothing else changes.
+pub open spec fn kernel_k_dma_issued(pre: KernelK, post: KernelK, bdf: PciBdf, r: PendingDma) -> bool {
+    let tlb = pre.iommu_tlb.spec_index(r.did).tlb_4k();
+    &&& pre.iommu_tlb.context_cache().dom().contains(bdf)
+    &&& pre.iommu_tlb.context_cache()[bdf].1 == r.did
+    &&& tlb.dom().contains(r.iova)
+    &&& tlb[r.iova].addr == r.frame
+    &&& r.write ==> tlb[r.iova].write
+    &&& post == (KernelK { iommu_tlb: post.iommu_tlb, ..pre })
+    &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
+    &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] #![trigger pre.iommu_tlb.spec_index(x)] post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
+    &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
+    &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches()
+    &&& post.iommu_tlb.pending_dma() == pre.iommu_tlb.pending_dma().insert(r)
+}
+
+/// The pending DMA request `r` completes; nothing else changes.
+pub open spec fn kernel_k_dma_completed(pre: KernelK, post: KernelK, r: PendingDma) -> bool {
+    &&& pre.iommu_tlb.pending_dma().contains(r)
+    &&& post == (KernelK { iommu_tlb: post.iommu_tlb, ..pre })
+    &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
+    &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] #![trigger pre.iommu_tlb.spec_index(x)] post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
+    &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
+    &&& post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches()
+    &&& post.iommu_tlb.pending_dma() == pre.iommu_tlb.pending_dma().remove(r)
 }
 
 /// U step of `kernel_k_cpu_tlb_filled`: CPU `cpu_id` caches `added` under `pcid`.
@@ -341,6 +402,10 @@ pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, 
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by {
+        reveal(pending_stores_covered_by_tlb); reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id);
+        process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+    };
 }
 
 pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache)
@@ -366,6 +431,10 @@ pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    assert(pending_dma_covered_by_iotlb(post.iommu_tlb)) by {
+        assert(pci_bdf_valid(anchor.0, anchor.1, anchor.2)) by (nonlinear_arith) requires vtd_domain_id_valid(did), anchor == pci_bdf_of_did(did);
+        reveal(iommu_root_table_process_wf); pre.irt.view().wf_context_entry_at(anchor.0, anchor.1, anchor.2); reveal(pending_dma_covered_by_iotlb); reveal(iommu_tlb_wf);
+    };
     reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf);
 }
 
@@ -379,6 +448,7 @@ pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, pos
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
     assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
+    assert(pending_dma_covered_by_iotlb(post.iommu_tlb)) by { reveal(pending_dma_covered_by_iotlb); };
 }
 
 pub proof fn kernel_k_trap_enter_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers)
@@ -390,6 +460,8 @@ pub proof fn kernel_k_trap_enter_implies_inv_preserved(pre: KernelK, post: Kerne
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
     assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
     assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by {
         let a = pre.cpu_trap_frame.view().view();
         let b = post.cpu_trap_frame.view().view();
@@ -407,6 +479,8 @@ pub proof fn kernel_k_trap_return_implies_inv_preserved(pre: KernelK, post: Kern
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
     assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
 }
 
 pub proof fn kernel_k_trap_divert_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId)
@@ -418,6 +492,8 @@ pub proof fn kernel_k_trap_divert_implies_inv_preserved(pre: KernelK, post: Kern
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
     assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush, post.cpu_op.view().view())) by { reveal(cpu_hw_cr3_pcid_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
 }
 
 pub proof fn kernel_k_regs_changed_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers)
@@ -442,6 +518,54 @@ pub proof fn kernel_k_trap_return_values_written_implies_inv_preserved(pre: Kern
         reveal(cpu_trap_frame_wf);
         assert_maps_equal!(b, if a.dom().contains(cpu_id) { a.insert(cpu_id, b[cpu_id]) } else { a }, c => { if c != cpu_id { vstd::map::axiom_map_remove_different(a, c, cpu_id); vstd::map::axiom_map_remove_different(b, c, cpu_id); } });
     };
+}
+
+pub proof fn kernel_k_user_store_issued_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, s: PendingStore)
+    requires
+        pre.inv(),
+        kernel_k_user_store_issued(pre, post, cpu_id, s),
+    ensures post.inv(),
+{
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
+}
+
+pub proof fn kernel_k_user_store_committed_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, s: PendingStore)
+    requires
+        pre.inv(),
+        kernel_k_user_store_committed(pre, post, cpu_id, s),
+    ensures post.inv(),
+{
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
+}
+
+pub proof fn kernel_k_dma_issued_implies_inv_preserved(pre: KernelK, post: KernelK, bdf: PciBdf, r: PendingDma)
+    requires
+        pre.inv(),
+        kernel_k_dma_issued(pre, post, bdf, r),
+    ensures post.inv(),
+{
+    assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); };
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
+    assert(pending_dma_covered_by_iotlb(post.iommu_tlb)) by { reveal(pending_dma_covered_by_iotlb); reveal(IommuTLB::inv); };
+}
+
+pub proof fn kernel_k_dma_completed_implies_inv_preserved(pre: KernelK, post: KernelK, r: PendingDma)
+    requires
+        pre.inv(),
+        kernel_k_dma_completed(pre, post, r),
+    ensures post.inv(),
+{
+    assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); };
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
+    assert(iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by { reveal(iommu_structure_cache_wf); };
+    assert(pending_dma_covered_by_iotlb(post.iommu_tlb)) by { reveal(pending_dma_covered_by_iotlb); };
 }
 
 // Each environment event below happens while a thread is between two of its kernel sections. Its boundary lemma
@@ -624,5 +748,63 @@ pub proof fn cpu_op_woken_respects_boundary(pre: KernelK, post: KernelK, cpu_id:
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// A user store issued on a cpu stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_user_store_issued_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, s: PendingStore, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_user_store_issued(pre, post, cpu_id, s),
+        typed_lock_maps_aligned(&pre, &lctx),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_user_store_issued_implies_inv_preserved(pre, post, cpu_id, s); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// A user store committed from a cpu's store buffer stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_user_store_committed_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, s: PendingStore, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_user_store_committed(pre, post, cpu_id, s),
+        typed_lock_maps_aligned(&pre, &lctx),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_user_store_committed_implies_inv_preserved(pre, post, cpu_id, s); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// A DMA request a device issues stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_dma_issued_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, bdf: PciBdf, r: PendingDma, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_dma_issued(pre, post, bdf, r),
+        typed_lock_maps_aligned(&pre, &lctx),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_dma_issued_implies_inv_preserved(pre, post, bdf, r); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(iommu_table_tlb_entries_present);
+}
+
+/// A completed DMA request stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_dma_completed_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, r: PendingDma, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_dma_completed(pre, post, r),
+        typed_lock_maps_aligned(&pre, &lctx),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_dma_completed_implies_inv_preserved(pre, post, r); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(iommu_table_tlb_entries_present);
 }
 }

@@ -258,6 +258,7 @@ pub(crate) fn kill_reclaim_flush(
         let ghost iter_k = *krnl;
         let ghost iter_lctx = *lctx;
         let ghost iter_before = steps.view();
+        proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
         let flushed = kill_reclaim_flush_cpu_tlb(krnl, Tracked(&mut *lctx), c, cpu_id, pagetable, cr3, pcid, Tracked(cpu_perm), Tracked(pagetable_perm));
         proof {
             let tlb_k = *krnl;
@@ -304,6 +305,7 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
         c < NUM_CPUS,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held)] old(lctx).cpu_lock_map().dom().contains(held) ==> !(old(krnl).cpu_arr.spec_index(held).view().view().view().state is Off),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -329,7 +331,8 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, pt_mp: final(krnl).pt_mp, ..*old(krnl) }),
+        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, pt_mp: final(krnl).pt_mp, cpu_op: final(krnl).cpu_op, ..*old(krnl) }),
+        final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view(),
         forall|cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==> final(krnl).cpu_arr.spec_index(cpu).value.locking_thread() == old(krnl).cpu_arr.spec_index(cpu).value.locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),

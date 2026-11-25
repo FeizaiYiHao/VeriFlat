@@ -286,8 +286,10 @@ pub proof fn split_2m_commit_eof_implies_object_page_invariants(pre: KernelK, po
     split_2m_commit_eof_object_page_frame(pre, post, thread, allocator_4k, allocator_2m, head, source);
     assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_pages_wf); };
     assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { reveal(process_pages_wf); };
-    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); reveal(page_array_wf); };
-    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); reveal(page_array_wf); };
+    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr);
+    };
+    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(hugepage_2m_wf); reveal(thread_pages_wf); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };

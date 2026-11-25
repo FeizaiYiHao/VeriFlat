@@ -577,5 +577,8 @@ pub(super) proof fn boot_kernel_inv_eof(
     };
     assert(cpu_tlb_wf(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     assert(structure_cache_wf(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(store_buffers_empty_in_step_or_off(krnl.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(krnl.cpu_op.view(), krnl.cpu_hw_cr3_pcid, krnl.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
+    assert(pending_dma_covered_by_iotlb(krnl.iommu_tlb)) by { reveal(pending_dma_covered_by_iotlb); };
 }
 }

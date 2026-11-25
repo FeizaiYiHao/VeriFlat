@@ -131,8 +131,9 @@ impl KernelK {
         requires
             *old(self) == (KernelK {
                 cpu_arr: old(self).cpu_arr, cpu_tlb: old(self).cpu_tlb, pcid_needflush: old(self).pcid_needflush, pt_mp: old(self).pt_mp, pt_lower: old(self).pt_lower,
-                cpu_set_mp: old(self).cpu_set_mp, ..old(steps).snapshot_k()
+                cpu_set_mp: old(self).cpu_set_mp, cpu_op: old(self).cpu_op, ..old(steps).snapshot_k()
             }),
+            old(self).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view(),
             forall|cpu: CpuId| #![trigger old(self).cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==>
                 old(self).cpu_arr.spec_index(cpu).value.locking_thread() == old(steps).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread(),
             old(self).pt_mp.dom() == old(steps).snapshot_k().pt_mp.dom(),

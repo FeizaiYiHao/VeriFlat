@@ -342,7 +342,8 @@ pub proof fn kernel_process_4k_mapping_changed_implies_u_neq(pre: &KernelK, post
 /// mode and mappings changes only the TLB projection.
 pub proof fn kernel_cpu_tlb_updated_implies_u_step(pre: &KernelK, post: &KernelK)
     requires
-        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, pt_mp: post.pt_mp, pt_lower: post.pt_lower, cpu_op: post.cpu_op, ..*pre }),
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
         kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, post.cpu_arr),
         forall|cpu: CpuId| #![trigger post.cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==>
             post.cpu_arr.spec_index(cpu).value.locking_thread() == pre.cpu_arr.spec_index(cpu).value.locking_thread(),

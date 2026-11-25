@@ -268,6 +268,9 @@ pub(super) proof fn ipc_block_current_eof(
     };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by {
+        reveal(pending_stores_covered_by_tlb); store_buffers_empty_in_step_or_off_at(pre.cpu_op.view(), cpu_id);
+    };
 }
 
 /// The cpu and emptied-thread relations close after the transition.
