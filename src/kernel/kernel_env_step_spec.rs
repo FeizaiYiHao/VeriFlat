@@ -696,16 +696,18 @@ pub proof fn kernel_k_iommu_context_cache_filled_implies_kernel_step_boundary_fr
     reveal(iommu_table_tlb_entries_present);
 }
 
-/// The running-to-idle IPI of `CpuOpArray::ipi_running_to_idle`, with the writes `CpuLockedArray::ipi_remote_running_to_idle`
-/// makes to the target cpu object and hardware cr3/pcid word, stays within the step-boundary framing of a thread between
-/// its sections that does not hold the target. The IPI runs inside the sender's section, so the invariant after it is
-/// assumed.
+/// The running-to-idle IPI of `CpuOpArray::ipi_running_to_idle`, which drains the target's store buffer, with the writes
+/// `CpuLockedArray::ipi_remote_running_to_idle` makes to the target cpu object and hardware cr3/pcid word and its removal of
+/// the target's slot of `cpu_trap_frame`, stays within the step-boundary framing of a thread between its sections that does
+/// not hold the target. The IPI runs inside the sender's section, so the invariant after it is assumed.
 pub proof fn cpu_op_ipi_running_to_idle_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, default_cr3: PageTableRoot, lctx: LocalContext)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
-        post == (KernelK { cpu_op: post.cpu_op, cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ..pre }),
+        post == (KernelK { cpu_op: post.cpu_op, cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_trap_frame: post.cpu_trap_frame, ..pre }),
         post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle),
+        post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
+        post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(cpu_id),
         post.cpu_arr.inv(),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         post.cpu_arr.spec_index(cpu_id).view().is_init(),
