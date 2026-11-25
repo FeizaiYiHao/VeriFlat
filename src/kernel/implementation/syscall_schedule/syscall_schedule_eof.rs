@@ -435,5 +435,8 @@ pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cp
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(structure_cache_wf); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(next_thread).view().owning_proc);
     };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by {
+        reveal(pending_stores_covered_by_tlb); store_buffers_empty_in_step_or_off_at(pre.cpu_op.view(), cpu_id);
+    };
 }
 }

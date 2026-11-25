@@ -184,6 +184,7 @@ pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post:
         broadcast use IommuRootTable::wf_context_entry_at;
         reveal(iommu_structure_cache_wf); reveal(iommu_root_table_process_wf);
     };
+    assert(pending_dma_covered_by_iotlb(post.iommu_tlb)) by { reveal(pending_dma_covered_by_iotlb); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 } // verus!

@@ -113,6 +113,7 @@ pub(crate) proof fn kill_unown_detach_eof(pre: KernelK, post: KernelK, pagetable
     kill_unown_detach_eof_root_table(pre, post, pagetable, iommu_table);
     kill_unown_detach_eof_iotlb(pre, post, pagetable, iommu_table);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
+    assert(pending_dma_covered_by_iotlb(post.iommu_tlb)) by { reveal(pending_dma_covered_by_iotlb); };
 }
 
 proof fn kill_quota_eof_allocator_quota(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, allc_ptr: RwLockPageAllocatorPtr, size: PageSize)

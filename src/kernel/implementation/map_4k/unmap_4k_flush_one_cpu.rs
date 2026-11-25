@@ -225,6 +225,7 @@ fn flush_pcid_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLockPa
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, local_cpu),
         old(lctx).cpu_id() == local_cpu,
+        old(krnl).cpu_op.view().view()[local_cpu as int] is InStep,
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), local_cpu, TypedLockMode::Write),
         cpu_perm.view().state() is WriteLock,
         cpu_perm.view().thread_id() == old(lctx).thread_id(),
@@ -247,7 +248,8 @@ fn flush_pcid_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLockPa
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, ..*old(krnl) }),
+        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, cpu_op: final(krnl).cpu_op, ..*old(krnl) }),
+        final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view(),
         forall|cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==> {
             &&& final(krnl).cpu_arr.spec_index(cpu).value.locking_thread() == old(krnl).cpu_arr.spec_index(cpu).value.locking_thread()
             &&& final(krnl).cpu_arr.spec_index(cpu).view().view() == old(krnl).cpu_arr.spec_index(cpu).view().view()
@@ -317,6 +319,7 @@ fn flush_pcid_and_drop_stale_cpu<const WRITE: bool>(krnl: &mut KernelK, pagetabl
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, local_cpu),
         old(lctx).cpu_id() == local_cpu,
+        old(krnl).cpu_op.view().view()[local_cpu as int] is InStep,
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), local_cpu, TypedLockMode::Write),
         cpu_perm.view().state() is WriteLock,
         cpu_perm.view().thread_id() == old(lctx).thread_id(),
@@ -352,7 +355,9 @@ fn flush_pcid_and_drop_stale_cpu<const WRITE: bool>(krnl: &mut KernelK, pagetabl
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, ..*old(krnl) }),
+        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower,
+            cpu_op: final(krnl).cpu_op, ..*old(krnl) }),
+        final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view(),
         forall|cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==> {
             &&& final(krnl).cpu_arr.spec_index(cpu).value.locking_thread() == old(krnl).cpu_arr.spec_index(cpu).value.locking_thread()
             &&& final(krnl).cpu_arr.spec_index(cpu).view().view() == old(krnl).cpu_arr.spec_index(cpu).view().view()

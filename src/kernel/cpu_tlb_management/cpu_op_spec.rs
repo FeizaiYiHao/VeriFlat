@@ -51,4 +51,20 @@ pub proof fn cpu_op_wf_at(cpu_op: Seq<CpuOpState>, cpu_arr: CpuLockedArray, cpu_
             &&& state is Off ==> op is Off || op is InStep
         }),
 { reveal(cpu_op_wf); }
+
+/// A cpu inside a kernel step or Off has an empty store buffer: the LOCKed instruction that granted its own cpu lock drained
+/// it, and it issues no user store until it leaves the step.
+#[verifier::opaque]
+pub open spec fn store_buffers_empty_in_step_or_off(cpu_op: CpuOpArray) -> bool {
+    forall|c: CpuId| #![trigger cpu_op.store_buffer(c)]
+        index_valid(NUM_CPUS, c) && (cpu_op.view()[c as int] is InStep || cpu_op.view()[c as int] is Off) ==> cpu_op.store_buffer(c) == Set::<PendingStore>::empty()
+}
+
+/// The store buffer of cpu `cpu_id` is empty while the cpu is inside a kernel step or Off.
+pub proof fn store_buffers_empty_in_step_or_off_at(cpu_op: CpuOpArray, cpu_id: CpuId)
+    requires
+        store_buffers_empty_in_step_or_off(cpu_op),
+        index_valid(NUM_CPUS, cpu_id),
+    ensures (cpu_op.view()[cpu_id as int] is InStep || cpu_op.view()[cpu_id as int] is Off) ==> cpu_op.store_buffer(cpu_id) == Set::<PendingStore>::empty(),
+{ reveal(store_buffers_empty_in_step_or_off); }
 }

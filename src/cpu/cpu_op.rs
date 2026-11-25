@@ -32,28 +32,49 @@ pub open spec fn cpu_op_after_step(state: CpuState) -> CpuOpState {
     }
 }
 
-/// Running state of every cpu, written only by the TCB primitives of this module.
+/// A user store a cpu has issued and not yet written to memory: translated through the TLB entry `(pcid, size, base_va)`,
+/// it will write into the frame at `frame`.
+pub ghost struct PendingStore {
+    pub pcid: Pcid,
+    pub size: PageSize,
+    pub base_va: VAddr,
+    pub frame: PAddr,
+}
+
+/// Running state of every cpu and the user stores in its store buffer, written only by the TCB primitives of this module
+/// and by the hardware primitives that take it (the remote flushes of `cpu_tlb_flush.rs`).
 pub tracked struct CpuOpArray {
     ghost ops: Seq<CpuOpState>,
+    ghost store_buffers: Map<CpuId, Set<PendingStore>>,
 }
 
 impl CpuOpArray {
     pub closed spec fn view(&self) -> Seq<CpuOpState> { self.ops }
 
-    /// TCB: the running state of every cpu when boot hands the machine to the kernel; init only.
+    /// The store buffer of every cpu: the user stores it has issued and not yet written to memory.
+    pub closed spec fn store_buffers(&self) -> Map<CpuId, Set<PendingStore>> { self.store_buffers }
+
+    /// The store buffer of cpu `cpu_id`.
+    #[verifier::inline]
+    pub open spec fn store_buffer(&self, cpu_id: CpuId) -> Set<PendingStore> { self.store_buffers()[cpu_id] }
+
+    /// TCB: the running state of every cpu when boot hands the machine to the kernel, with empty store buffers; init only.
     #[verifier::external_body]
     pub(crate) proof fn new_boot(ops: Seq<CpuOpState>) -> (tracked ret: Self)
         ensures
             ret.view() == ops,
+            forall|cpu_id: CpuId| #![trigger ret.store_buffer(cpu_id)] ret.store_buffer(cpu_id) == Set::<PendingStore>::empty(),
     { unimplemented!() }
 
-    /// TCB: cpu `cpu_id` enters a kernel step by write-locking its own cpu in `CpuLockedArray::wlock_own_cpu_enter_step`.
+    /// TCB: cpu `cpu_id` enters a kernel step by write-locking its own cpu in `CpuLockedArray::wlock_own_cpu_enter_step`; the
+    /// LOCKed instruction that grants the lock drains its store buffer.
     #[verifier::external_body]
     pub(crate) proof fn enter_step(tracked &mut self, cpu_id: CpuId)
         requires
             index_valid(NUM_CPUS, cpu_id),
         ensures
             final(self).view() == old(self).view().update(cpu_id as int, CpuOpState::InStep),
+            final(self).store_buffers() == old(self).store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
     { unimplemented!() }
 
     /// TCB: cpu `cpu_id` leaves its kernel step in `CpuLockedArray::exit_step_wunlock_own_cpu` and rests in the state its
@@ -64,15 +85,18 @@ impl CpuOpArray {
             index_valid(NUM_CPUS, cpu_id),
         ensures
             final(self).view() == old(self).view().update(cpu_id as int, cpu_op_after_step(state)),
+            final(self).store_buffers() == old(self).store_buffers(),
     { unimplemented!() }
 
-    /// TCB: the IPI of `ipi_remote_running_to_idle_raw` moves remote cpu `cpu_id` to its idle loop; called only there.
+    /// TCB: the IPI of `ipi_remote_running_to_idle_raw` moves remote cpu `cpu_id` to its idle loop; called only there. Taking
+    /// the interrupt drains its store buffer.
     #[verifier::external_body]
     pub(crate) proof fn ipi_running_to_idle(tracked &mut self, cpu_id: CpuId)
         requires
             index_valid(NUM_CPUS, cpu_id),
         ensures
             final(self).view() == old(self).view().update(cpu_id as int, CpuOpState::Idle),
+            final(self).store_buffers() == old(self).store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
     { unimplemented!() }
 
     /// TCB: the wake-up IPI of `ipi_wake` releases remote cpu `cpu_id` from `wait_until_online` into its idle loop;
@@ -83,6 +107,7 @@ impl CpuOpArray {
             index_valid(NUM_CPUS, cpu_id),
         ensures
             final(self).view() == old(self).view().update(cpu_id as int, CpuOpState::Idle),
+            final(self).store_buffers() == old(self).store_buffers(),
     { unimplemented!() }
 }
 
