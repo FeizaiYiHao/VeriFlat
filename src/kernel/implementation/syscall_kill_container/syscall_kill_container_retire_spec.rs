@@ -111,6 +111,7 @@ pub open spec fn kill_container_retire_held_locks(
     &&& typed_lock_map_contains_mode(lctx.allocator_quota_1g_lock_map(), a1, TypedLockMode::Write)
     &&& quota_1g.state() is WriteLock && quota_1g.thread_id() == lctx.thread_id() && quota_1g.lock_id() == k.allc_1g_mp.spec_index(a1).quota.locking_thread()->Write_lock_id
     &&& page_perms.dom() == pages_4k.to_set().insert(heads[0]).insert(heads[1])
+    &&& forall|i: int| #![trigger pages_4k[i]] 0 <= i < pages_4k.len() ==> page_perms.dom().contains(pages_4k[i])
     &&& lctx.page_lock_map().dom() == page_perms.dom()
     &&& forall|p: PageIndex| #![trigger page_perms.dom().contains(p)] page_perms.dom().contains(p) ==> {
         &&& typed_lock_map_contains_mode(lctx.page_lock_map(), p, TypedLockMode::Write)
