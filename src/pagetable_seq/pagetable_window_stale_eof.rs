@@ -290,7 +290,7 @@ proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable, post: WholeP
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
     assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
     assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
-    assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); };
+    assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); resolve_mappings_eq_for_higher_and_lower_tables_eq(pre, post); };
     assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); };
     assert(post.user_only()) by { reveal(WholePageTable::user_only); };
     assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };

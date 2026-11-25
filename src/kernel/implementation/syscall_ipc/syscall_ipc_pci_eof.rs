@@ -51,9 +51,10 @@ pub(super) open spec fn ipc_pci_detach_eof_transition_framing(pre: KernelK, post
             == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
         &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
             ==> iommu_context_cache_entry_present(KernelK { irt: post.irt, ..pre }, bdf, post.iommu_tlb.context_cache()[bdf])
+        &&& post.iommu_tlb.pending_dma() =~= pre.iommu_tlb.pending_dma().filter(|r: PendingDma| r.did != did)
     }
     &&& old_did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view() && post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
-        && post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches()
+        && post.iommu_tlb.structure_caches() == pre.iommu_tlb.structure_caches() && post.iommu_tlb.pending_dma() == pre.iommu_tlb.pending_dma()
 }
 
 /// The root table still names, for every attached function, the IOMMU table of the function's owner.
@@ -209,6 +210,7 @@ pub(super) proof fn ipc_pci_detach_eof(
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp) && iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp)) by {
         ipc_pci_detach_eof_iotlb(pre, post, sender_proc, sender_pt, table, bdf, anchor);
     };
+    assert(pending_dma_covered_by_iotlb(post.iommu_tlb)) by { reveal(pending_dma_covered_by_iotlb); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 

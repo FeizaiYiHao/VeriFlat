@@ -424,6 +424,7 @@ impl CpuLockedArray {
             ret is Some ==> lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
             ret is Some ==> final(lctx).kernel_call_perm() == Some(cpu_id),
             ret is Some ==> final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, CpuOpState::InStep),
+            ret is Some ==> final(cpu_op).store_buffers() == old(cpu_op).store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
     {
         let ret = self.wlock_unless_killed_cli(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
         if ret.is_none() {
@@ -483,6 +484,7 @@ impl CpuLockedArray {
             final(lctx).kernel_call_perm() is None,
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), old(self).lock_id_by_index(cpu_id)),
             final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, cpu_op_after_step(old(self).spec_index(cpu_id).view().view().view().state)),
+            final(cpu_op).store_buffers() == old(cpu_op).store_buffers(),
     {
         let Tracked(lock_perm) = lock_perm;
         let cpu = self.borrow_mut(cpu_id, Tracked(&*lctx), Tracked(&lock_perm));
@@ -637,6 +639,7 @@ impl CpuLockedArray {
             final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..old(self).spec_index(cpu_id).view().view().view() }),
             final(self).spec_index(cpu_id).view().view().kernel_call_perm() == old(self).spec_index(cpu_id).view().view().kernel_call_perm(),
             final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, CpuOpState::Idle),
+            final(cpu_op).store_buffers() == old(cpu_op).store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
             final(cpu_trap_frame).view() == old(cpu_trap_frame).view().remove(cpu_id),
             ret.view().addr() == old(cpu_trap_frame).view()[cpu_id].addr(),
             ret.view().value() == if old(cpu_op).view()[cpu_id as int] is User { cpu_regs.view()[cpu_id as int] } else { old(cpu_trap_frame).view()[cpu_id].value() },
@@ -678,6 +681,7 @@ impl CpuLockedArray {
             cpu_lock_perm.view().lock_id() == self.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         ensures
             final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, CpuOpState::Idle),
+            final(cpu_op).store_buffers() == old(cpu_op).store_buffers(),
     {
         let cpu = self.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(lctx), cpu_lock_perm);
         ipi_wake(cpu_id, Tracked(&mut *cpu_op), Tracked(cpu.kernel_call_perm.borrow().tracked_borrow()), Tracked(lctx));

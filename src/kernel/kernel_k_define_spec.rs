@@ -195,7 +195,8 @@ impl KernelK{
         &&& thread_dangling_chain_end_wf(self.thrd_mp)
     }
 
-    /// The kernel invariant: the three groups plus the IOMMU and TLB facts that span them.
+    /// The kernel invariant: the three groups plus the IOMMU and TLB facts that span them, and the cached translations that
+    /// pending user stores and DMA requests still use.
     pub open spec fn inv(&self) -> bool {
         &&& self.subsystems_inv()
         &&& self.memory_management_inv()
@@ -209,6 +210,10 @@ impl KernelK{
         &&& cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)
         &&& cpu_tlb_wf(self.cpu_tlb, self.pt_mp, self.pt_lower.view(), self.cpu_arr, self.pcid_needflush)
         &&& structure_cache_wf(self.cpu_tlb, self.pt_mp, self.pt_lower.view(), self.cpu_arr, self.pcid_needflush)
+        // Pending user stores and DMA requests are still translated by a cached translation
+        &&& store_buffers_empty_in_step_or_off(self.cpu_op.view())
+        &&& pending_stores_covered_by_tlb(self.cpu_op.view(), self.cpu_hw_cr3_pcid, self.cpu_tlb)
+        &&& pending_dma_covered_by_iotlb(self.iommu_tlb)
     }
 
     /// The default page table is well formed and empty, uses the kernel default PCID, and ends its kernel L4 entries at

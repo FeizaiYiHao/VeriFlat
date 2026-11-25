@@ -94,6 +94,7 @@ impl AtomicPcidCr3 {
             final(self).view() == (cr3, KERNEL_DEFAULT_PCID),
             final(self).owner_cpu() == cpu_id,
             final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, CpuOpState::Idle),
+            final(cpu_op).store_buffers() == old(cpu_op).store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
             final(cpu_trap_frame).view() == old(cpu_trap_frame).view().remove(cpu_id),
             ret.view().addr() == old(cpu_trap_frame).view()[cpu_id].addr(),
             ret.view().value() == if old(cpu_op).view()[cpu_id as int] is User { cpu_regs.view()[cpu_id as int] } else { old(cpu_trap_frame).view()[cpu_id].value() },

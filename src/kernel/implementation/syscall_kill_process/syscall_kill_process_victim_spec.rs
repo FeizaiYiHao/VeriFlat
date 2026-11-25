@@ -135,6 +135,7 @@ pub(crate) open spec fn kill_cpu_to_idle_eof_transition_framing(pre: KernelK, po
     let after = post.cpu_arr.spec_index(remote).view();
     &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, cpu_trap_frame: post.cpu_trap_frame, thrd_mp: post.thrd_mp, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(remote as int, CpuOpState::Idle)
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers().insert(remote, Set::<PendingStore>::empty())
     &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(remote)
     &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()

@@ -1099,7 +1099,8 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
 pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c: CpuId, pcid: Pcid, flushed: bool, prc: RwLockProcessPtr)
     requires
         post.inv(),
-        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, pt_mp: post.pt_mp, pt_lower: post.pt_lower, cpu_op: post.cpu_op, ..*pre }),
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         forall|cpu: CpuId| #![trigger post.cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==> post.cpu_arr.spec_index(cpu).value.locking_thread() == pre.cpu_arr.spec_index(cpu).value.locking_thread(),
         process_pagetable_wf(post.prc_mp, post.pt_mp),

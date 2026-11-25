@@ -8,7 +8,9 @@ verus! {
 pub(super) open spec fn flush_remote_pcid_and_clear_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid) -> bool {
     let old_entry = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let new_entry = post.pcid_needflush.spec_index(cpu_id, pcid);
-    &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
+    &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_op: post.cpu_op, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers().insert(cpu_id, Set::<PendingStore>::empty())
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
@@ -44,6 +46,8 @@ pub(super) proof fn flush_remote_pcid_and_clear_eof(pre: KernelK, post: KernelK,
         reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
     flush_remote_pcid_and_clear_eof_structure_cache_wf(pre, post, cpu_id, pcid);
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
 }
 
 /// EOF closure of `flush_remote_pcid_and_clear` for the paging-structure invariant: the refilled cache of `(cpu_id, pcid)`
@@ -180,12 +184,16 @@ pub(super) proof fn flush_local_pcid_and_clear_eof(pre: KernelK, post: KernelK, 
         index_valid(NUM_CPUS, cpu_id),
         pcid_valid(pcid),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
     ensures post.inv(),
 {
     reveal(flush_local_pcid_and_clear_eof_transition_framing);
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by {
+        reveal(pending_stores_covered_by_tlb); store_buffers_empty_in_step_or_off_at(pre.cpu_op.view(), cpu_id);
+    };
     flush_local_pcid_and_clear_eof_subsystems_inv(pre, post, cpu_id, pcid);
     flush_local_pcid_and_clear_eof_process_management_inv(pre, post, cpu_id, pcid);
     flush_local_pcid_and_clear_eof_cpu_dirty_map_wf(pre, post, cpu_id, pcid);
@@ -224,11 +232,15 @@ pub(super) proof fn flush_local_va_range_and_clear_eof(pre: KernelK, post: Kerne
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
     ensures post.inv(),
 {
     reveal(flush_local_va_range_and_clear_eof_transition_framing);
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by {
+        reveal(pending_stores_covered_by_tlb); store_buffers_empty_in_step_or_off_at(pre.cpu_op.view(), cpu_id);
+    };
     assert(post.subsystems_inv()) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match);
@@ -247,7 +259,9 @@ pub(super) proof fn flush_local_va_range_and_clear_eof(pre: KernelK, post: Kerne
 pub(super) open spec fn flush_remote_va_range_and_restore_needflush_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool) -> bool {
     let old_entry = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let new_entry = post.pcid_needflush.spec_index(cpu_id, pcid);
-    &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
+    &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_op: post.cpu_op, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers().insert(cpu_id, Set::<PendingStore>::empty())
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& cpu_tlb_va_range_flushed(pre, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
@@ -286,6 +300,8 @@ pub(super) proof fn flush_remote_va_range_and_restore_needflush_eof(pre: KernelK
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
 }
 
 /// EOF closure of `flush_local_va_range_and_clear` and `flush_remote_va_range_and_restore_needflush` for the TLB invariant:
@@ -297,7 +313,7 @@ proof fn flush_va_range_eof_tlb_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, p
         index_valid(NUM_CPUS, cpu_id),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
-        post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre }),
+        post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_op: post.cpu_op, ..pre }),
         post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         cpu_tlb_va_range_flushed(pre, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))),
         forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)

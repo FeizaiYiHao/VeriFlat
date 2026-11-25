@@ -82,9 +82,10 @@ pub fn iommu_root_table_detach_owned(
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
             &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
                 ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
+            &&& final(iommu_tlb).pending_dma() =~= old(iommu_tlb).pending_dma().filter(|r: PendingDma| r.did != did)
         },
         old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache()
-            && final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches(),
+            && final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches() && final(iommu_tlb).pending_dma() == old(iommu_tlb).pending_dma(),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
@@ -159,6 +160,7 @@ fn iommu_root_table_migrate_did(
             == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
         forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == old_did
             ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf]),
+        final(iommu_tlb).pending_dma() =~= old(iommu_tlb).pending_dma().filter(|r: PendingDma| r.did != old_did),
 {
     broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
@@ -177,6 +179,7 @@ fn iommu_root_table_migrate_did(
             iommu_tlb.structure_caches() =~= old(iommu_tlb).structure_caches().insert(old_did, iommu_tlb.structure_cache(old_did)),
             Map::new(iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| iommu_tlb.context_cache()[bdf].1 != old_did), |bdf: PciBdf| iommu_tlb.context_cache()[bdf])
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
+            iommu_tlb.pending_dma() =~= old(iommu_tlb).pending_dma().filter(|r: PendingDma| r.did != old_did),
             pci.wf(),
             page_ptr_valid(root),
             vtd_domain_id_valid(old_did),
@@ -245,9 +248,10 @@ pub fn iommu_root_table_detach(
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
             &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
                 ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
+            &&& final(iommu_tlb).pending_dma() =~= old(iommu_tlb).pending_dma().filter(|r: PendingDma| r.did != did)
         },
         old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache()
-            && final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches(),
+            && final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches() && final(iommu_tlb).pending_dma() == old(iommu_tlb).pending_dma(),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     let table = irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm));
@@ -377,6 +381,7 @@ pub fn iommu_root_table_detach_array(
                 == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
             &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
                 ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
+            &&& final(iommu_tlb).pending_dma() =~= old(iommu_tlb).pending_dma().filter(|r: PendingDma| r.did != did)
         },
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did is None ==> *final(iommu_tlb) == *old(iommu_tlb),
 {

@@ -491,7 +491,25 @@ Batch 3 (workspace run #34166, noninterference run #34165, monolith run
   below 48 bits (RTADDR, legacy mode). Every invalidation checks that
   CCMD.CAIG / IOTLB.IAIG report a granularity covering the request
   (`granularity_covers`), and `domain_id` panics on a DID at or above 2^16
-  instead of masking it.
+  instead of masking it. Every IOTLB invalidation drains the domain's pending
+  DMA reads and writes (IOTLB.DR, DW), so each unit must also report
+  `CAP.DRD` and `CAP.DWD` (bits 55 and 54).
+- Pending writes (K only, not user-visible): `CpuOpArray::store_buffers`
+  holds each cpu's issued and uncommitted user stores (`PendingStore`) and
+  `IommuTLB::pending_dma` the translated and uncompleted DMA requests
+  (`PendingDma`). The environment events `kernel_k_user_store_issued` /
+  `_committed` and `kernel_k_dma_issued` / `_completed` add and remove them.
+  The trusted contracts drain them: granting a cpu its own cpu lock
+  (`enter_step`), a remote flush taken in the NMI handler
+  (`flush_remote_pcid`, `flush_remote_va_range`), and the IPI of
+  `ipi_remote_running_to_idle_raw` empty that cpu's store buffer; an IOTLB
+  invalidation of a domain (DR and DW set) drops that domain's pending DMA.
+  `KernelK::inv` keeps every pending write behind a cached translation
+  (`store_buffers_empty_in_step_or_off`, `pending_stores_covered_by_tlb`,
+  `pending_dma_covered_by_iotlb`), and
+  `kernel_inv_implies_pending_writes_target_mapped_or_bar_pages` concludes
+  that each pending store reaches a mapped page of its size or a PCI BAR
+  page and each pending DMA request a Mapped4k page.
 
 ## Open items
 

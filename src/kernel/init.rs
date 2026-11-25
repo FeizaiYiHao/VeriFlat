@@ -629,6 +629,7 @@ pub open spec fn boot_kernel_state(
     &&& *krnl.dflt_pt == default_pagetable
     // CPUs.
     &&& krnl.cpu_op.view().view() == Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off })
+    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_op.view().store_buffer(cpu_id)] krnl.cpu_op.view().store_buffer(cpu_id) == Set::<PendingStore>::empty()
     &&& krnl.cpu_regs.view().view().len() == NUM_CPUS
     &&& krnl.cpu_trap_frame.view().view() == Map::<CpuId, TrapFramePerm>::empty()
     &&& krnl.cpu_arr.inv()
@@ -666,6 +667,7 @@ pub open spec fn boot_kernel_state(
         vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
     &&& forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.structure_cache(did)] vtd_domain_id_valid(did) ==> krnl.iommu_tlb.structure_cache(did).is_empty()
     &&& krnl.iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty()
+    &&& krnl.iommu_tlb.pending_dma() == Set::<PendingDma>::empty()
     // IOMMU root table.
     &&& krnl.irt.inv()
     &&& krnl.irt.locking_thread() is None
@@ -1042,6 +1044,7 @@ pub fn finish_init_from_boot(
         forall|did: VtdDomainId| #![trigger iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> iommu_tlb.spec_index(did).is_empty(),
         forall|did: VtdDomainId| #![trigger iommu_tlb.structure_cache(did)] vtd_domain_id_valid(did) ==> iommu_tlb.structure_cache(did).is_empty(),
         iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty(),
+        iommu_tlb.pending_dma() == Set::<PendingDma>::empty(),
         forall|pg_ptr: PagePtr| #![trigger owned_pages.view().contains(pg_ptr)] owned_pages.view().contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         container_page_perm.is_init(),
         container_page_perm.addr() == layout.root_container,

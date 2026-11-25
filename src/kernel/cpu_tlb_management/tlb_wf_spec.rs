@@ -177,4 +177,48 @@ verus! {
             whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ensures pagetable_tlb_entries_present(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, pagetable, whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable)),
     { reveal(cpu_tlb_wf); }
+
+    /// The translations of size `size` that `tlb` caches.
+    pub open spec fn single_tlb_of_size(tlb: SingleTLB, size: PageSize) -> Map<VAddr, TLBEntry> {
+        match size {
+            PageSize::SZ4k => tlb.tlb_4k(),
+            PageSize::SZ2m => tlb.tlb_2m(),
+            PageSize::SZ1g => tlb.tlb_1g(),
+        }
+    }
+
+    /// Every pending user store of a cpu was translated under the non-default PCID of the cpu's hardware cr3/pcid word, and
+    /// the cpu's TLB for that PCID still caches the writable translation of its size at its base address with its frame. The
+    /// PCID is valid, as every hardware cr3/pcid word's is.
+    #[verifier::opaque]
+    pub open spec fn pending_stores_covered_by_tlb(cpu_op: CpuOpArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_tlb: CpuTLB) -> bool {
+        forall|c: CpuId, s: PendingStore| #![trigger cpu_op.store_buffer(c).contains(s)]
+            index_valid(NUM_CPUS, c) && cpu_op.store_buffer(c).contains(s) ==> {
+                let tlb = single_tlb_of_size(cpu_tlb.spec_index((c, s.pcid)), s.size);
+                &&& pcid_valid(s.pcid)
+                &&& s.pcid != KERNEL_DEFAULT_PCID
+                &&& cpu_hw_cr3_pcid[c as int].view().1 == s.pcid
+                &&& tlb.dom().contains(s.base_va)
+                &&& tlb[s.base_va].write
+                &&& tlb[s.base_va].addr == s.frame
+            }
+    }
+
+    /// The pending user store `s` of cpu `cpu_id` is covered by the cpu's TLB.
+    pub proof fn pending_stores_covered_by_tlb_at(cpu_op: CpuOpArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, cpu_tlb: CpuTLB, cpu_id: CpuId, s: PendingStore)
+        requires
+            pending_stores_covered_by_tlb(cpu_op, cpu_hw_cr3_pcid, cpu_tlb),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_op.store_buffer(cpu_id).contains(s),
+        ensures
+            ({
+                let tlb = single_tlb_of_size(cpu_tlb.spec_index((cpu_id, s.pcid)), s.size);
+                &&& pcid_valid(s.pcid)
+                &&& s.pcid != KERNEL_DEFAULT_PCID
+                &&& cpu_hw_cr3_pcid[cpu_id as int].view().1 == s.pcid
+                &&& tlb.dom().contains(s.base_va)
+                &&& tlb[s.base_va].write
+                &&& tlb[s.base_va].addr == s.frame
+            }),
+    { reveal(pending_stores_covered_by_tlb); }
 }

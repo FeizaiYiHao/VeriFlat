@@ -15,9 +15,9 @@ unsafe extern "C" {
 verus! {
 impl CpuTLB {
     /// The remote cpu may refill the TLB and paging-structure cache of `(cpu_id, pcid)` at once with what it may cache in `k`,
-    /// the kernel state whose TLB this is.
+    /// the kernel state whose TLB this is. The remote cpu takes the flush in its NMI handler, which drains its store buffer.
     #[verifier::external_body]
-    pub fn flush_remote_pcid(&mut self, cpu_id: CpuId, pcid: Pcid, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn flush_remote_pcid(&mut self, cpu_id: CpuId, pcid: Pcid, Ghost(k): Ghost<KernelK>, Tracked(cpu_op): Tracked<&mut CpuOpArray>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
             k.cpu_tlb == *old(self),
@@ -35,6 +35,8 @@ impl CpuTLB {
                 #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
                 index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
                     ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)) && final(self).structure_cache((c, p)) == old(self).structure_cache((c, p)),
+            final(cpu_op).view() == old(cpu_op).view(),
+            final(cpu_op).store_buffers() == old(cpu_op).store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
     {
         unsafe { veriflat_remote_flush_pcid(cpu_id, pcid); }
         self.cpu_tlbs = Ghost(self.cpu_tlbs.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
@@ -77,9 +79,11 @@ impl CpuTLB {
         self.structure_caches = Ghost(self.structure_caches.view().insert((cpu_id, pcid), PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() }));
     }
 
-    /// The remote form of `flush_local_va_range`: cpu `cpu_id` runs the invalidations in its NMI handler.
+    /// The remote form of `flush_local_va_range`: cpu `cpu_id` runs the invalidations in its NMI handler, which drains its
+    /// store buffer.
     #[verifier::external_body]
-    pub fn flush_remote_va_range(&mut self, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn flush_remote_va_range(&mut self, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, Ghost(k): Ghost<KernelK>, Tracked(cpu_op): Tracked<&mut CpuOpArray>,
+        Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
             k.cpu_tlb == *old(self),
@@ -100,6 +104,8 @@ impl CpuTLB {
                 #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
                 index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
                     ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)) && final(self).structure_cache((c, p)) == old(self).structure_cache((c, p)),
+            final(cpu_op).view() == old(cpu_op).view(),
+            final(cpu_op).store_buffers() == old(cpu_op).store_buffers().insert(cpu_id, Set::<PendingStore>::empty()),
     {
         unsafe { veriflat_remote_flush_va_range(cpu_id, pcid, va, count, stride_2m); }
         let ghost old_tlb = self.cpu_tlbs.view().index((cpu_id, pcid));

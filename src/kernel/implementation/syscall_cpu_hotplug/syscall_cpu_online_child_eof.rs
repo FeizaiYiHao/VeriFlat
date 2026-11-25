@@ -12,6 +12,7 @@ pub(super) open spec fn cpu_online_child_eof_transition_framing(pre: KernelK, po
     let new_cpu = post.cpu_arr.spec_index(target).view();
     &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, cpu_set_mp: post.cpu_set_mp, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(target as int, CpuOpState::Idle)
+    &&& post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers()
     &&& post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr)
     &&& new_set.is_init() == old_set.is_init()
     &&& new_set.view_rodata() == old_set.view_rodata()
@@ -80,5 +81,7 @@ pub(super) proof fn cpu_online_child_eof(pre: KernelK, post: KernelK, cpu_set_pt
     };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(store_buffers_empty_in_step_or_off(post.cpu_op.view())) by { reveal(store_buffers_empty_in_step_or_off); };
+    assert(pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb)) by { reveal(pending_stores_covered_by_tlb); };
 }
 }

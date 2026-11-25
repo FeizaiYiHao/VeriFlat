@@ -145,6 +145,7 @@ pub(crate) proof fn kill_retire_eof_iommu(
         pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
         iommu_structure_cache_wf(post.iommu_tlb, post.irt.view(), post.it_mp),
+        pending_dma_covered_by_iotlb(post.iommu_tlb),
 {
     reveal(kill_retire_eof_transition_framing);
     assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by {
@@ -243,6 +244,8 @@ pub(crate) proof fn kill_retire_eof_tlb(
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
         structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        store_buffers_empty_in_step_or_off(post.cpu_op.view()),
+        pending_stores_covered_by_tlb(post.cpu_op.view(), post.cpu_hw_cr3_pcid, post.cpu_tlb),
 {
     reveal(kill_retire_eof_transition_framing);
     assert(cpu_dirty_map_process_in_cpu_container(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf); broadcast use kill_retire_eof_tlb_entry; };

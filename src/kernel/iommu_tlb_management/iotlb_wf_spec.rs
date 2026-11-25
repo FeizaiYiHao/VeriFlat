@@ -154,4 +154,33 @@ pub broadcast proof fn iommu_table_without_did_implies_page_unreferenced_by_iomm
 pub open spec fn iommu_table_tlb_entries_present(iommu_tlb: IommuTLB, root_table: IommuRootTable, iommu_table_map: IommuTableLockedMap, it: RwLockPageTableRoot) -> bool {
     iommu_table_map.spec_index(it).view().did matches Some(did) ==> single_tlb_subset_of_present_pagetable(iommu_tlb.spec_index(did), iommu_table_map.spec_index(it).view())
 }
+
+/// Every pending DMA request names a valid domain and is still translated by the 4K IOTLB entry of that domain at its IOVA,
+/// with its frame, and a write request by a writable one.
+#[verifier::opaque]
+pub open spec fn pending_dma_covered_by_iotlb(iommu_tlb: IommuTLB) -> bool {
+    forall|r: PendingDma| #![trigger iommu_tlb.pending_dma().contains(r)]
+        iommu_tlb.pending_dma().contains(r) ==> {
+            let tlb = iommu_tlb.spec_index(r.did).tlb_4k();
+            &&& vtd_domain_id_valid(r.did)
+            &&& tlb.dom().contains(r.iova)
+            &&& tlb[r.iova].addr == r.frame
+            &&& r.write ==> tlb[r.iova].write
+        }
+}
+
+/// The pending DMA request `r` is covered by the IOTLB entry of its domain.
+pub proof fn pending_dma_covered_by_iotlb_at(iommu_tlb: IommuTLB, r: PendingDma)
+    requires
+        pending_dma_covered_by_iotlb(iommu_tlb),
+        iommu_tlb.pending_dma().contains(r),
+    ensures
+        ({
+            let tlb = iommu_tlb.spec_index(r.did).tlb_4k();
+            &&& vtd_domain_id_valid(r.did)
+            &&& tlb.dom().contains(r.iova)
+            &&& tlb[r.iova].addr == r.frame
+            &&& r.write ==> tlb[r.iova].write
+        }),
+{ reveal(pending_dma_covered_by_iotlb); }
 }

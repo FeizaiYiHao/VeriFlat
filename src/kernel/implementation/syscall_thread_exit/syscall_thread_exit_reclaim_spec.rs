@@ -62,6 +62,7 @@ pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_fram
             == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
         &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
             ==> iommu_context_cache_entry_present(post, bdf, post.iommu_tlb.context_cache()[bdf])
+        &&& post.iommu_tlb.pending_dma() =~= pre.iommu_tlb.pending_dma().filter(|r: PendingDma| r.did != did)
     }
     &&& table.view().did is None ==> post.iommu_tlb == pre.iommu_tlb
     &&& forall|did: VtdDomainId| #![trigger post.iommu_tlb.spec_index(did)]
