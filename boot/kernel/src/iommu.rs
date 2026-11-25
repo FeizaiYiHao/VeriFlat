@@ -8,6 +8,10 @@
 //! device can raise an interrupt: nothing in VeriFlat takes device interrupts. The model relies on
 //! hardware properties that `init` checks:
 //!
+//! - ECAP.QI = 1: every invalidation goes through the unit's invalidation queue. A unit of major
+//!   version 6 or later treats register-based invalidation (CCMD, IOTLB registers) as incorrect and
+//!   ignores it. Like Linux, a unit with ECAP.SMTS = 1 gets 256-bit descriptors (IQA.DW = 1), any
+//!   other unit 128-bit ones.
 //! - CAP.CM = 0: not-present entries are never cached, so `pci_attach_dma` needs no invalidation;
 //!   the model encodes this by caching only roots.
 //! - CAP.RWBF = 0: table stores need no write-buffer flush before the unit can see them.
@@ -23,7 +27,7 @@
 //! kernel built with ordinary stores, and the interrupt remapping table, before any unit is enabled.
 
 use core::ptr;
-use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use core::sync::atomic::{fence, AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
 use astd::boot::MAX_IOMMU_UNITS;
 
@@ -32,10 +36,22 @@ use crate::boot;
 /// Register bases of the remapping units, valid up to `UNIT_COUNT`; 0 while translation is off.
 static UNITS: [AtomicU64; MAX_IOMMU_UNITS] = [const { AtomicU64::new(0) }; MAX_IOMMU_UNITS];
 static UNIT_COUNT: AtomicUsize = AtomicUsize::new(0);
-/// Serializes the invalidation registers: a domain-selective context-cache and IOTLB invalidation
-/// runs under the verified root-table lock, but an IOTLB-only domain invalidation runs under one
-/// IOMMU table's lock, so invalidations of different domains may race on a unit.
+/// Serializes the invalidation queues (their tails, slots and status words): a domain-selective
+/// context-cache and IOTLB invalidation runs under the verified root-table lock, but an IOTLB-only
+/// domain invalidation runs under one IOMMU table's lock, so invalidations of different domains may
+/// race on a unit.
 static INVALIDATION_LOCK: AtomicBool = AtomicBool::new(false);
+/// One invalidation queue per unit: one 4 KiB page (IQA.QS = 0) of 256 128-bit or 128 256-bit
+/// descriptors, as `QI_SHIFT` says.
+#[repr(C, align(4096))]
+struct InvalidationQueue([u64; REGISTER_PAGE / 8]);
+static mut QUEUES: [InvalidationQueue; MAX_IOMMU_UNITS] = [const { InvalidationQueue([0; REGISTER_PAGE / 8]) }; MAX_IOMMU_UNITS];
+/// log2 of each unit's descriptor size in bytes: `QI_SHIFT_128` or `QI_SHIFT_256`.
+static QI_SHIFT: [AtomicU32; MAX_IOMMU_UNITS] = [const { AtomicU32::new(QI_SHIFT_128) }; MAX_IOMMU_UNITS];
+/// The next free slot of each unit's queue; IQT holds it shifted left by `QI_SHIFT`.
+static QI_TAIL: [AtomicUsize; MAX_IOMMU_UNITS] = [const { AtomicUsize::new(0) }; MAX_IOMMU_UNITS];
+/// The word each unit's invalidation wait descriptor writes `QI_DONE` to.
+static QI_STATUS: [AtomicU32; MAX_IOMMU_UNITS] = [const { AtomicU32::new(QI_PENDING) }; MAX_IOMMU_UNITS];
 /// Whether stores into remapping structures must be written back to memory: `FLUSH_UNKNOWN` until
 /// the first `flush_needed` reads every unit's ECAP. That can happen before `init`, because the
 /// kernel zeroes the root process's IOMMU root page while it builds itself.
@@ -54,13 +70,16 @@ static IRT: InterruptRemappingTable = InterruptRemappingTable([0; REGISTER_PAGE]
 /// IRTA.S: the table holds 2^(S+1) entries of 16 bytes.
 const IRTA_SIZE_256: u64 = 7;
 
+const VER_REG: usize = 0x00;
 const CAP_REG: usize = 0x08;
 const ECAP_REG: usize = 0x10;
 const GCMD_REG: usize = 0x18;
 const GSTS_REG: usize = 0x1c;
 const RTADDR_REG: usize = 0x20;
-const CCMD_REG: usize = 0x28;
 const FSTS_REG: usize = 0x34;
+const IQH_REG: usize = 0x80;
+const IQT_REG: usize = 0x88;
+const IQA_REG: usize = 0x90;
 const IRTA_REG: usize = 0xb8;
 
 const CAP_RWBF: u64 = 1 << 4;
@@ -70,36 +89,53 @@ const CAP_DWD: u64 = 1 << 54;
 const CAP_DRD: u64 = 1 << 55;
 const CAP_ND_16_BIT: u64 = 6;
 const ECAP_C: u64 = 1 << 0;
+const ECAP_QI: u64 = 1 << 1;
 const ECAP_IR: u64 = 1 << 3;
+const ECAP_SMTS: u64 = 1 << 43;
 
-/// TE, SRTP, IRE, SIRTP: GSTS reports them as TES, RTPS, IRES, IRTPS at the same positions.
+/// TE, SRTP, QIE, IRE, SIRTP: GSTS reports them as TES, RTPS, QIES, IRES, IRTPS at the same positions.
 const GCMD_TE: u32 = 1 << 31;
 const GCMD_SRTP: u32 = 1 << 30;
+const GCMD_QIE: u32 = 1 << 26;
 const GCMD_IRE: u32 = 1 << 25;
 const GCMD_SIRTP: u32 = 1 << 24;
 /// GSTS bits whose GCMD counterparts are one-shot commands; a GCMD write must not repeat them.
 const GSTS_ONE_SHOT: u32 = (1 << 30) | (1 << 29) | (1 << 27) | (1 << 24);
 
-const CCMD_ICC: u64 = 1 << 63;
-const CCMD_GLOBAL: u64 = 1 << 61;
-const CCMD_DOMAIN: u64 = 2 << 61;
-/// CCMD.CAIG (bits 60:59): the granularity the unit actually performed.
-const CCMD_CAIG_SHIFT: u32 = 59;
-const CCMD_CAIG_GLOBAL: u64 = 1;
-const CCMD_CAIG_DOMAIN: u64 = 2;
-
-const IOTLB_IVT: u64 = 1 << 63;
-const IOTLB_GLOBAL: u64 = 1 << 60;
-const IOTLB_DOMAIN: u64 = 2 << 60;
-/// IOTLB.IAIG (bits 58:57): the granularity the unit actually performed.
-const IOTLB_IAIG_SHIFT: u32 = 57;
-const IOTLB_IAIG_GLOBAL: u64 = 1;
-const IOTLB_IAIG_DOMAIN: u64 = 2;
-const IOTLB_DR: u64 = 1 << 49;
-const IOTLB_DW: u64 = 1 << 48;
+/// IQA.DW (bit 11): 256-bit descriptors; IQA.QS (bits 2:0) stays 0, one 4 KiB page.
+const IQA_DW: u64 = 1 << 11;
+/// Descriptor sizes: IQH and IQT hold the slot index shifted left by 4 (128-bit) or 5 (256-bit).
+const QI_SHIFT_128: u32 = 4;
+const QI_SHIFT_256: u32 = 5;
+/// Queued-invalidation descriptors: the type in bits 3:0 and the DID in bits 31:16 of quadword 0;
+/// every other quadword is 0 except the wait descriptor's status address in quadword 1.
+const QI_DID_SHIFT: u32 = 16;
+/// Context-cache invalidate descriptor (type 1), granularity G in bits 5:4.
+const QI_CC: u64 = 0x1;
+const QI_CC_GLOBAL: u64 = 1 << 4;
+const QI_CC_DOMAIN: u64 = 2 << 4;
+/// IOTLB invalidate descriptor (type 2), granularity G in bits 5:4, drain writes DW (bit 6), drain reads DR (bit 7).
+const QI_IOTLB: u64 = 0x2;
+const QI_IOTLB_GLOBAL: u64 = 1 << 4;
+const QI_IOTLB_DOMAIN: u64 = 2 << 4;
+const QI_IOTLB_DW: u64 = 1 << 6;
+const QI_IOTLB_DR: u64 = 1 << 7;
+/// Interrupt entry cache invalidate descriptor (type 4) with G (bit 4) = 0: global.
+const QI_IEC_GLOBAL: u64 = 0x4;
+/// Invalidation wait descriptor (type 5) with SW (bit 5): writes its status data (bits 63:32) to the
+/// status address (quadword 1, bits 63:2) once every earlier descriptor in the queue has completed.
+const QI_WAIT: u64 = 0x5;
+const QI_WAIT_SW: u64 = 1 << 5;
+const QI_WAIT_STATUS_DATA_SHIFT: u32 = 32;
+const QI_PENDING: u32 = 0;
+const QI_DONE: u32 = 1;
 
 const FSTS_PFO: u32 = 1 << 0;
 const FSTS_PPF: u32 = 1 << 1;
+/// Invalidation queue error, invalidation completion error, invalidation time-out error.
+const FSTS_IQE: u32 = 1 << 4;
+const FSTS_ICE: u32 = 1 << 5;
+const FSTS_ITE: u32 = 1 << 6;
 const FRCD_F: u64 = 1 << 63;
 
 const REGISTER_PAGE: usize = 4096;
@@ -125,11 +161,6 @@ fn write64(base: u64, offset: usize, value: u64) {
     unsafe { ptr::write_volatile((base as usize + offset) as *mut u64, value) }
 }
 
-/// Offset of the IOTLB invalidate register (ECAP.IRO counts 16-byte units; IVA precedes it).
-fn iotlb_reg(base: u64) -> usize {
-    16 * ((read64(base, ECAP_REG) >> 8) & 0x3ff) as usize + 8
-}
-
 /// Offset of the first fault-recording register and the number of them.
 fn fault_records(base: u64) -> (usize, usize) {
     let cap = read64(base, CAP_REG);
@@ -145,36 +176,57 @@ fn global_command(base: u64, command: u32) {
     }
 }
 
-/// Whether the actual granularity `actual` covers the requested `global` or domain invalidation:
-/// a domain request accepts domain or the coarser global granularity; a global one needs global.
-fn granularity_covers(global: bool, actual: u64, actual_global: u64, actual_domain: u64) -> bool {
-    actual == actual_global || (!global && actual == actual_domain)
+/// Queues `descriptor`, then an invalidation wait descriptor that writes `QI_DONE` to the unit's
+/// status word once every earlier descriptor has completed, and moves IQT past both. The caller
+/// holds `INVALIDATION_LOCK`, or is `init` before the other CPUs start, and awaits each submission
+/// (`qi_wait`) before the next, so the queue is empty here and never fills; the tail stays even, so
+/// the pair never wraps.
+fn qi_submit(unit: usize, base: u64, descriptor: u64) {
+    let shift = QI_SHIFT[unit].load(Ordering::Relaxed);
+    let words = 1usize << (shift - 3);
+    let tail = QI_TAIL[unit].load(Ordering::Relaxed);
+    let status = QI_STATUS[unit].as_ptr();
+    let slots = unsafe { (&raw mut QUEUES[unit].0).cast::<u64>().add(tail * words) };
+    let wait = [QI_WAIT | QI_WAIT_SW | ((QI_DONE as u64) << QI_WAIT_STATUS_DATA_SHIFT), status as u64, 0, 0];
+    let descriptor = [descriptor, 0, 0, 0];
+    unsafe {
+        ptr::write_volatile(status, QI_PENDING);
+        for i in 0..words {
+            ptr::write_volatile(slots.add(i), descriptor[i]);
+            ptr::write_volatile(slots.add(words + i), wait[i]);
+        }
+    }
+    // Both descriptors and the reset status reach memory before the tail write publishes them.
+    veriflat_iommu_flush_to_memory(slots as usize, 2 << shift);
+    veriflat_iommu_flush_to_memory(status as usize, size_of::<u32>());
+    fence(Ordering::SeqCst);
+    let tail = (tail + 2) % (REGISTER_PAGE >> shift);
+    QI_TAIL[unit].store(tail, Ordering::Relaxed);
+    write64(base, IQT_REG, (tail as u64) << shift);
 }
 
-fn invalidate_context_cache(base: u64, command: u64) {
-    write64(base, CCMD_REG, CCMD_ICC | command);
-    let mut ccmd = read64(base, CCMD_REG);
-    while ccmd & CCMD_ICC != 0 {
+/// Waits, unbounded like `global_command`, until the unit writes `QI_DONE` for the last `qi_submit`.
+/// An invalidation queue error (FSTS.IQE), invalidation completion error (ICE) or invalidation
+/// time-out error (ITE) panics, naming the unit, rather than waiting for a status write that the
+/// stopped queue may never make.
+fn qi_wait(unit: usize, base: u64) {
+    let status = QI_STATUS[unit].as_ptr();
+    loop {
+        // Drops a stale cached copy when some unit does not snoop CPU caches.
+        veriflat_iommu_flush_to_memory(status as usize, size_of::<u32>());
+        if unsafe { ptr::read_volatile(status) } == QI_DONE {
+            return;
+        }
+        let fsts = read32(base, FSTS_REG);
+        assert!(fsts & (FSTS_IQE | FSTS_ICE | FSTS_ITE) == 0, "VT-d at {:#x}: invalidation queue error, FSTS {:#x} IQH {:#x} IQT {:#x}", base, fsts, read64(base, IQH_REG), read64(base, IQT_REG));
         core::hint::spin_loop();
-        ccmd = read64(base, CCMD_REG);
     }
-    let caig = (ccmd >> CCMD_CAIG_SHIFT) & 0x3;
-    assert!(granularity_covers(command == CCMD_GLOBAL, caig, CCMD_CAIG_GLOBAL, CCMD_CAIG_DOMAIN), "VT-d context invalidation {:#x} performed at granularity {}", command, caig);
 }
 
-/// Every IOTLB invalidation drains the pending DMA reads and writes of the domain (IOTLB.DR, DW),
-/// so no DMA that used a dropped translation completes after the invalidation returns; `init_unit`
-/// requires CAP.DRD and CAP.DWD on every unit.
-fn invalidate_iotlb(base: u64, command: u64) {
-    let reg = iotlb_reg(base);
-    write64(base, reg, IOTLB_IVT | IOTLB_DR | IOTLB_DW | command);
-    let mut iotlb = read64(base, reg);
-    while iotlb & IOTLB_IVT != 0 {
-        core::hint::spin_loop();
-        iotlb = read64(base, reg);
-    }
-    let iaig = (iotlb >> IOTLB_IAIG_SHIFT) & 0x3;
-    assert!(granularity_covers(command == IOTLB_GLOBAL, iaig, IOTLB_IAIG_GLOBAL, IOTLB_IAIG_DOMAIN), "VT-d IOTLB invalidation {:#x} performed at granularity {}", command, iaig);
+/// Queues `descriptor` on one unit and waits for it.
+fn qi_sync(unit: usize, base: u64, descriptor: u64) {
+    qi_submit(unit, base, descriptor);
+    qi_wait(unit, base);
 }
 
 /// The 16-bit domain ID of a hook argument; a wider value is a kernel bug, never masked.
@@ -233,41 +285,56 @@ pub fn init(root_table: u64) {
         log::info!("VT-d table walks snoop CPU caches on every unit: no remapping-structure flush");
     }
     for (i, &base) in units.iter().enumerate() {
-        init_unit(base, root_table);
+        init_unit(i, base, root_table);
         UNITS[i].store(base, Ordering::Release);
     }
     UNIT_COUNT.store(units.len(), Ordering::Release);
     log::info!("VT-d translation enabled on {} unit(s), root table {:#x}", units.len(), root_table);
 }
 
-fn init_unit(base: u64, root_table: u64) {
+fn init_unit(unit: usize, base: u64, root_table: u64) {
+    let ver = read32(base, VER_REG);
     let cap = read64(base, CAP_REG);
     let ecap = read64(base, ECAP_REG);
-    log::info!("VT-d at {:#x}: CAP {:#x} ECAP {:#x}", base, cap, ecap);
+    let shift = if ecap & ECAP_SMTS != 0 { QI_SHIFT_256 } else { QI_SHIFT_128 };
+    log::info!("VT-d at {:#x}: VER {}.{} CAP {:#x} ECAP {:#x}, queued invalidation with {}-bit descriptors", base, (ver >> 4) & 0xf, ver & 0xf, cap, ecap, 8 << shift);
     assert!(cap & CAP_CM == 0, "VT-d caching mode: attach would need an invalidation the model does not issue");
     assert!(cap & CAP_RWBF == 0, "VT-d requires write-buffer flushing, which the model does not issue");
     assert!(cap & 0x7 >= CAP_ND_16_BIT, "VT-d supports fewer than 2^16 domain IDs");
     assert!(cap & CAP_SAGAW_4_LEVEL != 0, "VT-d does not support 4-level tables");
     assert!(cap & CAP_DRD != 0 && cap & CAP_DWD != 0, "VT-d at {:#x}: CAP {:#x} lacks DMA read or write draining (CAP.DRD, CAP.DWD), which every IOTLB invalidation needs", base, cap);
+    assert!(ecap & ECAP_QI != 0, "VT-d at {:#x}: ECAP {:#x} lacks queued invalidation (ECAP.QI), which every invalidation needs: a unit of major version 6 or later ignores register-based invalidation", base, ecap);
     let (records, count) = fault_records(base);
-    assert!(iotlb_reg(base) + 8 <= REGISTER_PAGE && records + 16 * count <= REGISTER_PAGE, "VT-d registers beyond the mapped page");
-    assert!(read32(base, GSTS_REG) & (GCMD_TE | GCMD_IRE) == 0, "VT-d translation or interrupt remapping already enabled");
+    assert!(records + 16 * count <= REGISTER_PAGE, "VT-d registers beyond the mapped page");
+    assert!(read32(base, GSTS_REG) & (GCMD_TE | GCMD_IRE | GCMD_QIE) == 0, "VT-d translation, interrupt remapping or queued invalidation already enabled");
     assert!(ecap & ECAP_IR != 0, "VT-d does not support interrupt remapping");
 
     assert!(root_table & !RTADDR_RTA_MASK == 0, "VT-d root table {:#x} is not a 4 KiB-aligned 48-bit address", root_table);
 
-    // TTM = 00: legacy-mode root table. After SRTP, invalidate the context cache, then the IOTLB.
+    // Queued invalidation, before the first invalidation: an empty queue (IQT = 0; IQH reads 0 while
+    // QIES is 0) at `QUEUES[unit]`, with stale queue errors cleared (FSTS is write-1-to-clear).
+    write32(base, FSTS_REG, FSTS_IQE | FSTS_ICE | FSTS_ITE);
+    QI_SHIFT[unit].store(shift, Ordering::Relaxed);
+    QI_TAIL[unit].store(0, Ordering::Relaxed);
+    write64(base, IQT_REG, 0);
+    let queue = unsafe { &raw const QUEUES[unit] } as u64;
+    write64(base, IQA_REG, queue | if shift == QI_SHIFT_256 { IQA_DW } else { 0 });
+    global_command(base, GCMD_QIE);
+    assert!(read64(base, IQH_REG) == 0, "VT-d at {:#x}: invalidation queue head {:#x} is not 0 once enabled", base, read64(base, IQH_REG));
+
+    // TTM = 00: legacy-mode root table. After SRTP, invalidate the context cache, then the IOTLB
+    // (a unit with CAP.ESRTPS = 0 invalidates neither on SRTP).
     write64(base, RTADDR_REG, root_table);
     global_command(base, GCMD_SRTP);
-    invalidate_context_cache(base, CCMD_GLOBAL);
-    invalidate_iotlb(base, IOTLB_GLOBAL);
+    qi_sync(unit, base, QI_CC | QI_CC_GLOBAL);
+    qi_sync(unit, base, QI_IOTLB | QI_IOTLB_GLOBAL | QI_IOTLB_DR | QI_IOTLB_DW);
     global_command(base, GCMD_TE);
 
-    // xAPIC destinations (EIME = 0). The unit has never remapped interrupts since reset (IRES was
-    // 0), so its interrupt entry cache is empty and the table, which is never written, needs no
-    // invalidation: no invalidation queue is set up.
+    // xAPIC destinations (EIME = 0). After SIRTP, invalidate the interrupt entry cache globally (a
+    // unit with CAP.ESIRTPS = 0 does not on SIRTP), then enable remapping.
     write64(base, IRTA_REG, (&raw const IRT) as u64 | IRTA_SIZE_256);
     global_command(base, GCMD_SIRTP);
+    qi_sync(unit, base, QI_IEC_GLOBAL);
     global_command(base, GCMD_IRE);
 }
 
@@ -289,15 +356,19 @@ fn release_invalidation_lock() {
 
 /// Drops one domain's context-cache entries, then empties its IOTLB, on every unit. The verified
 /// kernel calls it, under the root-table lock, right after it clears that domain's context entry;
-/// the model's `IommuTLB::invalidate_domain` states both effects.
+/// the model's `IommuTLB::invalidate_domain` states both effects. The context-cache invalidation
+/// has completed on every unit before any IOTLB invalidation is queued.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_iommu_invalidate_domain(did: usize) {
-    let did = domain_id(did);
+    let did = domain_id(did) << QI_DID_SHIFT;
     acquire_invalidation_lock();
-    for base in units() {
-        invalidate_context_cache(base, CCMD_DOMAIN | did);
-        invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
+    for (unit, base) in units().enumerate() {
+        qi_submit(unit, base, QI_CC | QI_CC_DOMAIN | did);
     }
+    for (unit, base) in units().enumerate() {
+        qi_wait(unit, base);
+    }
+    invalidate_iotlb_domain(did);
     release_invalidation_lock();
 }
 
@@ -305,12 +376,23 @@ pub extern "C" fn veriflat_iommu_invalidate_domain(did: usize) {
 /// invalidation; the context cache is untouched.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_iommu_invalidate_iotlb_domain(did: usize) {
-    let did = domain_id(did);
+    let did = domain_id(did) << QI_DID_SHIFT;
     acquire_invalidation_lock();
-    for base in units() {
-        invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
-    }
+    invalidate_iotlb_domain(did);
     release_invalidation_lock();
+}
+
+/// Domain-selective IOTLB invalidation of `did` (shifted into place) on every unit: queued on all,
+/// then awaited on all, under `INVALIDATION_LOCK`. Every IOTLB invalidation drains the pending DMA
+/// reads and writes of the domain (DR, DW), so no DMA that used a dropped translation completes
+/// after the invalidation returns; `init_unit` requires CAP.DRD and CAP.DWD on every unit.
+fn invalidate_iotlb_domain(did: u64) {
+    for (unit, base) in units().enumerate() {
+        qi_submit(unit, base, QI_IOTLB | QI_IOTLB_DOMAIN | QI_IOTLB_DR | QI_IOTLB_DW | did);
+    }
+    for (unit, base) in units().enumerate() {
+        qi_wait(unit, base);
+    }
 }
 
 /// `edu` registers and its DMA buffer window.
