@@ -191,19 +191,28 @@ fn pair_bytes() -> usize {
 }
 
 /// Bytes of one queue's Rx buffers, with room for the 4 KiB alignment of each 1 MiB chunk the driver allocates them
-/// in (`Device::add_rx_queue`) when a buffer is not a whole number of pages.
+/// in (`Device::add_rx_queue`) when a chunk is not a whole number of pages (none for the 2048-byte buffers, whose
+/// queues stay back to back as before jumbo frames).
 fn rx_bytes() -> usize {
     let per_chunk = ((1 << 20) / rx_buf()).max(1);
-    RX_RING * rx_buf() + if rx_buf() % 4096 == 0 { 0 } else { RX_RING.div_ceil(per_chunk) * 4096 }
+    let whole_pages = (per_chunk * rx_buf()) % 4096 == 0 && (RX_RING * rx_buf()) % 4096 == 0;
+    RX_RING * rx_buf() + if whole_pages { 0 } else { RX_RING.div_ceil(per_chunk) * 4096 }
 }
 
-/// Pages per `mmap_4k`, `send_pages`/`receive_pages` and `iommu_map_4k` call of the setup, so that the 4K quota
-/// each call wants at hand (3 or 4 per page) stays small.
+/// Pages per `mmap_4k`, `send_pages`/`receive_pages` and `iommu_map_4k` call of the setup when `chunked`, so that the
+/// 4K quota each call wants at hand (3 or 4 per page) stays small.
 const CHUNK: usize = 512;
 
-/// `[0, total)` in chunks of `CHUNK` pages: (first page, pages).
+/// Whether the setup maps, sends and IOMMU-maps its regions in chunks of `CHUNK` pages: path `map` and jumbo frames,
+/// whose regions are larger; every other run does each in one call with the funding it had before both existed.
+fn chunked() -> bool {
+    path() == Path::Map || frame_len() > 1518
+}
+
+/// `[0, total)` in chunks of `CHUNK` pages (one chunk unless `chunked`): (first page, pages).
 fn chunks(total: usize) -> impl Iterator<Item = (usize, usize)> {
-    (0..total).step_by(CHUNK).map(move |o| (o, CHUNK.min(total - o)))
+    let c = if chunked() { CHUNK } else { total.max(1) };
+    (0..total).step_by(c).map(move |o| (o, c.min(total - o)))
 }
 
 /// Pages of the shared region: the pairs' blocks and Tx slots, and the Rx buffers unless path `map` has them apart.
@@ -514,6 +523,37 @@ fn hand_over(k: usize, a: &mut App, kick: &mut Option<&mut dyn FnMut()>, seq: u6
     }
 }
 
+/// After an application step: `kick` (one IPC call to the driver, or the driver's own step), then the Rx hold-off
+/// after a step that brought fewer frames than asked for (`ice::chan::holdoff`); the ring shape has neither.
+#[inline(always)]
+fn after_step(kick: &mut Option<&mut dyn FnMut()>, a: &App, mode: Mode, batch: usize) {
+    if let Some(kick) = kick.as_mut() {
+        kick();
+        if mode.polls() && a.shared().rx.len() < batch.min(MAX_BATCH) {
+            let until = rdtsc() + RX_HOLDOFF_CYCLES;
+            while rdtsc() < until {
+                core::hint::spin_loop();
+            }
+        }
+    }
+}
+
+/// Steps until `start` (warm-up), then counts what the steps moved until `end`; returns (moved, first TSC, last TSC).
+#[inline(always)]
+fn timed(a: &mut App, start: u64, end: u64, mut step: impl FnMut(&mut App) -> u64) -> (u64, u64, u64) {
+    while rdtsc() < start {
+        step(a);
+    }
+    let mut moved = 0u64;
+    let begin = rdtsc();
+    let mut now = begin;
+    while now < end {
+        moved += step(a);
+        now = rdtsc();
+    }
+    (moved, begin, now)
+}
+
 /// Runs phase `phase` of application k on CPU `cpu`, with the maglev lookup table `lut` and flow cache `cache` (mode
 /// maglev); `kick`, after each step, is one IPC call to the driver (IPC shape) or the driver's own step (linked shape),
 /// and is followed by the Rx hold-off; the ring shape has none. `m`: path `map`.
@@ -532,36 +572,24 @@ fn run_phase(k: usize, cpu: usize, phase: usize, a: &mut App, lut: usize, cache:
     let seq = a.begin(mode, batch, c);
     hand_over(k, a, &mut kick, seq, m);
     let (start, end) = (pair.start.load(Ordering::SeqCst), pair.end.load(Ordering::SeqCst));
-    let mut step = |a: &mut App| {
-        let n = a.step(mg.as_mut());
-        if let Some(m) = m {
+    // The step loop is picked once per phase, so that a phase without path `map` runs the loop it ran before the map
+    // path existed.
+    let (moved, begin, now) = match m {
+        None => timed(a, start, end, |a: &mut App| {
+            let n = a.step(mg.as_mut());
+            after_step(&mut kick, a, mode, batch);
+            n as u64
+        }),
+        Some(m) => timed(a, start, end, |a: &mut App| {
+            let n = a.step(mg.as_mut());
             if !a.pending().is_empty() {
                 m.give_back(a.pending());
             }
             a.commit();
-        }
-        if let Some(kick) = kick.as_mut() {
-            kick();
-            // A step that brought fewer frames than asked for waits before the next poll (`ice::chan::holdoff`).
-            if mode.polls() && a.shared().rx.len() < batch.min(MAX_BATCH) {
-                let until = rdtsc() + RX_HOLDOFF_CYCLES;
-                while rdtsc() < until {
-                    core::hint::spin_loop();
-                }
-            }
-        }
-        n as u64
+            after_step(&mut kick, a, mode, batch);
+            n as u64
+        }),
     };
-    while rdtsc() < start {
-        step(a);
-    }
-    let mut moved = 0u64;
-    let begin = rdtsc();
-    let mut now = begin;
-    while now < end {
-        moved += step(a);
-        now = rdtsc();
-    }
     if let Some(m) = m {
         a.drain_rx(|ents| m.give_back(ents));
     }
@@ -804,8 +832,9 @@ pub fn run() {
     // The shared region, path map's Rx region, and the driver process.
     let pages = shared_pages(pairs, queues);
     let mpages = m_pages(queues);
-    // The pages, their page tables, and what one chunk's map wants at hand.
-    fund("ice chan shared region funding", pages + mpages + 4 * CHUNK + (pages + mpages) / 512 + 16);
+    // Chunked: the pages, their page tables, and what one chunk's map wants at hand.
+    let funding = if chunked() { pages + mpages + 4 * CHUNK + (pages + mpages) / 512 + 16 } else { 4 * pages };
+    fund("ice chan shared region funding", funding);
     for (o, c) in chunks(pages) {
         quiet("ice chan mmap_4k (shared region)", unsafe { sys_mmap_4k(SHARED_VA + o * 4096, c) });
     }
@@ -930,8 +959,8 @@ extern "C" fn driver_main() -> ! {
     let bdf = DRV_BDF.load(Ordering::SeqCst);
     let (bus, dev, fun) = (bdf >> 8, (bdf >> 3) & 0x1f, bdf & 7);
     let ipc = shape() == Shape::Ipc;
-    // What one chunk's receive and IOMMU map want at hand, and the page tables they add.
-    fund("ice chan driver receive funding", 3 * CHUNK + 2 * ((pages + mpages) / 512 + 16));
+    // Chunked: what one chunk's receive and IOMMU map want at hand, and the page tables they add.
+    fund("ice chan driver receive funding", if chunked() { 3 * CHUNK + 2 * ((pages + mpages) / 512 + 16) } else { 3 * pages });
     if !MOCK {
         quiet("ice chan driver receive_pci", unsafe { sys_receive_pci(0, bus, dev, fun) });
         crate::bar::map_bar0("ice chan driver map BAR0", bus, dev, fun);
@@ -956,7 +985,7 @@ extern "C" fn driver_main() -> ! {
         }
     }
     crate::slab_alloc::init();
-    fund("ice chan driver IOMMU funding", 3 * CHUNK + (pages + mpages) / 512 + 16);
+    fund("ice chan driver IOMMU funding", if chunked() { 3 * CHUNK + (pages + mpages) / 512 + 16 } else { 3 * pages });
     for (o, c) in chunks(pages) {
         quiet("ice chan driver iommu_map_4k (shared region)", unsafe { sys_iommu_map_4k(SHARED_VA + o * 4096, SHARED_VA + o * 4096, c) });
     }
@@ -1065,16 +1094,25 @@ fn serve_ipc(k: usize) -> ! {
         // behind it: wake it now, onto this CPU, while the queue holds only the courier.
         courier::wake(m.mb, 0);
     }
-    loop {
-        if k == 0 && DRV_STOP.load(Ordering::SeqCst) {
-            reset_pf();
-        } else if let Some(m) = m.as_mut() {
-            m.round(d, sh, queues);
-        } else {
-            d.control(sh, queues);
-            d.step(sh);
-        }
-        quiet("ice chan driver reply_and_receive", unsafe { sys_reply_and_receive(0) });
+    // The loop is picked once, so that a run without path `map` serves the calls as before the map path existed.
+    match m.as_mut() {
+        Some(m) => loop {
+            if k == 0 && DRV_STOP.load(Ordering::SeqCst) {
+                reset_pf();
+            } else {
+                m.round(d, sh, queues);
+            }
+            quiet("ice chan driver reply_and_receive", unsafe { sys_reply_and_receive(0) });
+        },
+        None => loop {
+            if k == 0 && DRV_STOP.load(Ordering::SeqCst) {
+                reset_pf();
+            } else {
+                d.control(sh, queues);
+                d.step(sh);
+            }
+            quiet("ice chan driver reply_and_receive", unsafe { sys_reply_and_receive(0) });
+        },
     }
 }
 
@@ -1091,15 +1129,18 @@ fn poll_ring(j: usize, ep: usize) -> ! {
     let p = unsafe { &*(DRV_PLATFORM.load(Ordering::SeqCst) as *const XPlatform) };
     let (d, sh, queues) = (driver(k), shared(k), rx_queues());
     let mut m = (path() == Path::Map).then(|| MDrv { k, mb: &MB_A[j], ep, out: 0, back: 0 });
-    while !DRV_STOP.load(Ordering::SeqCst) {
-        match m.as_mut() {
-            Some(m) => {
+    // The loop is picked once, so that a run without path `map` polls as before the map path existed.
+    match m.as_mut() {
+        Some(m) => {
+            while !DRV_STOP.load(Ordering::SeqCst) {
                 let handed = m.round(d, sh, queues);
                 if d.should_hold_off(handed) {
                     ice::chan::holdoff(p);
                 }
             }
-            None => {
+        }
+        None => {
+            while !DRV_STOP.load(Ordering::SeqCst) {
                 d.run_once(p, sh, queues);
             }
         }

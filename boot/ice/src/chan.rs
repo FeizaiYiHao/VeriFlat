@@ -332,6 +332,9 @@ pub const SHARED_BYTES: usize = core::mem::size_of::<Shared>();
 pub struct App {
     sh: *const Shared,
     mode: Mode,
+    /// The phase runs the plain zero-copy steps (`Zero`, no touch, `SLOT_BYTES` slots), decided by `begin`, so that
+    /// the default path does per step and frame exactly what it did before the other paths existed.
+    plain: bool,
     batch: usize,
     slots: DmaRegion,
     slot_count: usize,
@@ -379,7 +382,7 @@ impl App {
             _ => (Vec::new(), Vec::new()),
         };
         let mut a = App {
-            sh, mode: Mode::Idle, batch: 1, slots, slot_count, slot_bytes, frame_len: frame.len as u16, path, touch, priv_tx, priv_rx, sent: 0,
+            sh, mode: Mode::Idle, plain: false, batch: 1, slots, slot_count, slot_bytes, frame_len: frame.len as u16, path, touch, priv_tx, priv_rx, sent: 0,
             seq: 0, released: 0, fwd_src, fwd_dst, cmd_seq: 0, ents: [Entry::default(); MAX_BATCH], pending: 0, seq_sum: 0,
         };
         for i in 0..slot_count {
@@ -421,6 +424,7 @@ impl App {
     pub fn begin(&mut self, mode: Mode, batch: usize, pairs: usize) -> u64 {
         assert!(mode != Mode::Idle && (1..=MAX_BATCH).contains(&batch) && (1..256).contains(&pairs));
         (self.mode, self.batch, self.sent, self.released, self.pending) = (mode, batch, 0, 0, 0);
+        self.plain = self.path == Path::Zero && self.touch == Touch::Off && self.slot_bytes == SLOT_BYTES;
         self.shared().released.0.store(0, Ordering::Release);
         self.post(mode, batch, pairs)
     }
@@ -464,6 +468,21 @@ impl App {
     /// read and released (`rx`), or forwarded (`fwd`; `maglev`, which needs `m`). With `Map` the frames of a polling
     /// mode are `pending` until `commit`.
     pub fn step(&mut self, m: Option<&mut Maglev<'_>>) -> usize {
+        if !self.plain {
+            return self.step_any(m);
+        }
+        match self.mode {
+            Mode::Idle => 0,
+            Mode::Tx => self.step_tx_plain(),
+            Mode::Rx => self.step_rx_plain(),
+            Mode::Fwd => self.step_fwd_plain(None),
+            Mode::Maglev => self.step_fwd_plain(Some(m.expect("mode maglev needs the maglev state"))),
+        }
+    }
+
+    /// `step` of every other path, touch and slot size.
+    #[inline(never)]
+    fn step_any(&mut self, m: Option<&mut Maglev<'_>>) -> usize {
         match (self.mode, self.path) {
             (Mode::Idle, _) => 0,
             (Mode::Tx, _) => self.step_tx(),
@@ -504,6 +523,62 @@ impl App {
             Touch::Read => self.seq_sum = self.seq_sum.wrapping_add(sum_bytes(p, len)),
             Touch::Write => fill_bytes(p, SEQ_OFFSET + 8, len, seq),
         }
+    }
+
+    /// The plain steps: zero copy, no touch, `SLOT_BYTES` slots (the code of every phase before `Path` and `Touch`).
+    fn step_tx_plain(&mut self) -> usize {
+        let sh = unsafe { &*self.sh };
+        let done = sh.completed.0.load(Ordering::Acquire);
+        let free = self.slot_count - (self.sent - done.min(self.sent)) as usize;
+        let n = self.batch.min(free).min(sh.tx.room());
+        for i in 0..n {
+            let slot = ((self.sent + i as u64) % self.slot_count as u64) as usize;
+            let off = slot * SLOT_BYTES;
+            unsafe { (self.slots.va.add(off + SEQ_OFFSET) as *mut u64).write_unaligned(self.seq) };
+            self.seq += 1;
+            self.ents[i] = Entry { va: self.slots.va as u64 + off as u64, iova: self.slots.iova + off as u64, len: self.frame_len as u32, _pad: 0 };
+        }
+        let pushed = sh.tx.push(&self.ents[..n]);
+        debug_assert_eq!(pushed, n);
+        self.sent += n as u64;
+        n
+    }
+
+    fn step_rx_plain(&mut self) -> usize {
+        let sh = unsafe { &*self.sh };
+        let mut sum = self.seq_sum;
+        let n = sh.rx.pop(self.batch, |e| {
+            sum = sum.wrapping_add(unsafe { ((e.va as usize + SEQ_OFFSET) as *const u64).read_unaligned() });
+        });
+        self.seq_sum = sum;
+        if n > 0 {
+            self.released += n as u64;
+            sh.released.0.store(self.released, Ordering::Release);
+        }
+        n
+    }
+
+    fn step_fwd_plain(&mut self, mut m: Option<&mut Maglev<'_>>) -> usize {
+        let sh = unsafe { &*self.sh };
+        let (src, dst) = (self.fwd_src, self.fwd_dst);
+        let ents = &mut self.ents;
+        let mut n = 0;
+        sh.rx.pop(self.batch.min(sh.tx.room()), |e| {
+            let frame = unsafe { core::slice::from_raw_parts_mut(e.va as *mut u8, e.len as usize) };
+            let keep = match m.as_mut() {
+                Some(m) => m.process(frame) != NO_BACKEND,
+                None => true,
+            };
+            if keep {
+                frame[6..12].copy_from_slice(&src);
+                frame[0..6].copy_from_slice(&dst);
+            }
+            ents[n] = e;
+            n += 1;
+        });
+        let pushed = sh.tx.push(&ents[..n]);
+        debug_assert_eq!(pushed, n);
+        n
     }
 
     fn step_tx(&mut self) -> usize {
@@ -729,8 +804,75 @@ impl<'p, P: Platform> Driver<'p, P> {
 
     /// One step of the phase (see the module comment): reclaims sent frames, re-arms released ones, queues up to
     /// `MAX_BATCH` frames from the Tx ring, and hands up to the phase's batch of received frames over; returns the
-    /// frames queued for transmission and handed over.
+    /// frames queued for transmission and handed over. `Zero` runs its own copy of the loop body, without the hook and
+    /// the deferral of the other paths, so that the default path costs per step what it did before they existed.
     pub fn step(&mut self, sh: &Shared) -> (usize, usize) {
+        if self.path != Path::Zero {
+            return self.step_any(sh);
+        }
+        if self.mode == Mode::Idle {
+            return (0, 0);
+        }
+        self.tx.clean();
+        let done = self.tx.completed.saturating_sub(self.base);
+        sh.completed.0.store(done, Ordering::Release);
+        let released = match self.mode {
+            Mode::Rx => sh.released.0.load(Ordering::Acquire),
+            _ => done,
+        };
+        while let Some(&(after, i, pos)) = self.held.front() {
+            if after > released {
+                break;
+            }
+            unsafe { &mut *self.rxs[i] }.give_back_to(pos);
+            self.held.pop_front();
+        }
+        let mut sent = 0;
+        if self.mode != Mode::Rx {
+            let frames = &mut self.frames;
+            let mut n = 0;
+            sh.tx.pop(MAX_BATCH.min(self.tx.room()), |e| {
+                frames[n] = (e.iova, e.len as u16);
+                n += 1;
+            });
+            if n > 0 {
+                sent = self.tx.send_frames(&frames[..n]);
+                debug_assert_eq!(sent, n);
+            }
+        }
+        let mut handed = 0;
+        if self.mode.polls() && !self.rxs.is_empty() {
+            let q = self.rxs.len();
+            for _ in 0..q {
+                let want = (self.batch - handed).min(sh.rx.room());
+                if want == 0 {
+                    break;
+                }
+                let i = self.next;
+                self.next = if i + 1 == q { 0 } else { i + 1 };
+                let rx = unsafe { &mut *self.rxs[i] };
+                let ents = &mut self.ents;
+                let mut n = 0;
+                let took = rx.take(want, |f| {
+                    ents[n] = Entry { va: f.va as u64, iova: f.iova, len: f.len as u32, _pad: 0 };
+                    n += 1;
+                });
+                if took == 0 {
+                    continue;
+                }
+                let pushed = sh.rx.push(&ents[..n]);
+                debug_assert_eq!(pushed, n);
+                self.handed += n as u64;
+                self.held.push_back((self.handed, i, rx.position()));
+                handed += n;
+            }
+        }
+        (sent, handed)
+    }
+
+    /// `step` of paths `Copy` and `Map` without a hook.
+    #[inline(never)]
+    fn step_any(&mut self, sh: &Shared) -> (usize, usize) {
         self.step_with(sh, || {})
     }
 
