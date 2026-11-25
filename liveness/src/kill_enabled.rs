@@ -241,7 +241,8 @@ proof fn kill_reclaim_implies_enabled(u: KernelU, c: CpuId)
         reveal(kill_process_iommu_leaf_step);
         let it = t.iommu_table->Some_0;
         let m = it.mapping_4k;
-        let iova = choose|iova: VAddr| m.dom().contains(iova);
+        vaddr_set_member_implies_least_member_exists(m.dom(), choose|x: VAddr| m.dom().contains(x));
+        let iova = choose|iova: VAddr| m.dom().contains(iova) && forall|other: VAddr| #[trigger] m.dom().contains(other) ==> iova <= other;
         let kept = m.dom().remove(iova);
         let u2 = KernelU { process_map: u.process_map.insert(tp, ProcessU { iommu_table: Some(PageTableU { mapping_4k: m.restrict(kept), ..it }), ..t }), ..u };
         assert(m.restrict(kept).dom() =~= kept);

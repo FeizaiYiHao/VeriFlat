@@ -112,4 +112,18 @@ pub proof fn tables_kept_implies_table_invariants_kept(u: KernelU, u2: KernelU, 
         }
     };
 }
+
+/// A set of addresses that holds `x` has a least member: descend through smaller members, which cannot go on forever.
+pub proof fn vaddr_set_member_implies_least_member_exists(s: Set<VAddr>, x: VAddr)
+    requires s.contains(x),
+    ensures exists|y: VAddr| s.contains(y) && forall|z: VAddr| #[trigger] s.contains(z) ==> y <= z,
+    decreases x,
+{
+    if exists|z: VAddr| s.contains(z) && z < x {
+        let z = choose|z: VAddr| s.contains(z) && z < x;
+        vaddr_set_member_implies_least_member_exists(s, z);
+    } else {
+        assert(forall|z: VAddr| #[trigger] s.contains(z) ==> x <= z);
+    }
+}
 } // verus!

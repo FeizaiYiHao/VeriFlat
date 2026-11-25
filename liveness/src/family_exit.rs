@@ -483,7 +483,8 @@ proof fn exit_reclaim_implies_enabled(u: KernelU, c: CpuId)
         reveal(thread_exit_iommu_leaf_step);
         let it = pr.iommu_table->Some_0;
         let m = it.mapping_4k;
-        let iova = choose|iova: VAddr| m.dom().contains(iova);
+        vaddr_set_member_implies_least_member_exists(m.dom(), choose|x: VAddr| m.dom().contains(x));
+        let iova = choose|iova: VAddr| m.dom().contains(iova) && forall|other: VAddr| #[trigger] m.dom().contains(other) ==> iova <= other;
         let kept = m.dom().remove(iova);
         let u2 = KernelU { process_map: u.process_map.insert(p, ProcessU { iommu_table: Some(PageTableU { mapping_4k: m.restrict(kept), ..it }), ..pr }), ..u };
         assert(m.restrict(kept).dom() =~= kept);
