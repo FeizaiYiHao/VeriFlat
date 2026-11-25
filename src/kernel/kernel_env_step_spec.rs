@@ -371,7 +371,7 @@ pub open spec fn kernel_u_iommu_tlb_filled_step(old_u: KernelU, new_u: KernelU, 
 #[verifier::opaque]
 pub open spec fn kernel_u_iommu_context_cache_filled_step(old_u: KernelU, new_u: KernelU) -> bool { new_u == old_u }
 
-pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache)
+pub proof fn kernel_k_cpu_tlb_filled_implies_inv_preserved(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache)
     requires
         pre.inv(),
         kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added, added_cache),
@@ -408,7 +408,7 @@ pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, 
     };
 }
 
-pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache)
+pub proof fn kernel_k_iommu_tlb_filled_implies_inv_preserved(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache)
     requires
         pre.inv(),
         kernel_k_iommu_tlb_filled(pre, post, did, added, added_cache),
@@ -438,7 +438,7 @@ pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK
     reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf);
 }
 
-pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, post: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId))
+pub proof fn kernel_k_iommu_context_cache_filled_implies_inv_preserved(pre: KernelK, post: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId))
     requires
         pre.inv(),
         kernel_k_iommu_context_cache_filled(pre, post, bdf, entry),
@@ -652,14 +652,14 @@ pub proof fn remote_kernel_k_trap_return_values_written_implies_kernel_step_boun
 }
 
 /// A CPU TLB fill stays within the step-boundary framing of a thread between its sections.
-pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache, lctx: LocalContext)
+pub proof fn kernel_k_cpu_tlb_filled_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache, lctx: LocalContext)
     requires
         pre.inv(),
         kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added, added_cache),
         typed_lock_maps_aligned(&pre, &lctx),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_cpu_tlb_filled_preserves_inv(pre, post, cpu_id, pcid, added, added_cache); };
+    assert(post.inv()) by { kernel_k_cpu_tlb_filled_implies_inv_preserved(pre, post, cpu_id, pcid, added, added_cache); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -667,7 +667,7 @@ pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: Kerne
 
 /// An IOTLB fill stays within the step-boundary framing of a thread between its sections: the domain of a write-held
 /// IOMMU table gains only present leaves of that table.
-pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache,
+pub proof fn kernel_k_iommu_tlb_filled_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, added_cache: PagingStructureCache,
     lctx: LocalContext)
     requires
         pre.inv(),
@@ -675,21 +675,21 @@ pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: Ker
         typed_lock_maps_aligned(&pre, &lctx),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added, added_cache);
+    kernel_k_iommu_tlb_filled_implies_inv_preserved(pre, post, did, added, added_cache);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
 /// A context-cache fill stays within the step-boundary framing of a thread between its sections.
-pub proof fn kernel_k_iommu_context_cache_filled_respects_boundary(pre: KernelK, post: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId), lctx: LocalContext)
+pub proof fn kernel_k_iommu_context_cache_filled_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId), lctx: LocalContext)
     requires
         pre.inv(),
         kernel_k_iommu_context_cache_filled(pre, post, bdf, entry),
         typed_lock_maps_aligned(&pre, &lctx),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_iommu_context_cache_filled_preserves_inv(pre, post, bdf, entry); };
+    assert(post.inv()) by { kernel_k_iommu_context_cache_filled_implies_inv_preserved(pre, post, bdf, entry); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -700,7 +700,7 @@ pub proof fn kernel_k_iommu_context_cache_filled_respects_boundary(pre: KernelK,
 /// makes to the target cpu object and hardware cr3/pcid word, stays within the step-boundary framing of a thread between
 /// its sections that does not hold the target. The IPI runs inside the sender's section, so the invariant after it is
 /// assumed.
-pub proof fn cpu_op_ipi_running_to_idle_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, default_cr3: PageTableRoot, lctx: LocalContext)
+pub proof fn cpu_op_ipi_running_to_idle_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, default_cr3: PageTableRoot, lctx: LocalContext)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -734,7 +734,7 @@ pub proof fn cpu_op_ipi_running_to_idle_respects_boundary(pre: KernelK, post: Ke
 
 /// The wake-up IPI of `CpuOpArray::mark_idle_after_wake` stays within the step-boundary framing of a thread between its sections that
 /// does not run on the target. The IPI runs inside the waker's section, so the invariant after it is assumed.
-pub proof fn cpu_op_woken_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+pub proof fn cpu_op_woken_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
