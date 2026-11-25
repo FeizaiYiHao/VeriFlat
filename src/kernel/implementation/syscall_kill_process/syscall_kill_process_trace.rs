@@ -721,6 +721,13 @@ pub(crate) proof fn kill_table_hidden_step_from_u(pre: KernelU, post: KernelU, c
         kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Reclaim { flushed: false }),
         ({
             let table = pre.process_map[target].pagetable->Some_0;
+            &&& forall|va: VAddr| #![trigger table.mapping_4k.dom().contains(va)] table.mapping_4k.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+            &&& forall|va: VAddr| #![trigger table.mapping_2m.dom().contains(va)] table.mapping_2m.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+            &&& forall|va: VAddr| #![trigger table.mapping_1g.dom().contains(va)] table.mapping_1g.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+            &&& forall|w: WindowVa| #![trigger table.pagetable_window_locks.dom().contains(w)] table.pagetable_window_locks.dom().contains(w) ==> l4i <= spec_v2l4index(w.va)
+        }),
+        ({
+            let table = pre.process_map[target].pagetable->Some_0;
             post == (KernelU {
                 process_map: pre.process_map.insert(target, ProcessU {
                     pagetable: if pre.process_map[target].pagetable is Some {
@@ -830,6 +837,8 @@ pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu
         pre.process_map.dom().contains(target),
         pre.process_map[target].iommu_table is Some,
         pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(iova),
+        forall|other: VAddr| #![trigger pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(other)]
+            pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(other) ==> iova <= other,
         post == (KernelU {
             process_map: pre.process_map.insert(target, ProcessU {
                 iommu_table: Some(PageTableU { mapping_4k: pre.process_map[target].iommu_table->Some_0.mapping_4k.remove(iova), ..pre.process_map[target].iommu_table->Some_0 }),
@@ -1195,6 +1204,10 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
             &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
             &&& hidden[k].1.pt_mp.dom().contains(pagetable)
+            &&& hidden[k].1.inv()
+            &&& forall|i4: L4Index| #![trigger whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4)]
+                whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).kernel_l4_end() <= i4 && i4 < hidden[k].0
+                    ==> whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4) is None
             &&& typed_lock_maps_aligned(&hidden[k].1, &lctx)
             &&& held_cpus_unchanged(entry.cpu_arr, hidden[k].1.cpu_arr, &lctx) && held_containers_unchanged(entry.ctn_mp, hidden[k].1.ctn_mp, &lctx)
             &&& held_processes_unchanged(entry.prc_mp, hidden[k].1.prc_mp, &lctx) && held_threads_unchanged(entry.thrd_mp, hidden[k].1.thrd_mp, &lctx)
@@ -1210,6 +1223,7 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
         kill_reclaim_pre_from_k(&h.1, &lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table);
         process_pagetable_wf_process_at(h.1.prc_mp, h.1.pt_mp, target);
         hide_user_l4_entries_hide_step_from_k(&h.1, &h.2, pagetable, h.0);
+        pagetable_user_roots_below_unresolved_implies_u_pagetable_keys_at_or_above(&h.1, pagetable, h.0);
         kill_table_hidden_step_from_u(kernel_k_to_kernel_u(h.1), kernel_k_to_kernel_u(h.2), cpu_id, target, h.0);
         reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace);
         assert(steps.subrange(start, before.len() + count) =~= steps.subrange(start, before.len() + count - 1).push(steps[before.len() + count - 1]));

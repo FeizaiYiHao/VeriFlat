@@ -208,7 +208,7 @@ pub open spec fn thread_exit_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId, pro
 }
 
 /// An IOMMU leaf step removes exactly one 4K mapping from the process's write-locked IOMMU table and keeps every other
-/// entry; the kernel chooses the IOVA.
+/// entry; it is the least mapped IOVA.
 #[verifier::opaque]
 pub open spec fn thread_exit_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     process_iommu_leaf_removed(old_u, new_u, old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc)

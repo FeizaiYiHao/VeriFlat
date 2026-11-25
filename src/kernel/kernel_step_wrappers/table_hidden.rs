@@ -70,4 +70,34 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(&pre, p); kernel_process_projection_at(&post, p); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p); }
     });
 }
+
+/// When no user root entry of the page table `root` below `l4i` resolves, the table its owning process shows, if any, has no
+/// 4K, 2M or 1G mapping and no window lock whose L4 index is below `l4i`.
+pub proof fn pagetable_user_roots_below_unresolved_implies_u_pagetable_keys_at_or_above(k: &KernelK, root: RwLockPageTableRoot, l4i: L4Index)
+    requires
+        k.inv(),
+        k.pt_mp.dom().contains(root),
+        forall|i4: L4Index| #![trigger whole_pagetable(k.pt_mp, k.pt_lower.view(), root).spec_resolve_mapping_l4(i4)]
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), root).kernel_l4_end() <= i4 && i4 < l4i
+                ==> whole_pagetable(k.pt_mp, k.pt_lower.view(), root).spec_resolve_mapping_l4(i4) is None,
+    ensures
+        ({
+            let u = kernel_k_to_kernel_u(*k);
+            let prc_ptr = k.pt_mp.spec_index(root).view().higher.proc_ptr;
+            let table = u.process_map[prc_ptr].pagetable->Some_0;
+            u.process_map.dom().contains(prc_ptr) && u.process_map[prc_ptr].pagetable is Some ==> {
+                &&& forall|va: VAddr| #![trigger table.mapping_4k.dom().contains(va)] table.mapping_4k.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+                &&& forall|va: VAddr| #![trigger table.mapping_2m.dom().contains(va)] table.mapping_2m.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+                &&& forall|va: VAddr| #![trigger table.mapping_1g.dom().contains(va)] table.mapping_1g.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+                &&& forall|w: WindowVa| #![trigger table.pagetable_window_locks.dom().contains(w)] table.pagetable_window_locks.dom().contains(w) ==> l4i <= spec_v2l4index(w.va)
+            }
+        }),
+{
+    k.default_pagetable_wf_at(root);
+    pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), root);
+    process_pagetable_wf_pagetable_at(k.prc_mp, k.pt_mp, root);
+    kernel_process_projection_at(k, k.pt_mp.spec_index(root).view().higher.proc_ptr);
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
+    reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(WholePageTable::wf_window_locks);
+}
 }
