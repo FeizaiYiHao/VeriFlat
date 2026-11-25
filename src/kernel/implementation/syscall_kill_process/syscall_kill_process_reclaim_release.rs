@@ -725,6 +725,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             assert(spec_v2l4index(spec_index2va((l4i, l3i, l2i, l1i))) == l4i && spec_v2l3index(spec_index2va((l4i, l3i, l2i, l1i))) == l3i && spec_v2l2index(spec_index2va((l4i, l3i, l2i, l1i))) == l2i
                 && spec_v2l1index(spec_index2va((l4i, l3i, l2i, l1i))) == l1i) by (bit_vector) requires l4i < 512, l3i < 512, l2i < 512, l1i < 512;
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+            assert(krnl.it_mp.spec_index(iommu_table).view().inv()) by { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); };
         }
         let ghost leaf_before = steps.view();
         if same {
@@ -734,6 +735,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
                 let snap = steps.snapshot_k();
                 let leaf_post = *krnl;
                 kernel_iommu_table_4k_mapping_removed_implies_u_step(&snap, &leaf_post, iommu_table, iova, thrd_ptr);
+                iommu_table_4k_unmapped_below_path_implies_u_iommu_keys_at_or_above(&snap, iommu_table, next);
                 kill_step_pre_from_k(&leaf_post, &*lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
                 kill_reclaim_pre_from_k(&leaf_post, &*lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, Some(iommu_table));
                 kill_iommu_leaf_step_from_u(kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(leaf_post), cpu_id, target, iova);
@@ -746,6 +748,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             proof {
                 let leaf_post = *krnl;
                 kernel_iommu_table_4k_present_cleared_implies_u_step(&leaf_k, &leaf_post, iommu_table, iova);
+                iommu_table_4k_unmapped_below_path_implies_u_iommu_keys_at_or_above(&leaf_k, iommu_table, next);
                 kill_step_pre_from_k(&leaf_post, &*lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
                 kill_reclaim_pre_from_k(&leaf_post, &*lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, Some(iommu_table));
                 kill_iommu_leaf_step_from_u(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, target, iova);

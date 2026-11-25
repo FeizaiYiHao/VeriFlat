@@ -553,6 +553,13 @@ pub(super) proof fn thread_exit_table_hidden_step_from_u(pre: KernelU, post: Ker
         pre.process_map[prc_ptr].pagetable is Some,
         ({
             let table = pre.process_map[prc_ptr].pagetable->Some_0;
+            &&& forall|va: VAddr| #![trigger table.mapping_4k.dom().contains(va)] table.mapping_4k.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+            &&& forall|va: VAddr| #![trigger table.mapping_2m.dom().contains(va)] table.mapping_2m.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+            &&& forall|va: VAddr| #![trigger table.mapping_1g.dom().contains(va)] table.mapping_1g.dom().contains(va) ==> l4i <= spec_v2l4index(va)
+            &&& forall|w: WindowVa| #![trigger table.pagetable_window_locks.dom().contains(w)] table.pagetable_window_locks.dom().contains(w) ==> l4i <= spec_v2l4index(w.va)
+        }),
+        ({
+            let table = pre.process_map[prc_ptr].pagetable->Some_0;
             post == (KernelU {
                 process_map: pre.process_map.insert(prc_ptr, ProcessU {
                     pagetable: if pre.process_map[prc_ptr].pagetable is Some {
@@ -612,6 +619,10 @@ pub(super) proof fn thread_exit_table_hidden_steps_implies_partial_trace(
             &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
             &&& hidden[k].1.pt_mp.dom().contains(pagetable)
+            &&& hidden[k].1.inv()
+            &&& forall|i4: L4Index| #![trigger whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4)]
+                whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).kernel_l4_end() <= i4 && i4 < hidden[k].0
+                    ==> whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4) is None
             &&& typed_lock_maps_aligned(&hidden[k].1, lctx)
             &&& held_cpus_unchanged(entry.cpu_arr, hidden[k].1.cpu_arr, lctx) && held_processes_unchanged(entry.prc_mp, hidden[k].1.prc_mp, lctx)
             &&& held_threads_unchanged(entry.thrd_mp, hidden[k].1.thrd_mp, lctx)
@@ -625,6 +636,7 @@ pub(super) proof fn thread_exit_table_hidden_steps_implies_partial_trace(
         process_pagetable_wf_process_at(h.1.prc_mp, h.1.pt_mp, prc_ptr);
         hide_user_l4_entries_hide_step_from_k(&h.1, &h.2, pagetable, h.0);
         thread_exit_table_hidden_step_pre_from_k(&h.1, lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable);
+        pagetable_user_roots_below_unresolved_implies_u_pagetable_keys_at_or_above(&h.1, pagetable, h.0);
         thread_exit_table_hidden_step_from_u(kernel_k_to_kernel_u(h.1), kernel_k_to_kernel_u(h.2), cpu_id, prc_ptr, thrd_ptr, h.0);
         reveal(thread_exit_partial_trace);
         assert(steps.subrange(start, before_len + count) =~= steps.subrange(start, before_len + count - 1).push(steps[before_len + count - 1]));
@@ -674,6 +686,8 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: Kerne
         pre.process_map[prc_ptr].iommu_table is Some,
         pre.process_map[prc_ptr].iommu_table->Some_0.lock_state is WriteLocked,
         pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom().contains(iova),
+        forall|other: VAddr| #![trigger pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom().contains(other)]
+            pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom().contains(other) ==> iova <= other,
         post == (KernelU {
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
                 iommu_table: Some(PageTableU { mapping_4k: pre.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.remove(iova), ..pre.process_map[prc_ptr].iommu_table->Some_0 }),
@@ -698,7 +712,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: Kerne
 /// after its reclaim precondition, and changes the projection.
 pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
-    pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, iova: VAddr,
+    pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, iova: VAddr, indices: (L4Index, L3Index, L2Index, L1Index),
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -727,6 +741,13 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
         post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,
         pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova),
         pre.it_mp.spec_index(iommu_table).view().mapping_4k()[iova].present,
+        pre.it_mp.spec_index(iommu_table).view().inv(),
+        pei_valid(indices.0), pei_valid(indices.1), pei_valid(indices.2), pei_valid(indices.3),
+        iova == spec_index2va(indices),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+            #![trigger pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && !spec_l4_index_path_le(indices, (l4i, l3i, l2i, l1i))
+                ==> !pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().remove(iova),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -740,6 +761,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
     thread_exit_iommu_leaf_step_pre_from_k(post, lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, iommu_table);
     kernel_iommu_table_4k_mapping_removed_implies_u_step(pre, post, iommu_table, iova, thrd_ptr);
     reveal(thread_exit_reclaim_step_pre);
+    iommu_table_4k_unmapped_below_path_implies_u_iommu_keys_at_or_above(pre, iommu_table, indices);
     thread_exit_iommu_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, iova);
 }
 

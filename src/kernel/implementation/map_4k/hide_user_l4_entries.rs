@@ -118,6 +118,10 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             &&& process_pagetable_wf(hidden.view()[k].1.prc_mp, hidden.view()[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden.view()[k].1, hidden.view()[k].2, pagetable, hidden.view()[k].0)
             &&& hidden.view()[k].1.pt_mp.dom().contains(pagetable)
+            &&& hidden.view()[k].1.inv()
+            &&& forall|i4: L4Index| #![trigger whole_pagetable(hidden.view()[k].1.pt_mp, hidden.view()[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4)]
+                whole_pagetable(hidden.view()[k].1.pt_mp, hidden.view()[k].1.pt_lower.view(), pagetable).kernel_l4_end() <= i4 && i4 < hidden.view()[k].0
+                    ==> whole_pagetable(hidden.view()[k].1.pt_mp, hidden.view()[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4) is None
             &&& typed_lock_maps_aligned(&hidden.view()[k].1, old(lctx))
             &&& held_cpus_unchanged(old(krnl).cpu_arr, hidden.view()[k].1.cpu_arr, old(lctx)) && held_containers_unchanged(old(krnl).ctn_mp, hidden.view()[k].1.ctn_mp, old(lctx))
             &&& held_processes_unchanged(old(krnl).prc_mp, hidden.view()[k].1.prc_mp, old(lctx)) && held_threads_unchanged(old(krnl).thrd_mp, hidden.view()[k].1.thrd_mp, old(lctx))
@@ -215,6 +219,10 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
                 &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
                 &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
                 &&& hidden[k].1.pt_mp.dom().contains(pagetable)
+                &&& hidden[k].1.inv()
+                &&& forall|i4: L4Index| #![trigger whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4)]
+                    whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).kernel_l4_end() <= i4 && i4 < hidden[k].0
+                        ==> whole_pagetable(hidden[k].1.pt_mp, hidden[k].1.pt_lower.view(), pagetable).spec_resolve_mapping_l4(i4) is None
                 &&& typed_lock_maps_aligned(&hidden[k].1, old(lctx))
                 &&& held_cpus_unchanged(old(krnl).cpu_arr, hidden[k].1.cpu_arr, old(lctx)) && held_containers_unchanged(old(krnl).ctn_mp, hidden[k].1.ctn_mp, old(lctx))
                 &&& held_processes_unchanged(old(krnl).prc_mp, hidden[k].1.prc_mp, old(lctx)) && held_threads_unchanged(old(krnl).thrd_mp, hidden[k].1.thrd_mp, old(lctx))

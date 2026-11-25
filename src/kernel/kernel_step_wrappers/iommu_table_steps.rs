@@ -369,4 +369,30 @@ pub proof fn kernel_thread_quota_4k_progress_and_iommu_table_structure_changed_i
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
+
+/// When the IOMMU table `iommu_table` maps no 4K IOVA at an index path below `indices`, every IOVA its owning process shows for
+/// it is at least `spec_index2va(indices)`.
+pub proof fn iommu_table_4k_unmapped_below_path_implies_u_iommu_keys_at_or_above(pre: &KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index))
+    requires
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).view().inv(),
+        pei_valid(indices.0), pei_valid(indices.1), pei_valid(indices.2), pei_valid(indices.3),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+            #![trigger pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && !spec_l4_index_path_le(indices, (l4i, l3i, l2i, l1i))
+                ==> !pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+    ensures
+        ({
+            let u = kernel_k_to_kernel_u(*pre);
+            let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
+            u.process_map.dom().contains(process) && u.process_map[process].iommu_table is Some ==>
+                forall|iova: VAddr| #![trigger u.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)]
+                    u.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova) ==> spec_index2va(indices) <= iova
+        }),
+{
+    process_iommu_table_wf_table_at(pre.prc_mp, pre.it_mp, iommu_table);
+    kernel_process_projection_at(pre, pre.it_mp.spec_index(iommu_table).view().proc_ptr);
+    broadcast use iova_4k_valid_index_roundtrip, spec_l4_index_path_le_implies_spec_index2va_le;
+}
 } // verus!

@@ -2063,9 +2063,10 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   `prog = ThreadExitReclaim { flushed: false }`. In K the table's stale-CPU
   set becomes every cpu.
 - Hide (`process_table_hidden_step`): pre `reclaim(ThreadExitReclaim { flushed:
-  false })`; effect: one user root entry of `PT(P)` (the kernel chooses it) is
-  hidden, so every 4K, 2M, and 1G mapping and every window lock under it
-  leaves `PT(P)`. In K only the L4 entry changes (`hide_user_l4_entries`);
+  false })`; effect: the user root entry of `PT(P)` with the lowest L4 index
+  that still keys an entry is hidden, so every 4K, 2M, and 1G mapping and
+  every window lock under it leaves `PT(P)` and no key of `PT(P)` has a lower
+  L4 index. In K only the L4 entry changes (`hide_user_l4_entries`);
   the leaves under it stay held until reclaim.
 - Flush: pre `thread_exit_flush_step_pre` (`PT(P)` has no 4K, 2M, or 1G
   mapping and no window lock left); effect: `CS(C)` becomes or stays
@@ -2099,7 +2100,8 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   flush step.
 - IOMMU leaf (`thread_exit_iommu_leaf_step`): pre
   `reclaim(ThreadExitReclaim { flushed: true })` and `IT(P)` write-locked;
-  effect: exactly one 4K mapping (the kernel chooses the IOVA) leaves `IT(P)`.
+  effect: exactly one 4K mapping, the one with the least mapped IOVA, leaves
+  `IT(P)`.
   The detached `IT(P)` has no DID, so no IOTLB domain caches its leaves: in
   K the present leaf is removed directly and its page returned to its
   owner's 4K allocator cache, accumulating the refund in the thread's pending
@@ -2347,7 +2349,7 @@ children and no threads)
     leaf steps follow the CPU refunds, then their own refund; there is no IOMMU
     flush step.
   - IOMMU leaf (`kill_process_iommu_leaf_step`): `Reclaim { flushed: true }`;
-    one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. `IT(L)` has
+    one 4K mapping, the one with the least mapped IOVA, leaves `IT(L)`. `IT(L)` has
     no DID (the unown step dropped it, or it had no attached function), so no
     IOTLB domain caches its leaves: in K the present leaf is removed directly
     and its page freed (`reclaim_detached_iommu_4k_page`); in a container
