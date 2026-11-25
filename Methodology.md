@@ -491,7 +491,9 @@ Batch 3 (workspace run #34166, noninterference run #34165, monolith run
   below 48 bits (RTADDR, legacy mode). Every invalidation checks that
   CCMD.CAIG / IOTLB.IAIG report a granularity covering the request
   (`granularity_covers`), and `domain_id` panics on a DID at or above 2^16
-  instead of masking it.
+  instead of masking it. Every IOTLB invalidation drains the domain's pending
+  DMA reads and writes (IOTLB.DR, DW), so each unit must also report
+  `CAP.DRD` and `CAP.DWD` (bits 55 and 54).
 
 ## Open items
 

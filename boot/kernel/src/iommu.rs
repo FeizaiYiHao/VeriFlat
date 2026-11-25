@@ -13,6 +13,8 @@
 //! - CAP.RWBF = 0: table stores need no write-buffer flush before the unit can see them.
 //! - CAP.ND >= 6: 16-bit domain IDs, the model's `VtdDomainId` range.
 //! - CAP.SAGAW bit 2: 4-level second-level tables, the address width the model writes.
+//! - CAP.DRD (bit 55) and CAP.DWD (bit 54): every IOTLB invalidation drains the domain's pending
+//!   DMA reads and writes, so no DMA through a dropped translation completes after it.
 //!
 //! Table walks of a unit with ECAP.C = 0 do not snoop CPU caches. When some unit reports C = 0,
 //! `veriflat_iommu_flush_to_memory` writes back (clflush, then mfence) every store the verified
@@ -160,11 +162,12 @@ fn invalidate_context_cache(base: u64, command: u64) {
     assert!(granularity_covers(command == CCMD_GLOBAL, caig, CCMD_CAIG_GLOBAL, CCMD_CAIG_DOMAIN), "VT-d context invalidation {:#x} performed at granularity {}", command, caig);
 }
 
+/// Every IOTLB invalidation drains the pending DMA reads and writes of the domain (IOTLB.DR, DW),
+/// so no DMA that used a dropped translation completes after the invalidation returns; `init_unit`
+/// requires CAP.DRD and CAP.DWD on every unit.
 fn invalidate_iotlb(base: u64, command: u64) {
-    let cap = read64(base, CAP_REG);
-    let drain = if cap & CAP_DRD != 0 { IOTLB_DR } else { 0 } | if cap & CAP_DWD != 0 { IOTLB_DW } else { 0 };
     let reg = iotlb_reg(base);
-    write64(base, reg, IOTLB_IVT | drain | command);
+    write64(base, reg, IOTLB_IVT | IOTLB_DR | IOTLB_DW | command);
     let mut iotlb = read64(base, reg);
     while iotlb & IOTLB_IVT != 0 {
         core::hint::spin_loop();
@@ -245,6 +248,7 @@ fn init_unit(base: u64, root_table: u64) {
     assert!(cap & CAP_RWBF == 0, "VT-d requires write-buffer flushing, which the model does not issue");
     assert!(cap & 0x7 >= CAP_ND_16_BIT, "VT-d supports fewer than 2^16 domain IDs");
     assert!(cap & CAP_SAGAW_4_LEVEL != 0, "VT-d does not support 4-level tables");
+    assert!(cap & CAP_DRD != 0 && cap & CAP_DWD != 0, "VT-d at {:#x}: CAP {:#x} lacks DMA read or write draining (CAP.DRD, CAP.DWD), which every IOTLB invalidation needs", base, cap);
     let (records, count) = fault_records(base);
     assert!(iotlb_reg(base) + 8 <= REGISTER_PAGE && records + 16 * count <= REGISTER_PAGE, "VT-d registers beyond the mapped page");
     assert!(read32(base, GSTS_REG) & (GCMD_TE | GCMD_IRE) == 0, "VT-d translation or interrupt remapping already enabled");
