@@ -36,11 +36,15 @@ pub struct Config {
     /// Rx buffer size, a multiple of 128 of at least the largest frame.
     pub rx_buf: usize,
     pub steering: RxSteering,
+    /// The largest frame with CRC the MAC is to accept and send (Set MAC Config), or 0 to keep what the port has
+    /// (the firmware's default, or what the last driver set: the Linux driver sets 9728 at probe, and its MTU limits
+    /// only its own buffers). Jumbo frames need it and `rx_buf` of at least the frame.
+    pub max_frame: u16,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { queues: 1, tx_ring: 1024, rx_ring: 1024, tx_batch: 32, rx_buf: 2048, steering: RxSteering::PerQueueMac }
+        Config { queues: 1, tx_ring: 1024, rx_ring: 1024, tx_batch: 32, rx_buf: 2048, steering: RxSteering::PerQueueMac, max_frame: 0 }
     }
 }
 
@@ -307,6 +311,15 @@ impl<'p, P: Platform> Device<'p, P> {
         dev.read_switch_config(&mut info)?;
         info.mac = dev.read_mac()?;
         log::info!("ice: logical port {}, switch {}, MAC {}", info.lport, info.sw_id, Mac(info.mac));
+        if config.max_frame != 0 {
+            // Set MAC Config, as the Linux driver's `ice_aq_set_mac_cfg` at probe; the pause timer fields stay 0.
+            let mut d = AqDesc::new(opc::SET_MAC_CFG);
+            d.set_u16(cmd::SET_MAC_CFG_MAX_FRAME, config.max_frame);
+            match dev.send(d, None) {
+                Ok(_) => log::info!("ice: max frame size set to {}", config.max_frame),
+                Err(e) => log::warn!("ice: set max frame size {}: {}", config.max_frame, e),
+            }
+        }
         let (parent, res) = dev.init_scheduler(&mut info)?;
         info.vsi_num = dev.add_vsi(info.sw_id, config.queues)?;
         log::info!("ice: VSI {} with {} queue pairs", info.vsi_num, config.queues);

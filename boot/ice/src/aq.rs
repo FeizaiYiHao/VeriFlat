@@ -60,6 +60,7 @@ pub mod opc {
     pub const ADD_SCHED_ELEMS: u16 = 0x0401;
     pub const DELETE_SCHED_ELEMS: u16 = 0x040F;
     pub const QUERY_SCHED_RES: u16 = 0x0412;
+    pub const SET_MAC_CFG: u16 = 0x0603;
     pub const RESTART_AN: u16 = 0x0605;
     pub const GET_LINK_STATUS: u16 = 0x0607;
     pub const SET_RSS_KEY: u16 = 0x0B02;
@@ -344,6 +345,9 @@ pub mod cmd {
     pub const TOPO_NUM_BRANCHES: usize = 1;
 
     /// Restart Autonegotiation (0x0605): `lport` (u8 at 0), `cmd_flags` (u8 at 2): restart (bit 1), link enable (bit 2).
+    /// Set MAC config (direct): `max_frame_size` (u16) at 0, then the Tx timer and flow-control refresh fields this
+    /// driver leaves 0 (it never sends pause frames).
+    pub const SET_MAC_CFG_MAX_FRAME: usize = 0;
     pub const RESTART_AN_LPORT: usize = 0;
     pub const RESTART_AN_FLAGS: usize = 2;
     pub const RESTART_AN_RESTART: u8 = 1 << 1;

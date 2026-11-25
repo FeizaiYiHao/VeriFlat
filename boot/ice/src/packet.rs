@@ -11,6 +11,11 @@ pub const HEADERS: usize = ETH_HDR + IP_HDR + UDP_HDR;
 pub const MIN_FRAME: usize = 60;
 /// Largest frame without CRC and VLAN tag.
 pub const MAX_FRAME: usize = 1514;
+/// Largest jumbo frame without CRC that a port configured for `JUMBO_MAX_FRAME` (with CRC) carries.
+pub const MAX_JUMBO_FRAME: usize = JUMBO_MAX_FRAME as usize - 4;
+/// The largest frame with CRC the E810 MAC accepts (`Config::max_frame`), the Linux driver's
+/// `ICE_AQ_SET_MAC_FRAME_SIZE_MAX`.
+pub const JUMBO_MAX_FRAME: u16 = 9728;
 
 #[derive(Clone, Copy, Debug)]
 pub struct UdpFrame {
@@ -20,7 +25,8 @@ pub struct UdpFrame {
     pub dst_ip: [u8; 4],
     pub src_port: u16,
     pub dst_port: u16,
-    /// Frame length without the CRC: `MIN_FRAME..=MAX_FRAME`.
+    /// Frame length without the CRC: `MIN_FRAME..=MAX_FRAME`, or up to `MAX_JUMBO_FRAME` on a port configured for jumbo
+    /// frames.
     pub len: usize,
 }
 
@@ -36,7 +42,7 @@ pub fn ipv4_checksum(hdr: &[u8]) -> u16 {
 impl UdpFrame {
     /// Writes the frame into `buf[..self.len]`.
     pub fn write(&self, buf: &mut [u8]) {
-        assert!((MIN_FRAME..=MAX_FRAME).contains(&self.len) && buf.len() >= self.len, "bad frame length");
+        assert!((MIN_FRAME..=MAX_JUMBO_FRAME).contains(&self.len) && buf.len() >= self.len, "bad frame length");
         let f = &mut buf[..self.len];
         f.fill(0);
         f[0..6].copy_from_slice(&self.dst_mac);

@@ -7,15 +7,17 @@ use alloc::collections::VecDeque;
 use crate::queue::{RxCounts, RxQueue, TxQueue};
 use crate::{DmaRegion, Error, Platform, Result};
 
-/// A frame in DMA memory that a Tx queue sends over and over, in `count` copies of `SLOT` bytes each that the queue
+/// A frame in DMA memory that a Tx queue sends over and over, in `count` copies of `slot` bytes each that the queue
 /// sends in turn: the device reads one buffer address over and over far more slowly than distinct ones (on a c6620
 /// in dom0 with the IOMMU on, about 12 to 26 million frames per second from one buffer against line rate from eight).
 #[derive(Clone, Copy, Debug)]
 pub struct TxFrame {
-    /// All copies; copy i at `buf.iova + i * SLOT`.
+    /// All copies; copy i at `buf.iova + i * slot`.
     pub buf: DmaRegion,
     pub len: u16,
     pub count: usize,
+    /// Bytes per copy: `SLOT`, or the frame rounded up to 128 bytes for a jumbo frame.
+    pub slot: usize,
 }
 
 impl TxFrame {
@@ -27,8 +29,9 @@ impl TxFrame {
 
     /// `count` copies of `frame`.
     pub fn pool(p: &impl Platform, frame: &UdpFrame, count: usize) -> Result<TxFrame> {
-        let buf = p.dma_alloc(count.max(1) * Self::SLOT, 128).ok_or(Error::NoDmaMemory)?;
-        let mut f = TxFrame { buf, len: 0, count: count.max(1) };
+        let slot = Self::SLOT.max(frame.len.next_multiple_of(128));
+        let buf = p.dma_alloc(count.max(1) * slot, 128).ok_or(Error::NoDmaMemory)?;
+        let mut f = TxFrame { buf, len: 0, count: count.max(1), slot };
         f.write(frame);
         Ok(f)
     }
@@ -36,7 +39,7 @@ impl TxFrame {
     /// Writes `frame` into every copy (while no queue sends this frame).
     pub fn write(&mut self, frame: &UdpFrame) {
         for i in 0..self.count {
-            frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * Self::SLOT), Self::SLOT) });
+            frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * self.slot), self.slot) });
         }
         self.len = frame.len as u16;
     }
@@ -44,12 +47,12 @@ impl TxFrame {
     /// Writes `frame` into copy i only (its length must be the one of every copy).
     pub fn write_copy(&mut self, i: usize, frame: &UdpFrame) {
         assert!(i < self.count && frame.len as u16 == self.len);
-        frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * Self::SLOT), Self::SLOT) });
+        frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * self.slot), self.slot) });
     }
 
     /// Copy i as (IOVA, length).
     pub fn copy(&self, i: usize) -> (u64, u16) {
-        (self.buf.iova + (i * Self::SLOT) as u64, self.len)
+        (self.buf.iova + (i * self.slot) as u64, self.len)
     }
 }
 
@@ -85,7 +88,7 @@ pub fn run_queue_pair<P: Platform>(
     while now < end {
         if let Some(f) = frame {
             tx.clean();
-            tx.send_batches_pool(f.buf.iova, TxFrame::SLOT, f.count, f.len, &mut cursor, TX_BATCHES);
+            tx.send_batches_pool(f.buf.iova, f.slot, f.count, f.len, &mut cursor, TX_BATCHES);
         }
         if do_rx {
             let got = rx.poll(RX_BUDGET);

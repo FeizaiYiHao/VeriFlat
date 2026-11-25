@@ -122,6 +122,8 @@ pub struct State {
     /// Fault injection: Get Version answers EAGAIN this many more times; MAC rules are refused.
     pub get_ver_failures: usize,
     pub reject_mac_rules: bool,
+    /// The largest frame (with CRC) of the port, which Set MAC Config sets and Get Link Status reports.
+    pub max_frame: u16,
 }
 
 /// What the data path needs of the switch: the rules and the first lookup table entry.
@@ -174,7 +176,7 @@ fn wr<T: Copy>(addr: u64, v: T) {
 
 impl Mock {
     pub fn new(link_up_at_start: bool) -> Mock {
-        let mut s = State { next_teid: 0x100, ..Default::default() };
+        let mut s = State { next_teid: 0x100, max_frame: 9728, ..Default::default() };
         s.regs.insert(GLNVM_ULD, GLNVM_ULD_RESET_DONE);
         let queues = (0..MOCK_QUEUES).map(|_| QueuePath { tx: Spin::new(None), rx: Spin::new(None) }).collect();
         Mock {
@@ -439,7 +441,11 @@ impl Mock {
                 let b = self.buffer(d, false);
                 b[cmd::LINK_INFO] = self.link_up.load(Ordering::SeqCst) as u8;
                 b[cmd::LINK_SPEED..cmd::LINK_SPEED + 2].copy_from_slice(&0x400u16.to_le_bytes());
-                b[cmd::LINK_MAX_FRAME..cmd::LINK_MAX_FRAME + 2].copy_from_slice(&9728u16.to_le_bytes());
+                b[cmd::LINK_MAX_FRAME..cmd::LINK_MAX_FRAME + 2].copy_from_slice(&s.max_frame.to_le_bytes());
+                0
+            }
+            opc::SET_MAC_CFG => {
+                s.max_frame = d.u16_at(cmd::SET_MAC_CFG_MAX_FRAME);
                 0
             }
             opc::RESTART_AN => {

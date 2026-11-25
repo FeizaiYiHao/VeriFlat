@@ -6,6 +6,8 @@
 extern crate alloc;
 
 mod bar;
+mod courier;
+mod handoff;
 mod ice_bench;
 mod ice_chan;
 mod ice_xproc;
@@ -2590,6 +2592,24 @@ pub extern "C" fn _start() -> ! {
     if cfg!(feature = "ice-xproc") {
         // The same, with the driver linked in and then in a process of its own (see src/ice_xproc.rs).
         ice_xproc::run();
+        unsafe { sys_debug_exit(0) };
+    }
+    if runs_parallel("iommu") || runs_parallel("handoff") || runs_parallel("flushcpus") {
+        // The payload-path microbenchmarks (see src/handoff.rs), first and alone: `iommu` then `handoff` in one boot,
+        // `flushcpus` in a boot of its own (its spinners keep every CPU).
+        if runs_parallel("flushcpus") && (runs_parallel("iommu") || runs_parallel("handoff")) {
+            log::error!("VERIFLAT_PARALLEL: flushcpus runs alone");
+            unsafe { sys_debug_exit(1) };
+        }
+        if runs_parallel("iommu") {
+            handoff::run_iommu();
+        }
+        if runs_parallel("handoff") {
+            handoff::run_handoff();
+        }
+        if runs_parallel("flushcpus") {
+            handoff::run_flushcpus();
+        }
         unsafe { sys_debug_exit(0) };
     }
     if runs_parallel("unmapcpus") {

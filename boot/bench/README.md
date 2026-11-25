@@ -511,6 +511,19 @@ Linux user space and from dom0 (bare-metal scripts and results: the artifact rep
   `ice_linked|ice_ring|ice_ipc mode=m batch=b n=c total=<pps> min= max= overlap= pairs=<pps>,..` (frames the
   application side moved: pushed for transmission, received, forwarded). Bare-metal runs:
   `VeriFlat-artifact/baremetal/nic-chan.sh`.
+  Payload paths (2026-11-25): `VERIFLAT_ICE_PATH` `zero` (default), `copy` (private application buffers, one copy into
+  a shared Tx slot and one out of a shared Rx buffer per frame) or `map` (the Rx buffers' pages move between the
+  processes with `send_pages` + `unmap_4k` through couriers, src/courier.rs, and leave / re-enter the driver's IOMMU
+  table; at most 8 pairs, shapes ipc and ring; mode tx stays zero copy; `VERIFLAT_ICE_MAP_IOMMU=0` keeps the pages in
+  the IOMMU table); `VERIFLAT_ICE_TOUCH`, a list of `off`, `read`, `write`, each run over every batch and pair count
+  (the application reads or writes every payload byte); `VERIFLAT_ICE_FRAME` 64..9000 (above 1518 the port is set to
+  9728-byte frames and buffers hold a whole frame). The line gains `path= touch= frame=`; path map adds
+  `ice_map_counts` (runs and pages given per side). `ICE_CHAN_MOCK=1 boot/bench/run.sh` runs it on the device model.
+- `boot/dom0-bench/src/handoff.rs`, `VERIFLAT_PARALLEL=iommu,handoff` or `flushcpus` (no-timer build, run first and
+  alone): `iommu_prim` lines (`iommu_map_4k` / `iommu_unmap_4k` of 1, 8, 32, 64 pages without and with a device
+  attached to the table), `handoff` lines (payload hand-off of 4 KiB to 2 MiB between dom0 and a child process, same
+  core and two cores: local, pool, copy, copy2, map; cycles per round), `flushcpus` lines (`unmap_4k` of 1 and 16 pages
+  while dom0 threads spin on 1, 2, 4, 8, 16, 28 CPUs).
 
 Each queue sends one fixed UDP frame from its steering MAC (so that a reflector which swaps the MACs returns it to
 the same queue), one descriptor per frame cycling over the frame's 64 copies (`VERIFLAT_ICE_POOL`, `--pool`; one

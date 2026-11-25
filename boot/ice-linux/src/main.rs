@@ -153,7 +153,8 @@ const USAGE: &str = "usage: ice-linux <pci address, e.g. 0000:17:00.0> [options]
   --queues N         queue pairs, one thread each (default: 1)
   --cpus LIST        CPUs of the threads, e.g. 0-7 or 2,4,6 (default: 0..N)
   --secs S           seconds of traffic (default: 5)
-  --frame BYTES      frame size with CRC, 64..1518 (default: 64)
+  --frame BYTES      frame size with CRC, 64..9000 (default: 64); above 1518 the port is set to jumbo frames (9728)
+                     and every Rx buffer holds a whole frame
   --mode tx|rx|both  what each queue does (default: both)
   --dst MAC          destination of every frame (default: broadcast)
   --peer MAC         the peer runs this program too: queue q sends to the peer's queue q (its steering MAC)
@@ -257,8 +258,8 @@ fn parse_args() -> Args {
     if a.cpus.len() < a.queues {
         fail("fewer CPUs than queues");
     }
-    if !(64..=1518).contains(&a.frame) {
-        fail("--frame is 64..1518");
+    if !(64..=9000).contains(&a.frame) {
+        fail("--frame is 64..9000");
     }
     a
 }
@@ -335,7 +336,12 @@ fn main() {
     let args = parse_args();
     let p = open_device(&args.bdf);
     let hz = tsc_hz();
-    let config = Config { queues: args.queues + args.senders.len(), steering: args.steering, tx_ring: args.tx_ring, tx_batch: args.tx_batch, ..Default::default() };
+    let jumbo = args.frame > 1518;
+    let config = Config {
+        queues: args.queues + args.senders.len(), steering: args.steering, tx_ring: args.tx_ring, tx_batch: args.tx_batch,
+        rx_buf: if jumbo { args.frame.next_multiple_of(128) } else { 2048 }, max_frame: if jumbo { ice::packet::JUMBO_MAX_FRAME } else { 0 },
+        ..Default::default()
+    };
     let mut dev = Device::new(&p, config).unwrap_or_else(|e| {
         log::error!("bring-up failed: {}", e);
         exit(1)
