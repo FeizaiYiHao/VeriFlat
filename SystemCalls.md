@@ -2063,9 +2063,10 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   `prog = ThreadExitReclaim { flushed: false }`. In K the table's stale-CPU
   set becomes every cpu.
 - Hide (`process_table_hidden_step`): pre `reclaim(ThreadExitReclaim { flushed:
-  false })`; effect: one user root entry of `PT(P)` (the kernel chooses it) is
-  hidden, so every 4K, 2M, and 1G mapping and every window lock under it
-  leaves `PT(P)`. In K only the L4 entry changes (`hide_user_l4_entries`);
+  false })`; effect: the user root entry of `PT(P)` with the lowest L4 index
+  that still keys an entry is hidden, so every 4K, 2M, and 1G mapping and
+  every window lock under it leaves `PT(P)` and no key of `PT(P)` has a lower
+  L4 index. In K only the L4 entry changes (`hide_user_l4_entries`);
   the leaves under it stay held until reclaim.
 - Flush: pre `thread_exit_flush_step_pre` (`PT(P)` has no 4K, 2M, or 1G
   mapping and no window lock left); effect: `CS(C)` becomes or stays

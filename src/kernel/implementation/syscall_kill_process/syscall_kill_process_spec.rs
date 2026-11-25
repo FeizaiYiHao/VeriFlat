@@ -303,7 +303,7 @@ pub open spec fn kill_process_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId, st
 }
 
 /// Hiding a root entry of the target's write-locked page table before the flush drops from that table every 4K, 2M and 1G
-/// mapping and every window lock under one root entry chosen by the kernel and keeps everything else.
+/// mapping and every window lock under the lowest L4 index that still keys an entry and keeps everything else.
 #[verifier::opaque]
 pub open spec fn kill_process_table_hidden_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: false })

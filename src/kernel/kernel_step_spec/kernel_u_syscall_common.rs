@@ -69,9 +69,15 @@ pub open spec fn process_table_key_dropped(o: PageTableU, n: PageTableU, va: VAd
     ||| o.pagetable_window_locks.dom().contains(WindowVa { va }) && !n.pagetable_window_locks.dom().contains(WindowVa { va })
 }
 
+/// `va` keys an entry of `t` in its 4K, 2M or 1G mappings or its window locks.
+pub open spec fn process_table_has_key(t: PageTableU, va: VAddr) -> bool {
+    ||| t.mapping_4k.dom().contains(va) ||| t.mapping_2m.dom().contains(va) ||| t.mapping_1g.dom().contains(va)
+    ||| t.pagetable_window_locks.dom().contains(WindowVa { va })
+}
+
 /// Hiding a root entry of process `prc_ptr`'s page table drops from that table every 4K, 2M and 1G mapping and every window
-/// lock under one root entry chosen by the kernel and keeps everything else: every dropped key shares one L4 index, and every
-/// key with that index is dropped.
+/// lock under the lowest L4 index that still keys an entry and keeps everything else: every dropped key shares one L4 index,
+/// every key with that index is dropped, and no key of the table has a lower L4 index.
 #[verifier::opaque]
 pub open spec fn process_table_hidden_step(old_u: KernelU, new_u: KernelU, prc_ptr: RwLockProcessPtr) -> bool {
     let process = old_u.process_map[prc_ptr];
@@ -85,6 +91,8 @@ pub open spec fn process_table_hidden_step(old_u: KernelU, new_u: KernelU, prc_p
     &&& forall|a: VAddr, b: VAddr| #![trigger process_table_key_dropped(o, n, a), spec_v2l4index(b)]
         process_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a)
             ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
+    &&& forall|a: VAddr, b: VAddr| #![trigger process_table_key_dropped(o, n, a), process_table_has_key(o, b)]
+        process_table_key_dropped(o, n, a) && process_table_has_key(o, b) ==> spec_v2l4index(a) <= spec_v2l4index(b)
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU {
