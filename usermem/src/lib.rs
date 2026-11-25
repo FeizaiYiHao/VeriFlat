@@ -75,6 +75,13 @@
 //! Not proved: the hypotheses above and `hidden_translations_outside`; that loads return any particular value beyond the
 //! forwarding rule and the load theorem; anything about IOMMU translations other than the IOTLB entry a device write uses;
 //! the zero-fill of pages other than mmap leaves.
+//!
+//! Relation to the kernel. The kernel's four pending-write events change no U state (`kernel_k_*_implies_u_unchanged` in
+//! `src/kernel/kernel_step_wrappers/env_steps.rs`). Main's `KernelK` now carries its own ghost pending-store and pending-DMA
+//! sets with the safety theorem `kernel_inv_implies_pending_writes_target_mapped_or_bar_pages`; this crate's `bufs` is a
+//! separate, richer model (FIFO buffers with bytes) that no theorem connects to the kernel's sets. H1, H2, and H4 correspond
+//! to the trusted ensures of the kernel's `enter_step`, of its remote flushes and running-to-idle IPI, and of its IOTLB
+//! invalidations.
 #![feature(adt_const_params)]
 
 use vstd::prelude::*;
@@ -92,6 +99,8 @@ pub mod ni;
 pub mod drain;
 
 pub use state::*;
+// The kernel's own `PendingStore` (main's ghost store buffers) also comes in through `veriflat_kernel_core::*`; this crate means its own.
+pub use state::PendingStore;
 pub use step::*;
 
 verus! {

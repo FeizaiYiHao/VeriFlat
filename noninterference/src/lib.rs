@@ -36,6 +36,8 @@
 //! depend on allocations by other domains. This allocator channel is outside the proof.
 //! Each `merge_2m` step exchanges 512 4K quota for one 2M quota and has local-respect and isolation obligations.
 //! Its fragmentation-dependent returned count is not covered by deterministic output consistency.
+//! The kernel's four pending-write events (a user store issued or committed, a DMA request issued or completed) change no
+//! U state (`kernel_k_*_implies_u_unchanged` in `src/kernel/kernel_step_wrappers/env_steps.rs`), so `StepLabel` has none.
 #![feature(adt_const_params)]
 
 use vstd::prelude::*;

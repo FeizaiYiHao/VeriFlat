@@ -20,6 +20,8 @@
 //! rounds 1 to 4 stay for their waiter theorems.
 //! Round 6: `family_env` adds the trap, register, return-value, and TLB and context-cache fill events to the world. They
 //! are not syscall steps, so they do not count toward a call's bound.
+//! The kernel's four pending-write events (a user store issued or committed, a DMA request issued or completed) change no
+//! U state (`kernel_k_*_implies_u_unchanged` in `src/kernel/kernel_step_wrappers/env_steps.rs`), so they have no label.
 //! Round 7: `fill_quota` closes the fill phase of `mmap_4k`, so the world theorems no longer exclude it, and
 //! `family_split_merge` adds `split_2m` and `merge_2m`.
 //! Round 8: `family_kill` adds `kill_process` to the world without its five killed-thread reclaim steps, whose U specs do
