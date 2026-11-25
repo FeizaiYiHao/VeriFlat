@@ -285,6 +285,7 @@ pub(crate) fn kill_container_retire_lock_object_pages(
             let ro = old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view();
             let heads = kill_container_retire_heads(ctn_ptr, ro);
             &&& ret.view().dom() == kill_container_retire_pages_4k(ro).to_set().insert(heads[0]).insert(heads[1])
+            &&& forall|k: int| #![trigger kill_container_retire_pages_4k(ro)[k]] 0 <= k < 5 ==> ret.view().dom().contains(kill_container_retire_pages_4k(ro)[k])
             &&& final(lctx).page_lock_map().dom() == ret.view().dom()
         }),
         forall|p: PageIndex| #![trigger ret.view().dom().contains(p)] ret.view().dom().contains(p) ==> {
@@ -330,7 +331,7 @@ pub(crate) fn kill_container_retire_lock_object_pages(
     }
     let sorted = kill_retire_sort_pages(&pages);
     let ret = wlock_kill_retire_pages(krnl, &sorted, Ghost(ALLOCATED_PAGE_MAJOR), Tracked(&mut *lctx), Tracked(Map::<PageIndex, LockPerm>::tracked_empty()));
-    proof { assert(lctx.page_lock_map().dom() =~= sorted.view().to_set()); }
+    proof { assert(lctx.page_lock_map().dom() =~= sorted.view().to_set()); kill_container_retire_pages_4k(ro).to_set_ensures(); }
     ret
 }
 
