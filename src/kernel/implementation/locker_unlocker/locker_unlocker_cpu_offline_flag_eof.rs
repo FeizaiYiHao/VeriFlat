@@ -22,7 +22,9 @@ pub(super) proof fn cpu_offline_flag_lock_op_eof(pre: KernelK, post: KernelK, fl
         post.inv(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
-    assert(cpu_offline_flags_invariant_fields_unchanged(pre.cpu_offline_mp, post.cpu_offline_mp)) by { cpu_offline_flags_lock_op_preserves_invariant_fields(pre.cpu_offline_mp, post.cpu_offline_mp, flags_ptr, cpu_id); };
+    assert(cpu_offline_flags_invariant_fields_unchanged(pre.cpu_offline_mp, post.cpu_offline_mp)) by {
+        cpu_offline_flags_lock_op_implies_cpu_offline_flags_invariant_fields_unchanged(pre.cpu_offline_mp, post.cpu_offline_mp, flags_ptr, cpu_id);
+    };
     assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
     assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };

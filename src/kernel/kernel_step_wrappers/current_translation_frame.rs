@@ -64,7 +64,7 @@ broadcast proof fn kernel_owned_page_implies_u_current_tlb_4k_entry_outside_fram
     let fidx = page_ptr2page_index(frame);
     let state = k.pg_arr.spec_index(fidx).view().view().state;
     let end = frame + if state is Owned4k { 0x1000int } else if state is Owned2m { 0x200000int } else { 0x40000000int };
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
     if index_valid(NUM_CPUS, c) && u.cpu_array[c as int].current_process is Some && u.process_map[u.cpu_array[c as int].current_process->Some_0].pcid == pcid && pcid != KERNEL_DEFAULT_PCID {
         let pt = k.prc_mp.spec_index(u.cpu_array[c as int].current_process->Some_0).view().pagetable;
         let (l4i, l3i, l2i, l1i) = (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
@@ -116,7 +116,7 @@ broadcast proof fn kernel_owned_page_implies_u_current_tlb_2m_entry_outside_fram
     let fidx = page_ptr2page_index(frame);
     let state = k.pg_arr.spec_index(fidx).view().view().state;
     let end = frame + if state is Owned4k { 0x1000int } else if state is Owned2m { 0x200000int } else { 0x40000000int };
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
     if index_valid(NUM_CPUS, c) && u.cpu_array[c as int].current_process is Some && u.process_map[u.cpu_array[c as int].current_process->Some_0].pcid == pcid && pcid != KERNEL_DEFAULT_PCID {
         let pt = k.prc_mp.spec_index(u.cpu_array[c as int].current_process->Some_0).view().pagetable;
         let (l4i, l3i, l2i) = (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
@@ -174,7 +174,7 @@ broadcast proof fn kernel_owned_page_implies_u_current_tlb_1g_entry_outside_fram
 {
     let u = kernel_k_to_kernel_u(k);
     let fidx = page_ptr2page_index(frame);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
     if index_valid(NUM_CPUS, c) && u.cpu_array[c as int].current_process is Some && u.process_map[u.cpu_array[c as int].current_process->Some_0].pcid == pcid && pcid != KERNEL_DEFAULT_PCID {
         let pt = k.prc_mp.spec_index(u.cpu_array[c as int].current_process->Some_0).view().pagetable;
         let (l4i, l3i) = (spec_v2l4index(va), spec_v2l3index(va));
@@ -208,7 +208,7 @@ broadcast proof fn kernel_owned_page_implies_u_iotlb_4k_entry_outside_frame_at(k
         }),
 {
     let fidx = page_ptr2page_index(frame);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
     kernel_u_domains_projection(&k);
     if k.iommu_tlb.view().dom().contains(did) && k.iommu_tlb.spec_index(did).tlb_4k().dom().contains(va) {
         let irt = k.irt.view();

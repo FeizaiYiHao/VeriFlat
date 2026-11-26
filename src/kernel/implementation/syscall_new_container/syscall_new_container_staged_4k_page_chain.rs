@@ -67,7 +67,7 @@ pub(super) fn set_4k_page_staging_next(krnl: &mut KernelK, Tracked(lctx): Tracke
             &&& krnl.pg_arr.inv()
             &&& krnl.pg_arr.spec_index(pg_idx).view().is_init()
             &&& krnl.pg_arr.spec_index(pg_idx).view().view().inv()
-        }) by { page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
+        }) by { page_ptr_valid_implies_page_index_valid(); page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
     }
     {
         let page = krnl.pg_arr.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
@@ -225,9 +225,9 @@ pub(super) fn cleanup_published_4k_page_chain(
     {
         let pg_ptr = current;
         let old_remaining = remaining;
-        proof { broadcast use page_ptr_sequence_index_in_equal_set; page_ptr_valid_imply_page_index_valid(); vstd::seq::lemma_seq_subrange_index(page_ptrs, 0, remaining as int, remaining - 1); }
+        proof { broadcast use page_ptr_sequence_index_in_equal_set; page_ptr_valid_implies_page_index_valid(); vstd::seq::lemma_seq_subrange_index(page_ptrs, 0, remaining as int, remaining - 1); }
         let pg_idx = page_ptr2page_index(pg_ptr);
-        proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
+        proof { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
         let next = {
             let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(page_lock_perms.tracked_borrow(pg_ptr)));
             page.free_list

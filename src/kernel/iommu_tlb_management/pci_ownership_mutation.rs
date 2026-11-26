@@ -115,7 +115,7 @@ impl KernelK {
     {
         broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
         proof {
-            pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr);
             old(self).pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
         }
@@ -223,7 +223,7 @@ impl KernelK {
                     == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
     {
         broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
-        proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
+        proof { pagetable_perms_wf_implies_map_perms_wf(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
         let ghost pci = old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci;
         let mut i: usize = 0;
         proof { assert_sets_equal!(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < 0), Set::<PciBdf>::empty()); }
@@ -271,7 +271,7 @@ impl KernelK {
             decreases PCI_FUNCTIONS_PER_PROCESS - i,
         {
             broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
-            proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
+            proof { pagetable_perms_wf_implies_map_perms_wf(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
             let used = self.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm)).higher.pci.entry(i).used;
             if used {
                 let ghost cur = self.irt.view().owners();
@@ -290,7 +290,7 @@ impl KernelK {
             }
         }
         proof {
-            pagetable_perms_wf_map(self.pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(self.pt_mp);
             pagetable_perms_wf_at(self.pt_mp, pagetable_ptr);
             assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < PCI_FUNCTIONS_PER_PROCESS) =~= pci.view().dom());
         }

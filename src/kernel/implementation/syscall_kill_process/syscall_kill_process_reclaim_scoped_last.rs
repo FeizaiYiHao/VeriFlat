@@ -130,8 +130,8 @@ pub(crate) fn kill_reclaim_last_nonempty_4k_mapping_scoped(
     let pg_idx = page_ptr2page_index(pg_ptr);
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
-        page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
+        page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
     }
     let ghost held_lctx = *lctx;
     proof {
@@ -284,8 +284,8 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
     let ghost iova = spec_index2va(indices);
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
-        page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
+        page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
     }
     let ghost held_lctx = *lctx;
     proof {

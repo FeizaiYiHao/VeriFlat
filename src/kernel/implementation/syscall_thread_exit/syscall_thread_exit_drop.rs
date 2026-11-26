@@ -170,7 +170,7 @@ pub(super) fn thread_exit_drop_descriptors(
             krnl.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         decreases MAX_NUM_ENDPOINT_DESCRIPTORS - index,
     {
-        proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
+        proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
         let descriptor = *krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm)).endpoint_descriptors.get(index);
         if let Some(ep_ptr) = descriptor {
             proof { assert(krnl.ep_mp.dom().contains(ep_ptr)) by { thread_endpoint_ref_counter_wf_thread_at(krnl.thrd_mp, krnl.ep_mp, thrd_ptr, index); }; }

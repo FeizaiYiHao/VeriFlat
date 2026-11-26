@@ -68,7 +68,7 @@ pub(crate) fn kill_reclaim_target(
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view(),
 {
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let zombie = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).zombie
@@ -220,9 +220,9 @@ pub(crate) fn kill_reclaim_live(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view(),
 {
     hide(Set::is_empty);
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let target_container = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
-    proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
     let thread_container = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_perm)).owning_container;
     proof {
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
@@ -331,7 +331,7 @@ pub(crate) fn kill_reclaim_lock_table(
         krnl.default_pagetable_wf_at(pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     }
     let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
-    proof { assert(krnl.prc_mp.spec_index(target).view().state.view() is Killing) by { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }; }
+    proof { assert(krnl.prc_mp.spec_index(target).view().state.view() is Killing) by { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }; }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Reclaim { flushed: false })), Tracked(&*lctx), Tracked(thread_perm));
     let ghost after = *krnl;
     let ghost after_lctx = *lctx;
@@ -433,7 +433,7 @@ pub(crate) fn kill_reclaim_unown_functions(
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
     }
     let holds = !krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).higher.pci.is_empty();
@@ -448,7 +448,7 @@ pub(crate) fn kill_reclaim_unown_functions(
             Some(it) => {
                 let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
                 let ghost locked = *krnl;
-                proof { iommu_table_perms_wf_map(krnl.it_mp); }
+                proof { iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); }
                 iommu_root_table_detach_array(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it,
                     &krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).higher.pci, Ghost(locked), Tracked(&*lctx),
                     Tracked(&irt_perm), Tracked(&perm));
@@ -494,7 +494,7 @@ pub(crate) fn kill_reclaim_unown_functions(
     let ghost after = *krnl;
     proof {
         if let Some(it) = iommu_table {
-            iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it);
+            iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it);
         }
         kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
         kill_reclaim_pre_from_k(&before, &before_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, iommu_table);

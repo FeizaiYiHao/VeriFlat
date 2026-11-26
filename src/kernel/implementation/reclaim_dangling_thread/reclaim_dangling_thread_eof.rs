@@ -80,7 +80,7 @@ proof fn reclaim_dangling_thread_eof_page_relations(
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
     let pg_idx = page_ptr2page_index(dangling_ptr);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
         allocator_2m_pages_wf_preserved_for_page_state_eq(pre.allc_2m_mp, post.allc_2m_mp, pre.pg_arr, post.pg_arr);
@@ -142,7 +142,7 @@ proof fn reclaim_dangling_thread_eof_thread_pages(
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
     let dangling = pre.thrd_mp.spec_index(dangling_ptr).view();
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_4k.view()); vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_2m.view());
     vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_1g.view());
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {
@@ -221,7 +221,7 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
     let uppers = pre.ctn_mp.spec_index(pre.thrd_mp.spec_index(dangling_ptr).view().owning_container).view().uppertree_seq.view();
-    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
+    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_implies_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
@@ -288,7 +288,7 @@ pub(super) proof fn reclaim_dangling_thread_eof(
     reclaim_dangling_thread_eof_allocator_quota_wf(pre, post, cpu_id, dangling_ptr, owner, allc_ptr, cache_node_addr);
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         let ctn_ptr = pre.thrd_mp.spec_index(dangling_ptr).view().owning_container;
-        reveal(reclaim_dangling_thread_eof_transition_framing); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        reveal(reclaim_dangling_thread_eof_transition_framing); page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
         page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, page_ptr2page_index(dangling_ptr));
         container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, dangling_ptr); pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set_ensures();
         reveal(container_kill_retire_wf); reveal(container_allocator_wf); reveal(container_uppertree_seq_wf);

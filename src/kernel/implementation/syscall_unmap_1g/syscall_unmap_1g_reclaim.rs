@@ -319,7 +319,7 @@ fn unmap_1g_reclaim_leaf(
     let l3i = v2l3index(va);
     proof {
         spec_va_1g_valid_index_roundtrip(va); krnl.default_pagetable_wf_at(pagetable);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         krnl.pt_mp.spec_index(pagetable).view().higher.wf_mapping_1g_at(l4i, l3i);
     }
@@ -332,7 +332,7 @@ fn unmap_1g_reclaim_leaf(
         c.higher.spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve(l4i, l3i);
         mapped_1g_page_pagetable_wf_nonempty_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l4i, l3i);
         mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
-        page_index_valid_imply_page_ptr_valid(); krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id());
+        page_index_valid_implies_page_ptr_valid(); krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id());
     }
     reclaim_nonempty_1g_page(krnl, pagetable, va, pg_ptr, thrd_ptr, indirect, direct, Tracked(&mut *lctx), pagetable_perm, thread_perm);
     proof {

@@ -53,7 +53,7 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
     let ghost pre = kernel_k_to_kernel_u(*old(krnl));
     proof { assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     thread_exit_drop_descriptors(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, Tracked(&thread_lock_perm), Ghost(start), Ghost(pre));
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.wf_implies_view_len_eq_len(); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.wf_implies_view_len_eq_len(); }
     let last = krnl.prc_mp.borrow_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).owned_threads.len() == 1;
     if last {
         thread_exit_reclaim(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, Tracked(&cpu_lock_perm), Tracked(&process_lock_perm),
@@ -62,7 +62,7 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     thread_exit_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, last, Tracked(cpu_lock_perm), Tracked(container_lock_perm),
         Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre), Ghost(thread_exit_step_bound(*old(krnl), cpu_id)));
-    proof { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); }
+    proof { no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx); }
     RetValueType::CpuIdle
 }
 } // verus!

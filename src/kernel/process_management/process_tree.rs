@@ -20,7 +20,7 @@ pub open spec fn process_perms_wf(prc_mp: ProcessLockedMap) -> bool {
         prc_mp.dom().contains(p) ==> prc_mp.spec_index(p).view().parent_linkedlist_node.addr() == process_parent_node_addr(p)
 }
 
-pub proof fn process_perms_wf_map(prc_mp: ProcessLockedMap)
+pub proof fn process_perms_wf_implies_map_perms_wf(prc_mp: ProcessLockedMap)
     requires process_perms_wf(prc_mp)
     ensures prc_mp.perms_wf()
 { reveal(process_perms_wf); }
@@ -332,7 +332,8 @@ pub open spec fn process_add_child_ensures(
     &&& new_prc_mp.spec_index(parent_ptr).view().children.map() == old_prc_mp.spec_index(parent_ptr).view().children.map().insert(new_prc_mp.spec_index(child_ptr).view().parent_linkedlist_node.addr(), child_ptr)
 }
 
-pub proof fn process_add_child_preserves_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+pub proof fn process_add_child_ensures_implies_process_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>,
+    old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
     ensures
@@ -357,7 +358,7 @@ pub proof fn process_add_child_preserves_tree_wf(root_process: RwLockProcessPtr,
     process_add_child_eof_process_subtree_set_exclusive(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr);
 }
 
-/// Closure of `process_add_child_preserves_tree_wf` for `process_uppertree_seq_wf`.
+/// Closure of `process_add_child_ensures_implies_process_tree_wf` for `process_uppertree_seq_wf`.
 proof fn process_add_child_eof_process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
@@ -380,7 +381,7 @@ proof fn process_add_child_eof_process_uppertree_seq_wf(root_process: RwLockProc
     seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>(); reveal(process_uppertree_seq_wf);
 }
 
-/// Closure of `process_add_child_preserves_tree_wf` for `process_root_wf`.
+/// Closure of `process_add_child_ensures_implies_process_tree_wf` for `process_root_wf`.
 proof fn process_add_child_eof_process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
@@ -403,7 +404,7 @@ proof fn process_add_child_eof_process_root_wf(root_process: RwLockProcessPtr, p
     reveal(process_root_wf);
 }
 
-/// Closure of `process_add_child_preserves_tree_wf` for `process_children_parent_wf`.
+/// Closure of `process_add_child_ensures_implies_process_tree_wf` for `process_children_parent_wf`.
 proof fn process_add_child_eof_process_children_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
@@ -426,7 +427,7 @@ proof fn process_add_child_eof_process_children_parent_wf(root_process: RwLockPr
     reveal(process_root_wf); reveal(process_children_parent_wf); seq_push_implies_contains::<RwLockProcessPtr>();
 }
 
-/// Closure of `process_add_child_preserves_tree_wf` for `process_linkedlist_wf`.
+/// Closure of `process_add_child_ensures_implies_process_tree_wf` for `process_linkedlist_wf`.
 proof fn process_add_child_eof_process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
@@ -449,7 +450,7 @@ proof fn process_add_child_eof_process_linkedlist_wf(root_process: RwLockProcess
     reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); seq_push_implies_contains::<RwLockProcessPtr>();
 }
 
-/// Closure of `process_add_child_preserves_tree_wf` for `process_uppertree_seq_parent_wf`.
+/// Closure of `process_add_child_ensures_implies_process_tree_wf` for `process_uppertree_seq_parent_wf`.
 proof fn process_add_child_eof_process_children_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
@@ -472,7 +473,7 @@ proof fn process_add_child_eof_process_children_depth_wf(root_process: RwLockPro
     reveal(process_uppertree_seq_parent_wf); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
 }
 
-/// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_set_wf`.
+/// Closure of `process_add_child_ensures_implies_process_tree_wf` for `process_subtree_set_wf`.
 proof fn process_add_child_eof_process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
@@ -495,7 +496,7 @@ proof fn process_add_child_eof_process_subtree_set_wf(root_process: RwLockProces
     reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
 }
 
-/// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_uppertree_agree_wf`.
+/// Closure of `process_add_child_ensures_implies_process_tree_wf` for `process_subtree_uppertree_agree_wf`.
 proof fn process_add_child_eof_process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
@@ -614,7 +615,7 @@ pub proof fn process_remove_child_from_ancestor_subtree_sets(tracked prc_mp: &mu
     assert(process_perms_wf(*old(prc_mp)) ==> process_perms_wf(*prc_mp)) by { reveal(process_perms_wf); };
 }
 
-pub proof fn process_no_change_to_tree_fields_imply_wf_forall()
+pub proof fn process_no_change_to_tree_fields_implies_wf_forall()
     ensures
         forall|root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_prc_mp: ProcessLockedMap, new_prc_mp: ProcessLockedMap|
             #![trigger process_tree_wf(root_process, process_tree_dom, old_prc_mp), process_tree_wf(root_process, process_tree_dom, new_prc_mp)]

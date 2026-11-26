@@ -117,9 +117,9 @@ pub(super) fn mmap_4k_try_read_enter(
 {
     let ghost pre_k = *krnl;
     let ghost pre_lctx = *lctx;
-    proof { krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
+    proof { krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
     let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx));
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
+    proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
     let (user_range, windows_exist) = {
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm));
         if va2index(va).0 < pagetable.higher.kernel_l4_end { (false, false) } else { (true, pagetable.higher.mapping_4k_va_range_windows_exist(va_range)) }

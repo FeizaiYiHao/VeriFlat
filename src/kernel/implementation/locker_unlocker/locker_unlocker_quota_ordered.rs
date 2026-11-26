@@ -40,7 +40,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
-            allocator_perms_wf_map(old(self).allc_4k_mp);
+            allocator_perms_wf_implies_map_perms_wf(old(self).allc_4k_mp);
             allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k);
             assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
@@ -51,7 +51,7 @@ impl KernelK {
         assert(!self.allc_4k_mp.spec_index(alloc_ptr_4k).quota.locked_by_thread(lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         let ret = self.allc_4k_mp.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
         proof {
-            assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
+            assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_quota_lock_op_implies_allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -94,7 +94,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ2m, alloc_ptr_2m), TypedHeldLock { lock_id: final(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
-            allocator_perms_wf_map(old(self).allc_2m_mp);
+            allocator_perms_wf_implies_map_perms_wf(old(self).allc_2m_mp);
             allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m);
             assert(old(lctx).lock_id_acyclic(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota.lock_id())) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
@@ -105,7 +105,7 @@ impl KernelK {
         assert(!self.allc_2m_mp.spec_index(alloc_ptr_2m).quota.locked_by_thread(lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         let ret = self.allc_2m_mp.wlock_quota(alloc_ptr_2m, Tracked(&mut *lctx), Ghost(PageSize::SZ2m));
         proof {
-            assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
+            assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_quota_lock_op_implies_allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
             assert(self.allc_2m_mp.typed_quota_lock_map_aligned(lctx.allocator_quota_2m_lock_map(), lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -148,7 +148,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ1g, alloc_ptr_1g), TypedHeldLock { lock_id: final(self).allc_1g_mp.spec_index(alloc_ptr_1g).quota.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
-            allocator_perms_wf_map(old(self).allc_1g_mp);
+            allocator_perms_wf_implies_map_perms_wf(old(self).allc_1g_mp);
             allocator_perms_wf_at(old(self).allc_1g_mp, alloc_ptr_1g);
             assert(old(lctx).lock_id_acyclic(old(self).allc_1g_mp.spec_index(alloc_ptr_1g).quota.lock_id())) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
@@ -159,7 +159,7 @@ impl KernelK {
         assert(!self.allc_1g_mp.spec_index(alloc_ptr_1g).quota.locked_by_thread(lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         let ret = self.allc_1g_mp.wlock_quota(alloc_ptr_1g, Tracked(&mut *lctx), Ghost(PageSize::SZ1g));
         proof {
-            assert(allocator_invariant_fields_unchanged(old(self).allc_1g_mp, self.allc_1g_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_1g_mp, self.allc_1g_mp, alloc_ptr_1g); };
+            assert(allocator_invariant_fields_unchanged(old(self).allc_1g_mp, self.allc_1g_mp)) by { allocator_quota_lock_op_implies_allocator_invariant_fields_unchanged(old(self).allc_1g_mp, self.allc_1g_mp, alloc_ptr_1g); };
             assert(self.allc_1g_mp.typed_quota_lock_map_aligned(lctx.allocator_quota_1g_lock_map(), lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };

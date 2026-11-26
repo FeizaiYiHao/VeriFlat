@@ -105,7 +105,7 @@ pub fn syscall_pci_claim(
         return RetValueType::ErrorPciNotRootProcess;
     }
     let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(lctx));
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
+    proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
     let free = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).higher.pci.free_entry();
     if free.is_none() {
         krnl.wunlock_pagetable(pagetable_ptr, Tracked(lctx), Tracked(pagetable_lock_perm));

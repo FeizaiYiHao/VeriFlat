@@ -142,7 +142,7 @@ pub(super) fn thread_exit_reclaim_unown(
         },
 {
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         if iommu_table is Some { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }
     }

@@ -109,7 +109,7 @@ pub(super) fn ipc_finish_pages_transit(
     let tracked current_thread_lock_perm = current_thread_lock_perm.get();
     let tracked endpoint_lock_perm = endpoint_lock_perm.get();
     let tracked peer_thread_lock_perm = peer_thread_lock_perm.get();
-    proof { thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
+    proof { thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
     let peer_thread_ref = krnl.thrd_mp.borrow_typed(peer_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
     let peer_ctn_ptr = peer_thread_ref.owning_container;
     let peer_last_cpu = peer_thread_ref.last_cpu;

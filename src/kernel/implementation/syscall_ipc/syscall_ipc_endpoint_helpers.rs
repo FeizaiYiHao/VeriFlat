@@ -115,7 +115,7 @@ pub(super) fn ipc_endpoint_copy_and_finish_transit(
         krnl, Tracked(&mut *lctx), cpu_id, prc_ptr, current_thrd_ptr, peer_thrd_ptr, receiver_thrd_ptr, payload_ep_ptr, source_ep_idx,
         target_ep_idx, Tracked(&current_thread_lock_perm), Tracked(&peer_thread_lock_perm),
     );
-    proof { thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
+    proof { thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
     let peer_thread_ref = krnl.thrd_mp.borrow_typed(peer_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
     let peer_ctn_ptr = peer_thread_ref.owning_container;
     let peer_last_cpu = peer_thread_ref.last_cpu;

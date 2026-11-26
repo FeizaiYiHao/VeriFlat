@@ -84,7 +84,7 @@ proof fn install_staged_4k_iommu_table_page_eof_subsystems_inv(
     ensures post.subsystems_inv(),
 {
     reveal(install_staged_4k_iommu_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
     assert(thread_perms_wf(post.thrd_mp)) by {
@@ -118,7 +118,7 @@ proof fn install_staged_4k_iommu_table_page_eof_iommu_table_pages(
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
 {
     reveal(install_staged_4k_iommu_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
         assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
@@ -154,7 +154,7 @@ proof fn install_staged_4k_iommu_table_page_eof_memory_management_inv(
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);

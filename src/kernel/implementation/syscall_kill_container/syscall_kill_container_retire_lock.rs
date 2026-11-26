@@ -302,7 +302,7 @@ pub(crate) fn kill_container_retire_lock_object_pages(
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
         container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr);
-        page_array_wf_map(krnl.pg_arr); page_ptr_roundtrip();
+        page_array_wf_implies_page_array_inv(krnl.pg_arr); page_ptr_roundtrip();
         scheduler_pages_wf_at(krnl.sched_mp, krnl.pg_arr, ro.scheduler); cpu_set_pages_wf_at(krnl.cpu_set_mp, krnl.pg_arr, ro.cpu_set);
         allocator_4k_pages_wf_at(krnl.allc_4k_mp, krnl.pg_arr, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, ro.allocator_ptr_2m);
         allocator_1g_pages_wf_at(krnl.allc_1g_mp, krnl.pg_arr, ro.allocator_ptr_1g); pcid_allocator_pages_wf_at(krnl.pcid_allc_mp, krnl.pg_arr, ro.pcid_allocator);

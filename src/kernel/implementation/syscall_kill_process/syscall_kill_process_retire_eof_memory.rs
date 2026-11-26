@@ -648,7 +648,7 @@ proof fn kill_retire_eof_allocator(
         allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp),
 {
     reveal(kill_retire_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    page_ptr_valid_implies_page_index_valid(); page_index_valid_implies_page_ptr_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);

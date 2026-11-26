@@ -40,7 +40,7 @@ pub fn merge_2m_sort_sources(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
     proof {
-        allocator_perms_wf_map(krnl.allc_4k_mp);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator);
         reveal(merge_2m_sort_eof_transition_framing);
     }

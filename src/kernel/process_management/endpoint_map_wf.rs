@@ -23,7 +23,7 @@ pub proof fn endpoint_perms_wf_at(ep_mp: EndpointLockedMap, ep_ptr: RwLockEndpoi
         ep_mp.spec_index(ep_ptr).view().inv(),
 { reveal(endpoint_perms_wf); }
 
-pub proof fn endpoint_perms_wf_map(ep_mp: EndpointLockedMap)
+pub proof fn endpoint_perms_wf_implies_map_perms_wf(ep_mp: EndpointLockedMap)
     requires endpoint_perms_wf(ep_mp)
     ensures ep_mp.perms_wf()
 { reveal(endpoint_perms_wf); }

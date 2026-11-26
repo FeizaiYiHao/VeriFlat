@@ -237,7 +237,7 @@ verus! {
                 &&& old(lctx).page_lock_map().dom().subset_of(lctx.page_lock_map().dom())
             }) by {
                 vstd::set_lib::lemma_set_disjoint(old(lctx).allocator_cache_2m_lock_map().dom(), allocator_cache_key_prefix(alloc_ptr_2m, NUM_CPUS));
-                map_union_remove_right_domain_disjoint_lemma(old(lctx).allocator_cache_2m_lock_map(),
+                disjoint_domains_implies_map_union_remove_right_keys_eq_left(old(lctx).allocator_cache_2m_lock_map(),
                     Map::new(allocator_cache_key_prefix(alloc_ptr_2m, NUM_CPUS), |key: (RwLockPageAllocatorPtr, CpuId)| TypedHeldLock { lock_id: allocator_cache_lock_id(ALLOCATOR_SIZE_2M, key.1), mode: TypedLockMode::Write }));
             };
         }
@@ -645,7 +645,7 @@ verus! {
                     && cache_perms.dom().contains(cpu) && cache_perms.spec_index(cpu).state() is WriteLock && cache_perms.spec_index(cpu).thread_id() == lctx.thread_id()
                     && cache_perms.spec_index(cpu).lock_id() == krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().locking_thread()->Write_lock_id
                     && typed_lock_map_contains_mode(lctx.allocator_cache_2m_lock_map(), (alloc_ptr_2m, cpu), TypedLockMode::Write)
-                    && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().being_killed() == false) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); reveal(cache_perms_match_lctx); };
+                    && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().being_killed() == false) by { allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); reveal(cache_perms_match_lctx); };
             }
             let cache_ref = krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(cache_perms.tracked_borrow(cpu)));
             let cache_len = cache_ref.linked_list.len();

@@ -326,7 +326,7 @@ impl KernelK {
         self.cpu_arr.exit_step_wunlock_own_cpu(cpu_id, Tracked(self.cpu_op.borrow_mut()), Tracked(&mut *lctx), lock_perm);
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-            assert(lctx.no_locks_held() ==> self.all_objects_unlocked(lctx)) by { if lctx.no_locks_held() { no_locks_held_imply_all_objects_unlocked(&*self, &*lctx); } };
+            assert(lctx.no_locks_held() ==> self.all_objects_unlocked(lctx)) by { if lctx.no_locks_held() { no_locks_held_implies_all_objects_unlocked(&*self, &*lctx); } };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
@@ -401,7 +401,7 @@ impl KernelK {
         proof {
             lctx.put_kernel_call_perm(slot);
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-            assert(lctx.no_locks_held() ==> self.all_objects_unlocked(lctx)) by { if lctx.no_locks_held() { no_locks_held_imply_all_objects_unlocked(&*self, &*lctx); } };
+            assert(lctx.no_locks_held() ==> self.all_objects_unlocked(lctx)) by { if lctx.no_locks_held() { no_locks_held_implies_all_objects_unlocked(&*self, &*lctx); } };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;

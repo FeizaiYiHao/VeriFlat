@@ -139,7 +139,7 @@ pub proof fn merge_2m_commit_eol_iteration_pre(pre: KernelK, cur: KernelK, alloc
     let source = candidate.sources.view().spec_index(offset as int) as usize;
     reveal(merge_2m_commit_eol_loop_framing);
     page_array_wf_at(pre.pg_arr, index);
-    allocator_perms_wf_map(pre.allc_4k_mp); allocator_perms_wf_at(pre.allc_4k_mp, allocator_4k);
+    allocator_perms_wf_implies_map_perms_wf(pre.allc_4k_mp); allocator_perms_wf_at(pre.allc_4k_mp, allocator_4k);
     allocator_free_4k_pages_wf_at(pre.allc_4k_mp, pre.pg_arr, index);
     pre.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source).wf_implies_view_len_eq_len();
     cur.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source).wf_implies_view_len_eq_len();
@@ -213,7 +213,7 @@ pub proof fn merge_2m_commit_eol_step_source_lists(pre: KernelK, cur: KernelK, m
     let index = (candidate.head + offset) as usize;
     reveal(merge_2m_commit_eol_loop_framing);
     page_array_wf_at(pre.pg_arr, index);
-    allocator_perms_wf_map(pre.allc_4k_mp); allocator_perms_wf_at(pre.allc_4k_mp, allocator_4k);
+    allocator_perms_wf_implies_map_perms_wf(pre.allc_4k_mp); allocator_perms_wf_at(pre.allc_4k_mp, allocator_4k);
     allocator_free_4k_pages_wf_at(pre.allc_4k_mp, pre.pg_arr, index);
     page_index_roundtrip();
 }
@@ -388,7 +388,7 @@ pub proof fn merge_2m_commit_eol_step_pages(pre: KernelK, cur: KernelK, mid: Ker
     reveal(merge_2m_commit_eol_loop_framing);
     assert(pre.pg_arr.spec_index(index).view().view().perm_4k.view().is_some()) by { page_array_wf_at(pre.pg_arr, index); };
     assert_sets_equal!(post_tail_perms.dom(), Set::<usize>::range(1, (offset + 1) as usize));
-    allocator_perms_wf_map(pre.allc_4k_mp); allocator_perms_wf_at(pre.allc_4k_mp, allocator_4k);
+    allocator_perms_wf_implies_map_perms_wf(pre.allc_4k_mp); allocator_perms_wf_at(pre.allc_4k_mp, allocator_4k);
     allocator_free_4k_pages_wf_at(pre.allc_4k_mp, pre.pg_arr, index);
 }
 

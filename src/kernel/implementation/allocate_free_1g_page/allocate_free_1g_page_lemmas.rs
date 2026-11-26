@@ -18,7 +18,7 @@ pub(crate) proof fn thread_effective_quota_1g_positive_implies_global_pool_1g_no
     let owned_threads = k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view();
     assert(k.allc_1g_mp.dom().contains(alloc_ptr_1g)) by { container_allocator_wf_at(k.ctn_mp, k.allc_4k_mp, k.allc_2m_mp, k.allc_1g_mp, ctn_ptr); };
     assert(k.allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.view().len() > 0) by {
-        allocator_perms_wf_map(k.allc_1g_mp); allocator_perms_wf_at(k.allc_1g_mp, alloc_ptr_1g);
+        allocator_perms_wf_implies_map_perms_wf(k.allc_1g_mp); allocator_perms_wf_at(k.allc_1g_mp, alloc_ptr_1g);
         reveal(allocator_1g_cpu_caches_empty_wf); k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view_index_eq_element_value();
         empty_caches_implies_cache_len_fold_zero(k.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.view());
         reveal(container_thread_wf); reveal(container_process_allocator_quota_1g_wf); reveal(thread_perms_wf);

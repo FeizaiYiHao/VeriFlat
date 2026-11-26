@@ -25,7 +25,7 @@ fn hide_empty_l1_table_ptrs(krnl: &KernelK, pagetable: RwLockPageTableRoot, indi
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == ret.0,
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == ret.1,
 {
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
+    proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
     let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
@@ -111,7 +111,7 @@ pub fn hide_empty_l1_in_window(krnl: &mut KernelK, pagetable: RwLockPageTableRoo
     krnl.replace_window_stale_cpus::<false>(pagetable, Ghost(WindowStaleUpdate::Set { window: window_of(va), cpus: Set::range(0usize, NUM_CPUS) }), Tracked(&*lctx), Tracked(None));
     let ghost locked = *krnl;
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
     }
     pagetable_map_hide_l1_page_rlocked(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, (indices.0, indices.1, indices.2), l2_ptr, l1_ptr, Tracked(window_perm), Tracked(&mut *lctx),
@@ -209,7 +209,7 @@ pub fn hide_empty_l1_in_window_wlocked(krnl: &mut KernelK, pagetable: RwLockPage
         Tracked(Some(pagetable_perm.get())));
     let ghost locked = *krnl;
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
     }
     pagetable_map_hide_l1_page(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, (indices.0, indices.1, indices.2), l2_ptr, l1_ptr, Tracked(window_perm), Tracked(&mut *lctx),

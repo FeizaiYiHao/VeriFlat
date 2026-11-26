@@ -30,7 +30,7 @@ pub fn split_2m_borrow_source<'a>(krnl: &'a KernelK, allocator: RwLockPageAlloca
         ret.wf(),
         *ret == krnl.allc_2m_mp.spec_index(allocator).merge_2m_source_list(source),
 {
-    proof { assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(allocator).inv()) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator); }; }
+    proof { assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(allocator).inv()) by { allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator); }; }
     if source < NUM_CPUS {
         let cache = krnl.allc_2m_mp.borrow_cache_typed(allocator, source, Ghost(lctx.allocator_cache_2m_lock_map()),
             Tracked(lctx), Tracked(cache_perms.tracked_borrow(source)));

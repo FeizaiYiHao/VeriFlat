@@ -102,7 +102,7 @@ pub fn syscall_map_pci_bar_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let owner_index = pci_bar_owner_entry(krnl, pagetable, bdf, Tracked(&*lctx), Tracked(&pagetable_perm));
     let (free, linked) = if owner_index.is_some() { pci_bar_va_2m_free(krnl, pagetable, va, Tracked(&*lctx), Tracked(&pagetable_perm)) } else { (false, false) };
     let quota = free && {
-        assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(thrd_ptr).is_init()) by { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
+        assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(thrd_ptr).is_init()) by { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_perm)).quota_4k >= 2
     };
     if !quota {

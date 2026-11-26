@@ -96,7 +96,7 @@ impl KernelK {
             },
     {
         proof {
-            process_perms_wf_map(old(self).prc_mp);
+            process_perms_wf_implies_map_perms_wf(old(self).prc_mp);
             process_perms_wf_at(old(self).prc_mp, prc_ptr);
             if !old(self).prc_mp.spec_index(prc_ptr).being_killed() {
                 assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(prc_ptr))) by {
@@ -190,7 +190,7 @@ impl KernelK {
             },
     {
         proof {
-            process_perms_wf_map(old(self).prc_mp);
+            process_perms_wf_implies_map_perms_wf(old(self).prc_mp);
             process_perms_wf_at(old(self).prc_mp, prc_ptr);
             if !old(self).prc_mp.spec_index(prc_ptr).being_killed() {
                 assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(prc_ptr))) by {
@@ -218,7 +218,7 @@ impl KernelK {
             if res is Some {
                 let entry = TypedHeldLock { lock_id: old(self).prc_mp.lock_id_by_key(prc_ptr), mode: TypedLockMode::Write };
                 lctx.update_lock_id(KernelObjId::Process(prc_ptr), old(self).prc_mp.lock_id_by_key(prc_ptr), self.prc_mp.lock_id_by_key(prc_ptr));
-                map_insert_overwrite_lemma(old(lctx).process_lock_map(), prc_ptr, entry, TypedHeldLock { lock_id: self.prc_mp.lock_id_by_key(prc_ptr), mode: TypedLockMode::Write });
+                map_insert_twice_implies_eq_last_insert(old(lctx).process_lock_map(), prc_ptr, entry, TypedHeldLock { lock_id: self.prc_mp.lock_id_by_key(prc_ptr), mode: TypedLockMode::Write });
             }
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             mark_kill_process_eof(*old(self), *self, *old(lctx), prc_ptr, killer_process, killer_thread, killer_info, res is Some);
@@ -269,7 +269,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Process(prc_ptr)),
     {
         proof {
-            assert(old(self).prc_mp.perms_wf() && old(self).prc_mp.spec_index(prc_ptr).inv()) by { process_perms_wf_map(old(self).prc_mp); process_perms_wf_at(old(self).prc_mp, prc_ptr); };
+            assert(old(self).prc_mp.perms_wf() && old(self).prc_mp.spec_index(prc_ptr).inv()) by { process_perms_wf_implies_map_perms_wf(old(self).prc_mp); process_perms_wf_at(old(self).prc_mp, prc_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).prc_mp.lock_id_by_key(prc_ptr), KernelObjId::Process(prc_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.prc_mp.spec_index(prc_ptr).wlocked_by(&*lctx)) by { old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), prc_ptr); };

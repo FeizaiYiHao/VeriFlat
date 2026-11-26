@@ -106,7 +106,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PcidAllocator(allc_ptr), TypedHeldLock { lock_id: final(self).pcid_allc_mp.lock_id_by_key(allc_ptr), mode: TypedLockMode::Write }),
     {
         proof {
-            pcid_allocator_perms_wf_map(old(self).pcid_allc_mp);
+            pcid_allocator_perms_wf_implies_map_perms_wf(old(self).pcid_allc_mp);
             pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allc_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allc_ptr))) by {
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
@@ -168,7 +168,9 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::PcidAllocator(allc_ptr), old(self).pcid_allc_mp.lock_id_by_key(allc_ptr)),
     {
         proof {
-            assert(old(self).pcid_allc_mp.perms_wf() && old(self).pcid_allc_mp.spec_index(allc_ptr).inv()) by { pcid_allocator_perms_wf_map(old(self).pcid_allc_mp); pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allc_ptr); };
+            assert(old(self).pcid_allc_mp.perms_wf() && old(self).pcid_allc_mp.spec_index(allc_ptr).inv()) by {
+                pcid_allocator_perms_wf_implies_map_perms_wf(old(self).pcid_allc_mp); pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allc_ptr);
+            };
             assert(old(lctx).lock_entry_contains(old(self).pcid_allc_mp.lock_id_by_key(allc_ptr), KernelObjId::PcidAllocator(allc_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pcid_allc_mp.spec_index(allc_ptr).wlocked_by(&*lctx)) by { old(self).pcid_allc_mp.typed_lock_map_aligned_write_at(old(lctx).pcid_allocator_lock_map(), old(lctx).thread_id(), allc_ptr); };

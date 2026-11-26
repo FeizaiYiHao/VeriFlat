@@ -494,7 +494,7 @@ verus! {
         let ghost bdf: PciBdf = (bus, dev, fun);
         let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
         let attached = krnl.irt.borrow(Tracked(&irt_lock_perm)).is_attached(bus, dev, fun);
-        proof { process_perms_wf_at(krnl.prc_mp, sender_proc); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt); }
+        proof { process_perms_wf_at(krnl.prc_mp, sender_proc); pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt); }
         let iommu_table = if attached { krnl.prc_mp.borrow_rodata(sender_proc).borrow().iommu_table_ptr } else { None };
         let ghost mut anchor: Option<PciBdf> = None;
         let ghost mut locked_it = *krnl;
@@ -724,7 +724,7 @@ verus! {
         let (Tracked(sender_pt_perm), Tracked(receiver_pt_perm)) = krnl.wlock_pagetable_pair(sender_pt, receiver_pt, Tracked(&mut *lctx));
         proof {
             process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, sender_proc); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, receiver_proc);
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt); pagetable_perms_wf_at(krnl.pt_mp, receiver_pt);
+            pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt); pagetable_perms_wf_at(krnl.pt_mp, receiver_pt);
         }
         let sender_pci = &krnl.pt_mp.borrow_typed(sender_pt, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&sender_pt_perm)).higher.pci;
         let sender_index = sender_pci.find(bus as usize, dev as usize, fun as usize);
@@ -783,7 +783,7 @@ verus! {
         proof {
             lctx.enter_kernel_view_release();
             lctx.update_lock_id(KernelObjId::Thread(peer_thrd_ptr), old_peer_thread_lock_id, krnl.thrd_mp.lock_id_by_key(peer_thrd_ptr));
-            scheduler_perms_wf_map(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_sched_ptr);
+            scheduler_perms_wf_implies_map_perms_wf(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_sched_ptr);
             assert(ipc_pci_rendezvous_eof_transition_framing(
                 *old(krnl), mid, *krnl, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred,
                 result, lctx.thread_id(), iommu_table, anchor,

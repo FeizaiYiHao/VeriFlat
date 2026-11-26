@@ -90,12 +90,12 @@ fn reclaim_hidden_l1_page_to_cache(
     proof {
         spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
         spec_va_4k_index_roundtrip_at(window_of(va).va, indices.0, indices.1, indices.2, 0usize);
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         page_array_wf_at(krnl.pg_arr, pg_idx);
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(l1_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, l1_ptr); };
         kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(indices.0, indices.1);
     }
@@ -214,17 +214,17 @@ pub fn reclaim_hidden_l1_page_in_window(
     proof {
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         spec_va_4k_index_roundtrip_at(va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.higher.wf_l4_at(spec_va2index(va).0);
         c.l3_links_l2_wf_at(c.spec_resolve_mapping_l4(spec_va2index(va).0)->0.addr, spec_va2index(va).1);
         c.wf_l2_at(l2_ptr, spec_va2index(va).2);
         pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l1_ptr);
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         process_object_pages_owner_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, krnl.pg_arr, page_ptr2page_index(l1_ptr));
     }
     let pg_idx = page_ptr2page_index(l1_ptr);
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
+    proof { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm)).owning_container;
     proof {
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
@@ -250,7 +250,7 @@ pub fn reclaim_hidden_l1_page_in_window(
         let w = window_of(va);
         let c1 = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         spec_va_4k_index_roundtrip_at(w.va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, 0usize);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c1.higher.wf_l4_at(spec_va2index(va).0); c1.l3_links_l2_wf_at(c1.spec_resolve_mapping_l4(spec_va2index(va).0)->0.addr, spec_va2index(va).1);
         c1.wf_l2_at(l2_ptr, spec_va2index(va).2);
         pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l1_ptr);
@@ -366,12 +366,12 @@ fn reclaim_hidden_l1_page_to_cache_wlocked(
     proof {
         spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
         spec_va_4k_index_roundtrip_at(window_of(va).va, indices.0, indices.1, indices.2, 0usize);
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         page_array_wf_at(krnl.pg_arr, pg_idx);
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(l1_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, l1_ptr); };
         kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq(indices.0, indices.1);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
@@ -489,18 +489,18 @@ pub fn reclaim_hidden_l1_page_in_window_wlocked(
     proof {
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         spec_va_4k_index_roundtrip_at(va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.higher.wf_l4_at(spec_va2index(va).0);
         c.l3_links_l2_wf_at(c.spec_resolve_mapping_l4(spec_va2index(va).0)->0.addr, spec_va2index(va).1);
         c.wf_l2_at(l2_ptr, spec_va2index(va).2);
         pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l1_ptr);
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         process_object_pages_owner_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, krnl.pg_arr, page_ptr2page_index(l1_ptr));
     }
     let pg_idx = page_ptr2page_index(l1_ptr);
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     let ghost page_lctx = *lctx;
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
+    proof { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm)).owning_container;
     proof {
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
@@ -527,7 +527,7 @@ pub fn reclaim_hidden_l1_page_in_window_wlocked(
         let w = window_of(va);
         let c1 = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         spec_va_4k_index_roundtrip_at(w.va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, 0usize);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c1.higher.wf_l4_at(spec_va2index(va).0); c1.l3_links_l2_wf_at(c1.spec_resolve_mapping_l4(spec_va2index(va).0)->0.addr, spec_va2index(va).1);
         c1.wf_l2_at(l2_ptr, spec_va2index(va).2);
         pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l1_ptr);

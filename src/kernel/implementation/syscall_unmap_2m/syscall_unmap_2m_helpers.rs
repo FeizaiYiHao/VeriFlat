@@ -163,7 +163,7 @@ pub(super) fn unmap_2m_unmap_and_finish(
 {
     proof {
         broadcast use spec_va_2m_valid_index_roundtrip;
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Unmap2m { range: *va_range, unmapped: 0, flushed: false })), Tracked(&*lctx), Tracked(&thread_perm));

@@ -253,7 +253,7 @@ pub(super) fn mmap_1g_map_range(
         let va = range.index(i);
         let l4i = v2l4index(va);
         proof {
-            spec_va_1g_valid_index_roundtrip(va); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
+            spec_va_1g_valid_index_roundtrip(va); pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
             container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
         }
         let l4_entry = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm).higher.get_entry_l4(l4i);

@@ -24,7 +24,7 @@ pub(super) proof fn scheduler_shard_lock_op_eof(pre: KernelK, post: KernelK, sch
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
-    assert(scheduler_invariant_fields_unchanged(pre.sched_mp, post.sched_mp)) by { scheduler_lock_op_preserves_invariant_fields(pre.sched_mp, post.sched_mp, sched_ptr, cpu_id); };
+    assert(scheduler_invariant_fields_unchanged(pre.sched_mp, post.sched_mp)) by { scheduler_lock_op_implies_scheduler_invariant_fields_unchanged(pre.sched_mp, post.sched_mp, sched_ptr, cpu_id); };
     assert(post.memory_management_inv()) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.process_management_inv()) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };

@@ -12,7 +12,7 @@ pub open spec fn scheduler_invariant_fields_unchanged(pre: SchedulerUnLockedMap,
         pre.dom().contains(s_ptr) && index_valid(NUM_CPUS, cpu_id) ==> post.spec_index(s_ptr).shard(cpu_id) == pre.spec_index(s_ptr).shard(cpu_id)
 }
 
-pub proof fn scheduler_lock_op_preserves_invariant_fields(pre: SchedulerUnLockedMap, post: SchedulerUnLockedMap, changed: RwLockSchedulerPtr, cpu_id: CpuId)
+pub proof fn scheduler_lock_op_implies_scheduler_invariant_fields_unchanged(pre: SchedulerUnLockedMap, post: SchedulerUnLockedMap, changed: RwLockSchedulerPtr, cpu_id: CpuId)
     requires
         post.unchanged_except(&pre, changed),
         post.spec_index(changed).owning_container == pre.spec_index(changed).owning_container,

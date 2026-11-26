@@ -312,7 +312,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     let cpu_lock_res = krnl.wlock_own_cpu(cpu_id, Tracked(&mut *lctx));
     if cpu_lock_res.is_none() {
         proof {
-            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
+            no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
             schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
             assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) by { thread_cpu_wf_killed_cpu_at(old(krnl).thrd_mp, old(krnl).cpu_arr, cpu_id); };
             schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Idle);

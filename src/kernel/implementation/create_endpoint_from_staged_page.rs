@@ -105,8 +105,8 @@ pub fn create_endpoint_from_staged_page(
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
-        assert(krnl.ctn_mp.perms_wf() && krnl.ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
-        assert(krnl.ep_mp.perms_wf() && !krnl.ep_mp.dom().contains(pg_ptr)) by { endpoint_perms_wf_map(krnl.ep_mp); endpoint_pages_wf_page_at(krnl.ep_mp, krnl.pg_arr, pg_ptr); };
+        assert(krnl.ctn_mp.perms_wf() && krnl.ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
+        assert(krnl.ep_mp.perms_wf() && !krnl.ep_mp.dom().contains(pg_ptr)) by { endpoint_perms_wf_implies_map_perms_wf(krnl.ep_mp); endpoint_pages_wf_page_at(krnl.ep_mp, krnl.pg_arr, pg_ptr); };
         assert(krnl.pg_arr.spec_index(pg_idx).view().view().addr == pg_ptr) by { page_array_wf_at(krnl.pg_arr, pg_idx); };
     }
     let ghost page_locks = lctx.page_lock_map();

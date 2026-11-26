@@ -44,7 +44,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(PageSize::SZ2m, alloc_ptr_2m), TypedHeldLock { lock_id: final(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).inv()) by { allocator_perms_wf_map(old(self).allc_2m_mp); allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
+            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).inv()) by { allocator_perms_wf_implies_map_perms_wf(old(self).allc_2m_mp); allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
             assert(old(lctx).lock_id_acyclic(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id())) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
@@ -55,7 +55,7 @@ impl KernelK {
         }
         let ret = self.allc_2m_mp.wlock_global_pool(alloc_ptr_2m, Tracked(&mut *lctx), Ghost(PageSize::SZ2m));
         proof {
-            assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_global_pool_lock_op_preserves_invariant_fields(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
+            assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_global_pool_lock_op_implies_allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -93,13 +93,13 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(PageSize::SZ2m, alloc_ptr_2m), old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id()),
     {
         proof {
-            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).inv()) by { allocator_perms_wf_map(old(self).allc_2m_mp); allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
+            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).inv()) by { allocator_perms_wf_implies_map_perms_wf(old(self).allc_2m_mp); allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
             assert(old(lctx).lock_entry_contains(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(PageSize::SZ2m, alloc_ptr_2m))) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
         }
         assert(self.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
         self.allc_2m_mp.wunlock_global_pool(alloc_ptr_2m, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ2m));
         proof {
-            assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_global_pool_lock_op_preserves_invariant_fields(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
+            assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_global_pool_lock_op_implies_allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };

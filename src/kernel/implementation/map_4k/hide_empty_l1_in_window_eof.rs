@@ -223,7 +223,7 @@ pub(super) proof fn hide_empty_l1_in_window_eof_held_windows(pre: KernelK, post:
     let vi = spec_va2index(va);
     spec_va_4k_index_roundtrip_at(va, vi.0, vi.1, vi.2, vi.3);
     spec_va_4k_index_roundtrip_at(window_of(va).va, vi.0, vi.1, vi.2, 0usize);
-    pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, pagetable); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    pagetable_perms_wf_implies_map_perms_wf(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, pagetable); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     assert forall|w: WindowVa| #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable, w))] lctx.pagetable_window_lock_map().dom().contains((pagetable, w)) && w != window_of(va)
         implies new_c.window_view(w) == old_c.window_view(w) by {
         let l4w = spec_v2l4index(w.va);

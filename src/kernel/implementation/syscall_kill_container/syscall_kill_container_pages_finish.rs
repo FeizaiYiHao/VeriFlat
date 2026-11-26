@@ -101,13 +101,13 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
     proof {
         let a4_caches = krnl.allc_4k_mp.spec_index(a4).cpu_caches;
         let a2_caches = krnl.allc_2m_mp.spec_index(a2).cpu_caches;
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2);
         a4_caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(a4_caches.view()); a2_caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(a2_caches.view());
         container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, ctn_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
     }
     let ghost drained = *krnl;
     proof {
-        kernel_container_quotas_zero_projection(&drained, ctn_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
+        container_allocators_hold_no_quota_implies_projected_container_quotas_zero(&drained, ctn_ptr); container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
     }
     {
         let container = krnl.ctn_mp.borrow_mut_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_perm));

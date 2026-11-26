@@ -255,7 +255,7 @@ fn unmap_1g_range_mapped_present(krnl: &KernelK, range: &VaRange1G, pagetable_pt
         },
 {
     assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).is_init() && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf()) by {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     };
     let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let ghost table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);

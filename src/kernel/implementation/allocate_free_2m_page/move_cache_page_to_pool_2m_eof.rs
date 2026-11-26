@@ -71,7 +71,7 @@ proof fn move_cache_page_to_pool_2m_eof_free_pages(pre: KernelK, post: KernelK, 
         allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
 {
     reveal(move_cache_page_to_pool_2m_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
         reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf);

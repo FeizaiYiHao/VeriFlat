@@ -32,7 +32,7 @@ pub fn flush_iommu_tlb_for_table(krnl: &mut KernelK, iommu_table: RwLockPageTabl
         iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
 {
     assert(krnl.it_mp.perms_wf() && krnl.it_mp.spec_index(iommu_table).is_init() && krnl.it_mp.spec_index(iommu_table).view().inv()) by {
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
     };
     let did = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), iommu_table_perm).did;
     if let Some(d) = did { krnl.iommu_tlb.invalidate_iotlb_domain(d, Ghost(*krnl), Tracked(lctx)); }

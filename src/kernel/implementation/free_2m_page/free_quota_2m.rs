@@ -59,7 +59,9 @@ pub fn return_free_quota_2m(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, owner
 {
     assert(krnl.allc_2m_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_2m_mp.spec_index(allc_ptr).total_free_pages.view()) by { kernel_inv_implies_thread_pending_2m_quota_bounded(krnl, thrd_ptr, owner, depth); };
     let amount = *counter;
-    assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.dom().contains(allc_ptr)) by { allocator_perms_wf_map(krnl.allc_2m_mp); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); };
+    assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.dom().contains(allc_ptr)) by {
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner);
+    };
     thread_map_clear_free_quota_pending_2m(&mut krnl.thrd_mp, thrd_ptr, depth, counter, Tracked(&*lctx), thread_perm);
     {
         let quota = krnl.allc_2m_mp.borrow_mut_quota_typed(allc_ptr, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), quota_perm);

@@ -360,7 +360,7 @@ impl PageTableHigher {
             c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.table_pages_wf_l1_at(target_l1_p);
-            page_ptr_valid_imply_mem_valid(target_l1_p);
+            page_ptr_valid_implies_mem_valid(target_l1_p);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
         l2_entry_set_published_locked(&PPtr::<L2PageMap>::from_usize(target_l2_p), Tracked(&mut l2_perm), target_l2i, Tracked(window_perm),
@@ -1015,7 +1015,7 @@ impl PageTableHigher {
             self.wf_l4_cr3_at();
             self.wf_l4_at(target_l4i);
             self.table_pages_wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr);
-            page_ptr_valid_imply_mem_valid(self.spec_resolve_mapping_l4(target_l4i)->0.addr);
+            page_ptr_valid_implies_mem_valid(self.spec_resolve_mapping_l4(target_l4i)->0.addr);
         }
         let l4_entry = self.get_entry_l4(target_l4i).unwrap();
         page_map_set_published_in_map(self.cr3, Tracked(self.l4_table.borrow_mut()), target_l4i,
@@ -1115,7 +1115,7 @@ impl PageTableHigher {
         let mut l3_entry = self.get_entry_1g_l3(target_l4i, target_l3i, &l4_entry).unwrap();
         proof {
             self.wf_l3_at(l4_entry.addr);
-            page_ptr_valid_imply_mem_valid(l3_entry.addr);
+            page_ptr_valid_implies_mem_valid(l3_entry.addr);
         }
         l3_entry.perm.present = false;
         page_map_set_published_in_map(l4_entry.addr, Tracked(self.l3_tables.borrow_mut()), target_l3i, l3_entry, Tracked(&mut *lctx));
@@ -1317,7 +1317,7 @@ impl PageTableHigher {
             self.wf_l3_at(l4_entry.addr);
             c.l3_links_l2_wf_at(l4_entry.addr, target_l3i);
             c.table_pages_wf_l2_at(l3_entry.addr);
-            page_ptr_valid_imply_mem_valid(l3_entry.addr);
+            page_ptr_valid_implies_mem_valid(l3_entry.addr);
         }
         page_map_set_published_in_map(l4_entry.addr, Tracked(self.l3_tables.borrow_mut()), target_l3i,
             PageEntry { addr: l3_entry.addr, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }, Tracked(&mut *lctx));

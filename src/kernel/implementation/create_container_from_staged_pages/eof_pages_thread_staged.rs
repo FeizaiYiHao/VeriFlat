@@ -115,7 +115,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
     } else {
         assert(page_ptr_valid(pg_ptr)) by { reveal(thread_staged_4k_pages_wf); };
         assert(pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: thrd_ptr })) by { reveal(thread_staged_4k_pages_wf); };
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         publish_staged_container_root_eof_unmodified_object_page_state_eq(
             pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -170,12 +170,12 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
         },
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
+    page_index_valid_implies_page_ptr_valid(); page_index_roundtrip();
     assert(!new_container_moved_pages(
         container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,
     ).contains(page_index2page_ptr(pg_idx))) by {
         reveal(Seq::contains); reveal(new_container_moved_pages); reveal(new_container_bootstrap_4k_pages);
-        page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
+        page_ptr_2m_valid_implies_page_index_2m_valid(container_page); page_ptr_2m_valid_implies_page_index_2m_valid(pcid_allocator_page);
         if page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(page_index2page_ptr(pg_idx)) {
             page_2m_ptr_prefix_member_bounds(page_ptr2page_index(container_page), 512, page_index2page_ptr(pg_idx));
             if pg_idx != page_ptr2page_index(container_page) {
@@ -251,10 +251,10 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
 {
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(hugepage_2m_tail_forward_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
-    page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
+    page_ptr_2m_valid_implies_page_index_2m_valid(container_page); page_ptr_2m_valid_implies_page_index_2m_valid(pcid_allocator_page);
     assert(pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned2m { thread_ptr: thrd_ptr })) by { reveal(thread_staged_2m_pages_wf); };
     assert(page_ptr_valid(pg_ptr)) by { reveal(thread_staged_2m_pages_wf); };
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     assert(!funding_pages.to_set().contains(pg_ptr)) by { reveal(thread_staged_4k_pages_wf); };
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(pg_ptr)) by { reveal(thread_staged_4k_pages_wf); };
     assert(!page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr)) by {

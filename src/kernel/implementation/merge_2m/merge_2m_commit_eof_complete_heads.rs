@@ -40,7 +40,7 @@ pub broadcast proof fn merge_2m_commit_eof_implies_region_page_left_source(pre: 
         } else {
             allocator_free_page_ptrs_wf_global_at(pre.allc_4k_mp, allocator_4k, pointer); allocator_free_4k_pages_wf_global_at(pre.allc_4k_mp, pre.pg_arr, allocator_4k, pointer);
         }
-        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
     }
 }
 

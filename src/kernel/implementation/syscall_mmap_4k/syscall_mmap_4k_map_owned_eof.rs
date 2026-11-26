@@ -97,7 +97,7 @@ proof fn map_owned_4k_page_eof_memory_management(pre: KernelK, post: KernelK, pg
 {
     reveal(map_owned_4k_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
         let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
@@ -194,7 +194,7 @@ pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, pg_ptr: P
 {
     reveal(map_owned_4k_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(post.subsystems_inv()) by {
         assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
         assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };

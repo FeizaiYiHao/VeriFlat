@@ -97,7 +97,7 @@ pub(crate) fn kill_retire_lock_table_page(
         krnl.prc_mp.typed_lock_map_aligned_held_in_dom(lctx.process_lock_map(), lctx.thread_id());
         kernel_endpoint_nonlock_fields_unchanged_for_equal(steps.snapshot_k().ep_mp, krnl.ep_mp); kernel_lock_states_unchanged_except_tables_of_implies_u_eq(&steps.snapshot_k(), &*krnl, Some(target));
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        page_array_wf_map(krnl.pg_arr);
+        page_array_wf_implies_page_array_inv(krnl.pg_arr);
         page_array_wf_at(krnl.pg_arr, pg_idx);
     }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm)).owning_container;

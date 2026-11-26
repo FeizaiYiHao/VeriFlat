@@ -57,7 +57,7 @@ pub fn take_over_dangling_caller(
         final(krnl).thrd_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
 {
     proof {
-        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, dangling_ptr);
+        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, dangling_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), dangling_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
     }

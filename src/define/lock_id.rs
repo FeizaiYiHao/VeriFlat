@@ -193,7 +193,7 @@ pub struct LockId {
     pub minor: LockMinorId,
 }
 
-pub proof fn lock_id_fields_eq_imply_eq()
+pub proof fn lock_id_fields_eq_implies_eq()
     ensures
         forall|lock_id1: LockId, lock_id2: LockId| {
             &&& lock_id1.container == lock_id2.container

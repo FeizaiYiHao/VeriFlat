@@ -36,7 +36,7 @@ pub fn refund_unmap_4k_quota_to_thread(krnl: &mut KernelK, thrd_ptr: RwLockThrea
         credited ==> final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         credited ==> kernel_thread_quota_4k_changed(old(krnl), final(krnl), thrd_ptr, *old(direct) as int),
 {
-    assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
+    assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
     let quota = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_perm).quota_4k;
     let amount = *direct;
     if amount != 0 && amount <= THREAD_QUOTA_4K_REFUND_CAP && quota <= THREAD_QUOTA_4K_REFUND_CAP - amount {

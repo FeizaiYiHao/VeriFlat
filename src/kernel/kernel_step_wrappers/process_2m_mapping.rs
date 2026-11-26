@@ -187,7 +187,7 @@ broadcast proof fn kernel_owned_2m_page_implies_u_2m_mapping_frame_differs_at(k:
             assert(pci_bar_page(k.pci_bars.view(), whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr)) by {
                 kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k, pt, v);
             };
-            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); };
             pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
         }
     }
@@ -304,7 +304,7 @@ broadcast proof fn kernel_owned_4k_page_implies_u_4k_mapping_target_differs_at(k
         let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
         if c.mapping_4k().contains_key(v) && c.mapping_4k().spec_index(v).is_io && c.mapping_4k().spec_index(v).addr == addr {
             kernel_io_4k_mapping_implies_pci_bar_page_at(k, pt, v);
-            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); };
             pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
         }
     }
@@ -372,10 +372,10 @@ broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k:
                 let bars = k.pci_bars.view();
                 kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k, pt, v);
                 assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && PAGE_SZ_1G == 0x40000000) by (compute);
-                assert(addr % 0x1000 == 0) by { page_ptr_valid_imply_page_index_valid(); };
+                assert(addr % 0x1000 == 0) by { page_ptr_valid_implies_page_index_valid(); };
                 assert(bars[pci_bar_entry_of_page(bars, m)->0].envelope_contains(addr));
             };
-            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+            assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); };
             pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
         }
     }

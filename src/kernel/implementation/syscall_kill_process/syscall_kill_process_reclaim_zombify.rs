@@ -355,7 +355,7 @@ pub(crate) fn kill_reclaim_return_quota_4k_under_lock(
         }),
 {
     broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let ctn_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
@@ -429,7 +429,7 @@ pub(crate) fn kill_reclaim_return_quota_2m_under_lock(
         }),
 {
     broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let ctn_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
@@ -503,7 +503,7 @@ pub(crate) fn kill_reclaim_return_quota_1g_under_lock(
         }),
 {
     broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let ctn_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
@@ -619,7 +619,7 @@ pub(crate) fn kill_reclaim_unlock_table(
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Zombie)), Tracked(&*lctx), Tracked(thread_perm));
     let ghost progressed = *krnl;
     proof {
-        process_perms_wf_map(krnl.prc_mp);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         if let Some(it) = iommu_table {
             assert(krnl.it_mp.spec_index(it).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
@@ -742,7 +742,7 @@ pub(crate) fn kill_reclaim_zombify(
     }
     let Tracked(pcid_allocator_perm) = krnl.wlock_pcid_allocator(pcid_allc_ptr, Tracked(&mut *lctx));
     let ghost locked = *krnl;
-    proof { process_perms_wf_map(krnl.prc_mp); assert(entry_k.pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); assert(entry_k.pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None); }
     pcid_allocator_map_release(&mut krnl.pcid_allc_mp, pcid_allc_ptr, target, pcid, Tracked(&*lctx), Tracked(&pcid_allocator_perm));
     {
         let tracked target_perm = chain_perms.tracked_borrow(target);

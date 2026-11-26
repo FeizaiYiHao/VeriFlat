@@ -84,7 +84,7 @@ pub proof fn merge_2m_commit_eof_implies_container_owned_pages_wf(pre: KernelK, 
     assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by {
         reveal(container_owned_pages_wf);
         container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, candidate.head);
-        page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_implies_page_index_valid();
         assert(container_owned_pages_forward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_forward_wf); };
         assert(container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_backward_wf); };
         assert(container_owned_pages_2m_region_wf(post.ctn_mp, post.pg_arr)) by {
@@ -125,7 +125,7 @@ pub proof fn merge_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre: Kernel
         mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -160,7 +160,7 @@ pub proof fn merge_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre: Kernel
         mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_implies_page_index_valid();
     };
 }
 

@@ -39,7 +39,7 @@ pub fn merge_2m_borrow_source<'a>(krnl: &'a KernelK, allocator: RwLockPageAlloca
         let sets = Seq::new((NUM_CPUS + 1) as nat, |i: int| krnl.allc_4k_mp.spec_index(allocator).merge_2m_source_list(i as usize).view().to_set());
         sequence_union_fold_implies_entry_subset(sets, source as int);
     };
-    proof { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); }
+    proof { allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); }
     if source < NUM_CPUS {
         let cache = krnl.allc_4k_mp.borrow_cache_typed(allocator, source, Ghost(lctx.allocator_cache_4k_lock_map()),
             Tracked(lctx), Tracked(cache_perms.tracked_borrow(source)));

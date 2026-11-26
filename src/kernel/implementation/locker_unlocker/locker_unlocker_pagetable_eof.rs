@@ -36,7 +36,7 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
         !(post.prc_mp.spec_index(post.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is TablesEmptied)
             && !(post.prc_mp.spec_index(post.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is Zombie) ==> post.pt_mp.spec_index(pagetable_ptr).view().higher.no_hidden_user_l4_l3_entries(),
 {
-    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
+    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
     pagetable_table_stale_cpus_only_when_write_locked_at(pre.pt_mp, pagetable_ptr);
     pagetable_hidden_roots_only_when_write_locked_or_emptied_at(pre.pt_mp, pre.prc_mp, pagetable_ptr);
     assert(!pre.pt_mp.spec_index(pagetable_ptr).locked() ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).leaves_present()) by {
@@ -160,7 +160,7 @@ pub(super) proof fn runlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
     ensures
         post.inv(),
 {
-    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
+    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
     assert(post.subsystems_inv()) by {
         lock_op_implies_pagetable_perms_wf_preserved_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked);
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_typed_lock_map_aligned); reveal(pagetable_window_stale_cpus_only_when_locked);
@@ -204,7 +204,7 @@ pub(super) proof fn wunlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
     ensures
         post.inv(),
 {
-    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
+    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
     assert(post.subsystems_inv()) by {
         lock_op_implies_pagetable_perms_wf_preserved_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked);
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_typed_lock_map_aligned); reveal(pagetable_window_stale_cpus_only_when_locked);
@@ -261,7 +261,7 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
         post.inv(),
 {
     reveal(downgrade_pagetable_eof_transition_framing);
-    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
+    assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
     assert(post.subsystems_inv()) by {
         lock_op_implies_pagetable_perms_wf_preserved_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked);
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_stale_cpus_only_when_locked); reveal(pagetable_table_stale_cpus_only_when_write_locked);

@@ -130,7 +130,7 @@ pub proof fn mapped_4k_page_pagetable_wf_preserved_for_4k_mapping_insert(
                 ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_nonempty_4k_l1(l4i, l3i, l2i, l1i),
     ensures
         mapped_4k_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
-{ broadcast use spec_va_4k_valid_index_roundtrip; page_ptr_valid_imply_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_4k_page_pagetable_wf); }
+{ broadcast use spec_va_4k_valid_index_roundtrip; page_ptr_valid_implies_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_4k_page_pagetable_wf); }
 
 pub proof fn mapped_2m_page_pagetable_wf_preserved_for_4k_mapping_insert(
     pre_pagetable_map: PageTableLockedMap, pre_pt_lower: PageTableLowerMap, post_pagetable_map: PageTableLockedMap, post_pt_lower: PageTableLowerMap,
@@ -181,7 +181,7 @@ pub proof fn mapped_2m_page_pagetable_wf_preserved_for_4k_mapping_insert(
                 ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_nonempty_1g_l3(l4i, l3i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_nonempty_1g_l3(l4i, l3i),
     ensures
         mapped_2m_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
-{ broadcast use spec_va_2m_valid_index_roundtrip; page_ptr_valid_imply_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_2m_page_pagetable_wf); }
+{ broadcast use spec_va_2m_valid_index_roundtrip; page_ptr_valid_implies_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_2m_page_pagetable_wf); }
 
 pub proof fn mapped_1g_page_pagetable_wf_preserved_for_4k_mapping_insert(
     pre_pagetable_map: PageTableLockedMap, pre_pt_lower: PageTableLowerMap, post_pagetable_map: PageTableLockedMap, post_pt_lower: PageTableLowerMap,
@@ -232,7 +232,7 @@ pub proof fn mapped_1g_page_pagetable_wf_preserved_for_4k_mapping_insert(
                 ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_nonempty_1g_l3(l4i, l3i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_nonempty_1g_l3(l4i, l3i),
     ensures
         mapped_1g_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
-{ broadcast use spec_va_1g_valid_index_roundtrip; page_ptr_valid_imply_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_1g_page_pagetable_wf); }
+{ broadcast use spec_va_1g_valid_index_roundtrip; page_ptr_valid_implies_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_1g_page_pagetable_wf); }
 
 /// A single non-mapped page may change payload/state without affecting the
 /// bidirectional page-table mapping invariant. All mapped pages remain exact

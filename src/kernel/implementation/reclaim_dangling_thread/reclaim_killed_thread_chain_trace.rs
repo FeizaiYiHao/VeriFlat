@@ -93,7 +93,7 @@ pub(super) proof fn killed_thread_reclaim_step_pre_from_k(krnl: &KernelK, entry:
         }),
 {
     let current_thread = entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
-    kernel_process_container_lock_states_projection_eq(krnl, entry, processes, containers);
+    kernel_process_container_lock_states_equal_implies_projected_lock_states_equal(krnl, entry, processes, containers);
     kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(entry, cpu_id);
     kernel_thread_projection_at(krnl, current_thread); kernel_thread_projection_at(entry, current_thread);
 }

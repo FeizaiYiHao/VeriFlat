@@ -116,7 +116,7 @@ pub(super) proof fn new_container_staged_pages_disjoint(
             pages_4k.view().spec_index(4), pages_4k.view().spec_index(5), pages_4k.view().spec_index(6),
         )),
 {
-    page_ptr_2m_valid_imply_page_index_2m_valid(container_page);
+    page_ptr_2m_valid_implies_page_index_2m_valid(container_page);
     assert(pages_4k.view().to_set().disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page)))) by {
         let page_ptrs = pages_4k.view().to_set();
         let region = page_2m_all_ptrs(page_ptr2page_index(container_page));

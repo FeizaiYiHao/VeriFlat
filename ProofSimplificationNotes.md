@@ -550,7 +550,7 @@ Cargo 默认并发，Verus 32 线程，`VERUS_PIPELINE_SMT=1`。vstd 和普通�
 “—”表示 #34525 未保留该函数数据。#34619 中无 >5 s 函数（最大 `share_mapping_4k_build_and_share` 4.88 s）。
 
 - kill 拆分：`kill_reclaim_iommu_leaves` 改为薄包装，依次调用私有 exec `kill_reclaim_iommu_hide_leaves`、`kill_reclaim_iommu_flush`、`kill_reclaim_iommu_remove_leaves`；单体合计 8.61M / 5.94 s → 4.77M，最大 0.98 s（#34599 → #34619）。
-- `iommu_map_4k_lock_and_check` 上下文敏感：单体 11.44M / 分 crate 4.15M；H+F′ 变体（helper 移到 `_lock.rs`，删 `rlock_pagetable` 后的 `pagetable_perms_wf_map`）为单体 3.89M / 分 crate 15.55M（#34613/#34614），方向相反，未改，待用户选择。整模块的单体聚焦运行（`--verify-only-module`）逐位复现完整单体的 rlimit，`--verify-function` 运行则不复现。
+- `iommu_map_4k_lock_and_check` 上下文敏感：单体 11.44M / 分 crate 4.15M；H+F′ 变体（helper 移到 `_lock.rs`，删 `rlock_pagetable` 后的 `pagetable_perms_wf_implies_map_perms_wf`）为单体 3.89M / 分 crate 15.55M（#34613/#34614），方向相反，未改，待用户选择。整模块的单体聚焦运行（`--verify-only-module`）逐位复现完整单体的 rlimit，`--verify-function` 运行则不复现。
 
 ### 遗留
 

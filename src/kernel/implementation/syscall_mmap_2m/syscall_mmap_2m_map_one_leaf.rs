@@ -152,7 +152,7 @@ pub(super) fn mmap_2m_page(
         let unlocked_k = *krnl;
         let unlocked_lctx = *lctx;
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-            map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
+            map_insert_twice_implies_eq_last_insert(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
                 TypedHeldLock { lock_id: leaf_k.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
             broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
         };

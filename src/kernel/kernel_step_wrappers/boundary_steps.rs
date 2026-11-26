@@ -119,7 +119,7 @@ impl KernelK {
         assert(steps.snapshot_u() != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(steps.snapshot_u(), kernel_k_to_kernel_u(*self), pcid, None)) by {
             reveal(kernel_u_cpu_tlb_cleared); kernel_u_domains_projection(&steps.snapshot_k()); kernel_u_domains_projection(&*self);
             if steps.snapshot_u() != kernel_k_to_kernel_u(*self) {
-                kernel_cpu_tlb_within_may_cache_projection(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));
+                cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));
                 assert(!steps.snapshot_u().cpu_tlb.dom().contains((cpu_id, pcid)) || steps.snapshot_u().cpu_tlb[(cpu_id, pcid)] != self.cpu_tlb.spec_index((cpu_id, pcid))) by {
                     if steps.snapshot_u().cpu_tlb.dom().contains((cpu_id, pcid)) && steps.snapshot_u().cpu_tlb[(cpu_id, pcid)] == self.cpu_tlb.spec_index((cpu_id, pcid)) {
                         assert_maps_equal!(steps.snapshot_u().cpu_tlb, self.cpu_tlb.view(), key => {});

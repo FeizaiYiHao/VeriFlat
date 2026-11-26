@@ -16,7 +16,7 @@ pub open spec fn process_invariant_fields_unchanged(pre: ProcessLockedMap, post:
         }
 }
 
-pub proof fn process_lock_op_preserves_invariant_fields(pre: ProcessLockedMap, post: ProcessLockedMap, changed: RwLockProcessPtr)
+pub proof fn process_lock_op_implies_process_invariant_fields_unchanged(pre: ProcessLockedMap, post: ProcessLockedMap, changed: RwLockProcessPtr)
     requires
         post.unchanged_except(&pre, changed),
         post.spec_index(changed).view() == (Process { state: post.spec_index(changed).view().state, ..pre.spec_index(changed).view() }),

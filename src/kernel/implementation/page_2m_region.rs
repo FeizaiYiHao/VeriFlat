@@ -79,7 +79,7 @@ pub broadcast proof fn page_2m_ptr_prefix_member_bounds(head: PageIndex, count: 
     assert(count > 0) by { if count == 0 { } };
     let last = (head as int + count as int - 1) as usize;
     if pg_ptr == spec_page_index2page_ptr(last) {
-        page_index_valid_imply_page_ptr_valid();
+        page_index_valid_implies_page_ptr_valid();
         page_index_roundtrip();
     } else {
         page_2m_ptr_prefix_member_bounds(head, (count - 1) as nat, pg_ptr);
@@ -95,7 +95,7 @@ pub broadcast proof fn page_ptr_sequence_index_in_mapped_set(page_ptrs: Seq<Page
             &&& page_ptrs.map_values(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr)).to_set().contains(page_ptr2page_index(page_ptrs.spec_index(i)))
         },
 {
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     let mapped = page_ptrs.map_values(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr));
     mapped.lemma_index_contains(i);
     mapped.to_set_ensures();
@@ -178,7 +178,7 @@ pub proof fn owned_4k_page_not_in_2m_region(krnl: &KernelK, pg_ptr: PagePtr, hea
     }
 }
 
-pub proof fn page_ptr_2m_valid_imply_page_index_2m_valid(pg_ptr: PagePtr)
+pub proof fn page_ptr_2m_valid_implies_page_index_2m_valid(pg_ptr: PagePtr)
     requires
         page_ptr_2m_valid(pg_ptr),
     ensures

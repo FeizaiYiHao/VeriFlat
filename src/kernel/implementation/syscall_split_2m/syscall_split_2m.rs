@@ -61,7 +61,7 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         return RetValueType::ErrorThreadKilled;
     }
     let (_prc_ptr, thrd_ptr, ctn_ptr, alloc_ptr_4k, _pagetable_ptr, _quota_4k, Tracked(thread_lock_perm), Tracked(cpu_lock_perm)) = locked.unwrap();
-    proof { thread_perms_wf_map(krnl.thrd_mp); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); }
     let quota_2m = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm)).quota_2m;
     let ret = if quota_2m < n { RetValueType::ErrorNoQuota }
     else if n == 0 { RetValueType::SuccessUsize { value: 0 } }
@@ -270,7 +270,7 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             split_2m_empty_trace_implies_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n, ret);
         }
         split_2m_result_from_k(old(krnl), cpu_id, n, ret);
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
+        no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx);
     }
     ret
 }

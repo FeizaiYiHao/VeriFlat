@@ -117,7 +117,7 @@ pub(super) fn release_backing_page_lock_group(
         forall|index: PageIndex| #![trigger final(pages).spec_index(index)] index_valid(NUM_PAGES, index) && !set![indices.0, indices.1, indices.2, indices.3, indices.4].contains(index)
             ==> final(pages).spec_index(index) == old(pages).spec_index(index),
 {
-    proof { page_array_wf_map(*pages); }
+    proof { page_array_wf_implies_page_array_inv(*pages); }
     assert({
         &&& pages.spec_index(indices.0).view().wlocked_by(&*lctx)
         &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.0), KernelObjId::Page(indices.0))

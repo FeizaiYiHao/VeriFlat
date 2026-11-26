@@ -115,7 +115,7 @@ proof fn lock_pagetable_window_eof_page_tables(pre: KernelK, post: KernelK, root
     };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
+        pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
 }
 
@@ -193,7 +193,7 @@ pub(super) proof fn lock_pagetable_window_eof(pre: KernelK, post: KernelK, root:
 {
     reveal(lock_pagetable_window_eof_transition_framing);
     pagetable_perms_wf_at(pre.pt_mp, root);
-    pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root);
+    pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root);
     assert(pagetable_perms_wf(post.pt_mp)) by { lock_op_implies_pagetable_perms_wf_preserved_forall(); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
@@ -251,7 +251,7 @@ proof fn unlock_pagetable_window_eof_page_tables(pre: KernelK, post: KernelK, ro
     };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
+        pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
 }
 
@@ -311,7 +311,7 @@ pub(super) proof fn unlock_pagetable_window_eof(pre: KernelK, post: KernelK, roo
 {
     reveal(unlock_pagetable_window_eof_transition_framing);
     pagetable_perms_wf_at(pre.pt_mp, root);
-    pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root);
+    pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root);
     assert(pagetable_perms_wf(post.pt_mp)) by { lock_op_implies_pagetable_perms_wf_preserved_forall(); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };

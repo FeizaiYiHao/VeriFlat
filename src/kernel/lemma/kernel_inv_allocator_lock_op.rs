@@ -23,7 +23,7 @@ pub open spec fn allocator_invariant_fields_unchanged<const SIZE: usize>(pre: Pa
         }
 }
 
-pub proof fn allocator_cache_lock_op_preserves_invariant_fields<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed_allocator: RwLockPageAllocatorPtr, changed_cpu: CpuId)
+pub proof fn allocator_cache_lock_op_implies_allocator_invariant_fields_unchanged<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed_allocator: RwLockPageAllocatorPtr, changed_cpu: CpuId)
     requires
         pre.dom() =~= post.dom(),
         post.unchanged_except(&pre, changed_allocator),
@@ -37,7 +37,7 @@ pub proof fn allocator_cache_lock_op_preserves_invariant_fields<const SIZE: usiz
 {
 }
 
-pub proof fn allocator_quota_lock_op_preserves_invariant_fields<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed: RwLockPageAllocatorPtr)
+pub proof fn allocator_quota_lock_op_implies_allocator_invariant_fields_unchanged<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed: RwLockPageAllocatorPtr)
     requires
         pre.dom() =~= post.dom(),
         post.unchanged_except(&pre, changed),
@@ -51,7 +51,7 @@ pub proof fn allocator_quota_lock_op_preserves_invariant_fields<const SIZE: usiz
 {
 }
 
-pub proof fn allocator_global_pool_lock_op_preserves_invariant_fields<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed: RwLockPageAllocatorPtr)
+pub proof fn allocator_global_pool_lock_op_implies_allocator_invariant_fields_unchanged<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed: RwLockPageAllocatorPtr)
     requires
         pre.dom() =~= post.dom(),
         post.unchanged_except(&pre, changed),

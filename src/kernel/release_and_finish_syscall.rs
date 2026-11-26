@@ -18,7 +18,7 @@ verus! {
         };
     }
 
-    pub proof fn no_locks_held_imply_all_objects_unlocked(krnl: &KernelK, lctx: &LocalContext)
+    pub proof fn no_locks_held_implies_all_objects_unlocked(krnl: &KernelK, lctx: &LocalContext)
         requires
             lctx.no_locks_held(),
             typed_lock_maps_aligned(krnl, lctx),
@@ -95,7 +95,7 @@ verus! {
         proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
         let cpu_lock_res = krnl.wlock_own_cpu(cpu_id, Tracked(&mut *lctx));
         if cpu_lock_res.is_none() {
-            proof { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); }
+            proof { no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); }
             return None;
         }
         cpu_lock_res
