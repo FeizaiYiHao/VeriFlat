@@ -41,7 +41,7 @@ pub proof fn kernel_cpu_tlb_va_flushed_implies_u_step(pre: &KernelK, post: &Kern
     ensures
         kernel_u_cpu_tlb_va_flushed(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, pcid, va, count, stride_2m, ctn),
 {
-    reveal(kernel_u_cpu_tlb_va_flushed); kernel_u_domains_projection(pre); kernel_cpu_projection_at(pre, cpu_id);
+    reveal(kernel_u_cpu_tlb_va_flushed); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_cpu_projection_at(pre, cpu_id);
     kernel_cpu_tlb_va_range_flushed_implies_u_va_range_flushed(post, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)),
         post.cpu_tlb.structure_cache((cpu_id, pcid)));
 }
@@ -133,7 +133,7 @@ impl KernelK {
         assert(kernel_k_to_kernel_u(*self) == (KernelU { cpu_tlb: self.cpu_tlb.view(), ..locked })) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); kernel_cpu_tlb_updated_implies_u_step(&mid, &*self);
         };
-        if flushed { kernel_cpu_tlb_va_flushed_implies_u_step(&mid, &*self, cpu_id, pcid, va, count, stride_2m, ctn_ptr); } else { kernel_u_domains_projection(&snap); }
+        if flushed { kernel_cpu_tlb_va_flushed_implies_u_step(&mid, &*self, cpu_id, pcid, va, count, stride_2m, ctn_ptr); } else { kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&snap); }
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);

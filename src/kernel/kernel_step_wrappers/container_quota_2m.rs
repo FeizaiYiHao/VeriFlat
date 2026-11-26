@@ -18,7 +18,7 @@ pub proof fn kernel_container_quota_2m_changed_implies_u_step(pre: &KernelK, pos
             }), ..kernel_k_to_kernel_u(*pre)
         }),
 {
-    reveal(kernel_container_quota_2m_changed); kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_thread_nonlock_fields_unchanged);
+    reveal(kernel_container_quota_2m_changed); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(kernel_thread_nonlock_fields_unchanged);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     if pre.ctn_mp.dom().contains(container) { kernel_container_projection_at(pre, container); } if post.ctn_mp.dom().contains(container) { kernel_container_projection_at(post, container); }
@@ -73,7 +73,7 @@ pub proof fn kernel_page_freed_to_owner_quota_2m_implies_u_step(
     kernel_container_quota_2m_changed_implies_u_step(&mid, post, owner, 1);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_container_projection_at(pre, origin);
     let changed = a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]);
     assert(kernel_u_container_quota_2m_increased(a, b, origin)) by {
         reveal(kernel_u_container_quota_2m_increased);

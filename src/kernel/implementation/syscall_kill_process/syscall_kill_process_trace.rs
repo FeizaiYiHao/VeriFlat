@@ -52,7 +52,7 @@ pub(crate) proof fn kill_step_pre_from_k(
             ==> kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == container
                 && kernel_k_to_kernel_u(*krnl).container_map[container].uppertree_seq.contains(kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container),
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, target, thrd_ptr, None);
     kernel_cpu_projection_at(krnl, cpu_id); kernel_process_projection_at(krnl, target);
     if let KillScope::Container { container } = scope { krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container); kernel_container_projection_at(krnl, container); }
     reveal(kill_process_step_pre);
@@ -248,7 +248,7 @@ pub(crate) proof fn kill_victim_pre_from_k(
         state is RUNNING ==> !(kernel_k_to_kernel_u(*krnl).cpu_array[state->RUNNING_cpu_id as int].op is InStep),
         state.is_endpoint_waiting() && endpoint is Some ==> kernel_k_to_kernel_u(*krnl).endpoint_map[endpoint->Some_0].lock_state is Unlocked,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, target, victim_ptr, None); kernel_thread_projection_at(krnl, victim_ptr); kernel_process_projection_at(krnl, target);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, target, victim_ptr, None); kernel_thread_projection_at(krnl, victim_ptr); kernel_process_projection_at(krnl, target);
     if state is RUNNING { kernel_cpu_projection_at(krnl, state->RUNNING_cpu_id); }
     if state.is_endpoint_waiting() && endpoint is Some { kernel_endpoint_projection_at(krnl, endpoint->Some_0); }
 }
@@ -277,7 +277,7 @@ pub(crate) proof fn kill_finish_pre_from_k(krnl: &KernelK, lctx: &LocalContext, 
             &&& u.thread_map[thrd_ptr].lock_state is WriteLocked
             &&& u.thread_map[thrd_ptr].syscall_progress == kill_progress(prc_ptr, KillStage::Walk)
         }),
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); }
+{ write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); }
 
 /// The empty live target on `krnl`, whose page table is unlocked, is so on the projection.
 pub(crate) proof fn kill_lock_table_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
@@ -373,7 +373,7 @@ pub(crate) proof fn kill_reclaim_pre_from_k(
         krnl.pt_mp.dom().contains(pagetable) && krnl.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty()
             ==> kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thrd_ptr, None); kernel_process_projection_at(krnl, target);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, target, thrd_ptr, None); kernel_process_projection_at(krnl, target);
     if let Some(t) = iommu_table {
         if typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), t, TypedLockMode::Write) {
             krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); kernel_iommu_table_mappings_projection_at(krnl, target);
@@ -708,7 +708,7 @@ pub(crate) proof fn kill_lock_table_step_from_k(
         kernel_k_to_kernel_u(*stale) == (KernelU { cpu_tlb: stale.cpu_tlb.view(), ..kernel_k_to_kernel_u(*post) }),
     ensures kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*stale) }, cpu_id),
 {
-    kernel_pagetable_write_locked_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, thrd_ptr); kernel_u_domains_projection(post);
+    kernel_pagetable_write_locked_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, thrd_ptr); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     reveal(kill_process_lock_table_step);
 }
 
@@ -1125,7 +1125,7 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) ==> kill_process_tlb_cleared_cpu_in_step_or_running(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), prc),
 {
     reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-    kernel_cpu_tlb_updated_implies_u_step(pre, post); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_cpu_tlb_updated_implies_u_step(pre, post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     if pre_u != post_u {

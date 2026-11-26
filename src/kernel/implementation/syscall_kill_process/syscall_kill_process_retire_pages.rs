@@ -919,7 +919,7 @@ pub(crate) fn kill_retire_table_page_to_cache(
 
 /// Each page `kill_retire_pages(k, target)` retires is a valid page in `held`, allocated as a 4K kernel page to the
 /// container of `target`, and outside shard `cpu_id` of that container's 4K allocator `allc_ptr`.
-pub(crate) proof fn kill_retire_pages_held_and_owned(k: KernelK, target: RwLockProcessPtr, held: Set<PageIndex>, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId)
+pub(crate) proof fn kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached(k: KernelK, target: RwLockProcessPtr, held: Set<PageIndex>, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId)
     requires
         k.inv(),
         k.prc_mp.dom().contains(target),

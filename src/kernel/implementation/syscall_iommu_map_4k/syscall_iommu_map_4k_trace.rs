@@ -241,7 +241,7 @@ pub(super) proof fn iommu_map_4k_locked_from_k(
         iommu_map_4k_locked(kernel_k_to_kernel_u(*krnl), cpu_id),
 {
     process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     kernel_process_projection_at(krnl, prc_ptr);
 }

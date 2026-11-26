@@ -340,7 +340,7 @@ impl KernelSteps {
             &&& pre_u.process_map[prc_ptr].iommu_table->Some_0.lock_state is Unlocked
             &&& !pre_u.iommu_root_table.attached[bus as int][device as int][function as int]
         }) by {
-            reveal(IommuRootTable::user_view); kernel_u_domains_projection(&snap); kernel_u_domains_projection(&mid);
+            reveal(IommuRootTable::user_view); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&snap); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&mid);
             kernel_cpu_projection_at(&snap, cpu_id); kernel_process_projection_at(&snap, prc_ptr);
             let pre_u = kernel_k_to_kernel_u(snap);
             let mid_u = kernel_k_to_kernel_u(mid);
@@ -484,7 +484,7 @@ impl KernelSteps {
             &&& table.lock_state is Unlocked
             &&& table.pci_functions.dom().len() < PCI_FUNCTIONS_PER_PROCESS
         }) by {
-            kernel_u_domains_projection(&snap); snap.irt.view().user_view_eq_owners_and_attached();
+            kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&snap); snap.irt.view().user_view_eq_owners_and_attached();
             kernel_cpu_projection_at(&snap, cpu_id); kernel_process_projection_at(&snap, prc_ptr); kernel_process_projection_at(&mid, prc_ptr);
             kernel_container_projection_at(&snap, snap.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container);
         };

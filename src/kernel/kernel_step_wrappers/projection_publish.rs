@@ -136,7 +136,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_u_cpu_array_projection(before); kernel_thread_projection_at(before, thread);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after); kernel_k_to_kernel_u_implies_cpu_array_from_cpu_arr(before); kernel_thread_projection_at(before, thread);
     after.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), child);
     after.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
     if let Some(t) = iommu { after.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); }
@@ -168,7 +168,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_thread_map(
             kernel_k_to_kernel_u(*after).thread_map == pre.thread_map.insert(thread, ThreadU { quota_4k: (pre.thread_map[thread].quota_4k - cost) as usize, syscall_progress: progress, ..pre.thread_map[thread] })
         }),
 {
-    reveal(kernel_thread_quota_4k_changed); kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    reveal(kernel_thread_quota_4k_changed); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     let cost: usize = if iommu is Some { 5 } else { 3 };
@@ -214,7 +214,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_container_projection_at(before, container); kernel_container_projection_at(after, container);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after); kernel_container_projection_at(before, container); kernel_container_projection_at(after, container);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.container_map, pre.container_map.insert(container, ContainerU {
@@ -298,7 +298,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_process_projection_at(before, parent); kernel_process_projection_at(after, child);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after); kernel_process_projection_at(before, parent); kernel_process_projection_at(after, child);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
@@ -383,7 +383,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
     kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pre, post, lctx, table);
     kernel_thread_quota_and_page_owner_changed_implies_u_thread_map(pre, post, lctx, thread);
     kernel_thread_quota_and_page_owner_changed_implies_u_container_map(pre, post, source, target, page);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_thread_quota_4k_changed);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(kernel_thread_quota_4k_changed);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     if pre.thrd_mp.dom().contains(thread) { kernel_thread_projection_at(pre, thread); }
@@ -459,7 +459,7 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
     else { pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_table); }
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Write) { pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_table); }
     else { pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_table); }
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     if pre.prc_mp.dom().contains(source) { kernel_process_projection_at(pre, source); }
@@ -575,7 +575,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
             }, kernel_k_to_kernel_u(*post), prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress)
         }),
 {
-    kernel_u_domains_projection(post); kernel_u_domains_projection(pre);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre);
     let old_u = kernel_k_to_kernel_u(*pre);
     let mode = LockStateU::Unlocked;
     let pre_u = KernelU {
@@ -646,7 +646,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_cpu_array(
     ensures
         kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..kernel_k_to_kernel_u(*pre).cpu_array[cpu_id as int] }),
 {
-    kernel_u_domains_projection(post); kernel_u_domains_projection(pre);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     assert_seqs_equal!(post_u.cpu_array == old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..old_u.cpu_array[cpu_id as int] }), i => {
@@ -676,7 +676,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_thread_map(
             }).insert(new_thrd_ptr, kernel_k_to_kernel_u(*post).thread_map.spec_index(new_thrd_ptr))
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let unlocked = old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..old_u.thread_map.spec_index(thrd_ptr) });
@@ -714,7 +714,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_endpoint_map(
             }
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     match ep_ptr {
@@ -763,7 +763,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_container_map(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let unlocked = match released_container {
@@ -835,7 +835,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_process_map(
             kernel_k_to_kernel_u(*post).process_map == unlocked.insert(prc_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thrd_ptr), ..process })
         }),
 {
-    hide(Map::filter_keys); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    hide(Map::filter_keys); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let mode = LockStateU::Unlocked;

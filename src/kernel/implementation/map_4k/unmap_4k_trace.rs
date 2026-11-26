@@ -34,7 +34,7 @@ pub proof fn unmap_4k_leaf_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
 {
     reveal(unmap_4k_leaf_step_pre);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) {
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     } else {
@@ -95,7 +95,7 @@ pub proof fn unmap_4k_flush_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pcid == pcid,
 {
     reveal(unmap_4k_flush_step_pre);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_u_domains_projection(krnl);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) {
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     } else {
@@ -174,7 +174,7 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
     let prc_ptr = entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
     process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
     process_pagetable_wf_process_at(entry.prc_mp, entry.pt_mp, prc_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_thread_projection_at(krnl, thrd_ptr); kernel_thread_projection_at(entry, thrd_ptr);
     cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_thread_at(entry.thrd_mp, entry.cpu_arr, thrd_ptr);
     cpu_trap_frame_wf_at(entry.cpu_trap_frame.view().view(), entry.cpu_arr, cpu_id);
@@ -293,7 +293,7 @@ pub proof fn unmap_4k_tlb_va_flush_snapshot_pre_from_k(snap: &KernelK, entry: &K
     cpu_array_wf_at(snap.cpu_arr, snap.dflt_pt.view(), cpu_id); thread_cpu_wf_cpu_at(snap.thrd_mp, snap.cpu_arr, cpu_id);
     process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr); process_thread_wf_thread_at(snap.prc_mp, snap.thrd_mp, thrd_ptr);
     process_pagetable_wf_process_at(entry.prc_mp, entry.pt_mp, prc_ptr); process_pagetable_wf_process_at(snap.prc_mp, snap.pt_mp, prc_ptr);
-    kernel_write_held_context_projection(entry, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(entry, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_cpu_projection_at(snap, cpu_id); kernel_cpu_projection_at(entry, cpu_id);
     kernel_thread_projection_at(snap, thrd_ptr); kernel_thread_projection_at(entry, thrd_ptr);
     cpu_trap_frame_wf_at(entry.cpu_trap_frame.view().view(), entry.cpu_arr, cpu_id);
@@ -438,7 +438,7 @@ pub proof fn unmap_4k_tlb_flush_snapshot_pre_from_k(snap: &KernelK, entry: &Kern
     cpu_array_wf_at(snap.cpu_arr, snap.dflt_pt.view(), cpu_id); thread_cpu_wf_cpu_at(snap.thrd_mp, snap.cpu_arr, cpu_id);
     process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr); process_thread_wf_thread_at(snap.prc_mp, snap.thrd_mp, thrd_ptr);
     process_pagetable_wf_process_at(entry.prc_mp, entry.pt_mp, prc_ptr); process_pagetable_wf_process_at(snap.prc_mp, snap.pt_mp, prc_ptr);
-    kernel_write_held_context_projection(entry, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(entry, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_cpu_projection_at(snap, cpu_id); kernel_cpu_projection_at(entry, cpu_id);
     kernel_thread_projection_at(snap, thrd_ptr); kernel_thread_projection_at(entry, thrd_ptr);
     cpu_trap_frame_wf_at(entry.cpu_trap_frame.view().view(), entry.cpu_arr, cpu_id);
@@ -679,12 +679,12 @@ pub proof fn unmap_4k_thread_refund_range_steps_from_k(
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
 {
     reveal(unmap_4k_range_step); reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step);
-    kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     if !typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) {
         pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
     kernel_process_projection_at(pre, prc_ptr); kernel_thread_projection_at(pre, thrd_ptr);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k, ..pre_u.thread_map[thrd_ptr] }), t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }

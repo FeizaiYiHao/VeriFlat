@@ -27,7 +27,7 @@ pub(super) proof fn kernel_process_quota_4k_changed_implies_u_step(pre: &KernelK
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_only_process_quota_4k_changed); reveal(kernel_process_quota_4k_changed); reveal(kernel_endpoint_nonlock_fields_unchanged);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_container_user_projection_at(pre, ctn_ptr); kernel_process_user_projection_at(pre, prc_ptr);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -54,7 +54,7 @@ proof fn kernel_process_quota_4k_changed_implies_u_container_map(pre: &KernelK, 
 {
     hide(kernel_k_user_projection);
     reveal(kernel_process_quota_4k_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let container = pre_u.container_map.spec_index(ctn_ptr);
@@ -79,7 +79,7 @@ proof fn kernel_process_quota_4k_changed_implies_u_process_map(pre: &KernelK, po
 {
     hide(kernel_k_user_projection);
     reveal(kernel_process_quota_4k_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -98,7 +98,7 @@ pub(super) proof fn kernel_process2thread_quota_4k_changed_implies_u_step(pre: &
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_only_process2thread_quota_4k_changed); reveal(kernel_process2thread_quota_4k_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_process_user_projection_at(pre, prc_ptr); kernel_thread_user_projection_at(pre, thrd_ptr);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -126,7 +126,7 @@ pub(super) proof fn kernel_process_quota_2m_changed_implies_u_step(pre: &KernelK
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_only_process_quota_2m_changed); reveal(kernel_process_quota_2m_changed); reveal(kernel_endpoint_nonlock_fields_unchanged);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_container_user_projection_at(pre, ctn_ptr); kernel_process_user_projection_at(pre, prc_ptr);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -153,7 +153,7 @@ proof fn kernel_process_quota_2m_changed_implies_u_container_map(pre: &KernelK, 
 {
     hide(kernel_k_user_projection);
     reveal(kernel_process_quota_2m_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let container = pre_u.container_map.spec_index(ctn_ptr);
@@ -178,7 +178,7 @@ proof fn kernel_process_quota_2m_changed_implies_u_process_map(pre: &KernelK, po
 {
     hide(kernel_k_user_projection);
     reveal(kernel_process_quota_2m_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -197,7 +197,7 @@ pub(super) proof fn kernel_process2thread_quota_2m_changed_implies_u_step(pre: &
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_only_process2thread_quota_2m_changed); reveal(kernel_process2thread_quota_2m_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_process_user_projection_at(pre, prc_ptr); kernel_thread_user_projection_at(pre, thrd_ptr);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -226,7 +226,7 @@ pub(super) proof fn kernel_cpu_offline_request_changed_implies_u_step(pre: &Kern
     hide(kernel_k_user_projection);
     reveal(kernel_u_cpu_offline_request_changed); reveal(kernel_cpu_offline_request_changed);
     reveal(container_cpu_set_wf); reveal(container_cpu_offline_flags_wf);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_cpu_user_projection_at(pre, target);
     kernel_container_user_projection_at(pre, ctn_ptr); kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container);
     let pre_u = kernel_k_user_projection(*pre);
@@ -257,7 +257,7 @@ proof fn kernel_cpu_offline_request_changed_implies_u_container_map(pre: &Kernel
 {
     hide(kernel_k_user_projection);
     reveal(kernel_cpu_offline_request_changed); reveal(container_cpu_set_wf); reveal(container_cpu_offline_flags_wf);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let container = pre_u.container_map.spec_index(ctn_ptr);
@@ -276,7 +276,7 @@ pub(super) proof fn kernel_cpu_online_changed_implies_u_step(pre: &KernelK, post
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_cpu_online_changed); reveal(kernel_cpu_online_changed); reveal(container_cpu_set_wf);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_cpu_user_projection_at(pre, target);
     kernel_container_user_projection_at(pre, ctn_ptr); kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container);
     let pre_u = kernel_k_user_projection(*pre);
@@ -304,7 +304,7 @@ pub(super) proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, pos
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_cpu_went_off_changed); reveal(kernel_cpu_went_off_fields);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post); kernel_cpu_user_projection_at(pre, cpu_id);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post); kernel_cpu_user_projection_at(pre, cpu_id);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let cpu = pre_u.cpu_array[cpu_id as int];
@@ -327,7 +327,7 @@ pub(super) proof fn kernel_process_added_implies_u_neq(pre: &KernelK, post: &Ker
     requires kernel_process_added(pre, post, prc_ptr),
     ensures
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-{ reveal(kernel_process_added); kernel_u_domains_projection(pre); kernel_u_domains_projection(post); }
+{ reveal(kernel_process_added); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); }
 
 pub proof fn kernel_process_4k_mapping_changed_implies_u_neq(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires kernel_process_4k_mapping_changed(pre, post, prc_ptr, pagetable_ptr, va),
@@ -360,7 +360,7 @@ pub proof fn kernel_cpu_tlb_updated_implies_u_step(pre: &KernelK, post: &KernelK
     ensures
         kernel_k_to_kernel_u(*post) == (KernelU { cpu_tlb: post.cpu_tlb.view(), ..kernel_k_to_kernel_u(*pre) }),
 {
-    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
@@ -384,7 +384,7 @@ pub proof fn kernel_container_quota_4k_changed_implies_u_step(pre: &KernelK, pos
             }), ..kernel_k_to_kernel_u(*pre)
         }),
 {
-    reveal(kernel_container_quota_4k_changed); kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_thread_nonlock_fields_unchanged);
+    reveal(kernel_container_quota_4k_changed); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(kernel_thread_nonlock_fields_unchanged);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     if pre.ctn_mp.dom().contains(container) { kernel_container_projection_at(pre, container); } if post.ctn_mp.dom().contains(container) { kernel_container_projection_at(post, container); }
@@ -446,7 +446,7 @@ pub proof fn kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_
             })
         },
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
@@ -497,7 +497,7 @@ pub proof fn kernel_iommu_table_4k_present_cleared_implies_u_step(pre: &KernelK,
         }),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_wf);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(process_iommu_table_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
@@ -530,7 +530,7 @@ pub proof fn kernel_thread_syscall_progress_changed_implies_u_step(pre: &KernelK
             ..kernel_k_to_kernel_u(*pre)
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(after.thread_map, before.thread_map.insert(thrd_ptr, ThreadU {
@@ -611,7 +611,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre: &Ke
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     pre.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
@@ -714,7 +714,7 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let lock_state = post.thrd_mp.spec_index(thrd_ptr).lock_state_u();
@@ -811,7 +811,7 @@ pub proof fn kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let lock_state = post.thrd_mp.spec_index(thrd_ptr).lock_state_u();
@@ -885,7 +885,7 @@ pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK,
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let lock_state = post.thrd_mp.spec_index(thrd_ptr).lock_state_u();
@@ -959,7 +959,7 @@ pub proof fn kernel_cpu_lock_mode_changed_implies_u_step(pre: &KernelK, post: &K
     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre, &mid);
     kernel_cpu_lock_mode_changed_implies_u_cpu_array(&mid, post, cpu_id, post.cpu_arr.spec_index(cpu_id).value.lock_state_u());
     kernel_container_maps_unchanged_implies_u_container_map(&mid, post); kernel_process_maps_unchanged_implies_u_process_map(&mid, post);
-    kernel_endpoint_map_unchanged_implies_u_endpoint_map(&mid, post); kernel_u_domains_projection(&mid); kernel_u_domains_projection(post);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(&mid, post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&mid); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, kernel_k_to_kernel_u(mid).thread_map, t => {
         if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(&mid, t); kernel_thread_projection_at(post, t); } thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
     });

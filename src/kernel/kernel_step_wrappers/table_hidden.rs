@@ -55,7 +55,7 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
         ..table
     };
     let post_table = pagetable_map_user_view(post.pt_mp, post.pt_lower.view()).spec_index(root);
-    kernel_u_domains_projection(&pre); kernel_u_domains_projection(&post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&post);
     kernel_cpu_array_unchanged_implies_u_cpu_array(&pre, &post); kernel_container_maps_unchanged_implies_u_container_map(&pre, &post);
     kernel_thread_map_unchanged_implies_u_thread_map(&pre, &post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(&pre, &post);
     process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, root);

@@ -631,7 +631,7 @@ pub(crate) fn kill_retire_commit(
             iommu_table_without_did_implies_root_named_by_no_context_entry(*krnl, it);
         }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        kill_retire_pages_held_and_owned(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
+        kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
     }
     let Tracked(process_page_perm) = kill_retire_unlink_process(krnl, Tracked(&mut *lctx), target, parent_ptr, ctn_ptr, Tracked(target_perm), Tracked(parent_perm));
     let tables = kill_retire_remove_tables(krnl, Tracked(&mut *lctx), pagetable, iommu_table, Tracked(pt_lock_perm), Tracked(it_lock_perm));

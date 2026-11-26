@@ -20,7 +20,7 @@ pub proof fn kernel_iommu_tlb_domain_invalidated_implies_u_step(pre: &KernelK, p
         forall|d: VtdDomainId| #![trigger kernel_k_to_kernel_u(*post).iommu_tlb[d]] d != did ==> kernel_k_to_kernel_u(*post).iommu_tlb[d] == kernel_k_to_kernel_u(*pre).iommu_tlb[d],
         (kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post)) == (pre.iommu_tlb.view() == post.iommu_tlb.view()),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
     assert(pre.iommu_tlb.view().dom().contains(did)) by { reveal(IommuTLB::inv); };
@@ -63,7 +63,7 @@ pub proof fn kernel_iommu_table_4k_mapping_removed_implies_u_step(pre: &KernelK,
         }),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_wf);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(process_iommu_table_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
@@ -115,7 +115,7 @@ pub proof fn kernel_iommu_table_4k_mapping_added_implies_u_step(pre: &KernelK, p
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_wf);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(process_iommu_table_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
@@ -197,7 +197,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -290,7 +290,7 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -355,7 +355,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_iommu_table_structure_changed_i
             ..kernel_k_to_kernel_u(*pre)
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr);

@@ -25,7 +25,7 @@ pub proof fn kernel_container_locked_and_marked_implies_u_step(before: &KernelK,
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.container_map, pre.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.container_map[ctn_ptr] }), c => {

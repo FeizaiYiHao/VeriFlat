@@ -73,7 +73,7 @@ pub(super) fn new_container_publish_staging_heads(
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     proof {
-        new_container_page_positions(pages_4k.view());
+        pages_no_duplicates_implies_new_container_pages_pairwise_distinct(pages_4k.view());
         assert(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(container_page)
             && new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(pcid_allocator_page)) by {
             reveal(new_container_moved_pages); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); page_ptr_roundtrip();

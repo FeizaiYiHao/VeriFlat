@@ -43,7 +43,7 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_step(
         }),
         kernel_k_to_kernel_u(*post).thread_map.spec_index(thrd_ptr).endpoint_descriptors[ep_idx as int] == Some(new_ep_ptr),
 {
-    kernel_u_domains_projection(post); kernel_u_domains_projection(pre);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre);
     let old_u = kernel_k_to_kernel_u(*pre);
     let mode = LockStateU::Unlocked;
     let pre_u = KernelU {
@@ -83,7 +83,7 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_cpu_array(
     ensures
         kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..kernel_k_to_kernel_u(*pre).cpu_array[cpu_id as int] }),
 {
-    kernel_u_domains_projection(post); kernel_u_domains_projection(pre);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     assert_seqs_equal!(post_u.cpu_array == old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..old_u.cpu_array[cpu_id as int] }), i => {
@@ -113,7 +113,7 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_container_map(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let unlocked = old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[ctn_ptr] });
@@ -137,7 +137,7 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_process_map(
     ensures
         kernel_k_to_kernel_u(*post).process_map == kernel_k_to_kernel_u(*pre).process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..kernel_k_to_kernel_u(*pre).process_map[prc_ptr] }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     reveal(kernel_new_endpoint_fields); reveal(kernel_process_nonlock_fields_unchanged);
@@ -169,7 +169,7 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_thread_map(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let unlocked = old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..old_u.thread_map.spec_index(thrd_ptr) });
@@ -198,7 +198,7 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_endpoint_map(
             owning_container: ctn_ptr, killed: false,
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     reveal(kernel_new_endpoint_fields);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).endpoint_map, kernel_k_to_kernel_u(*pre).endpoint_map.insert(new_ep_ptr, EndpointU {
         lock_state: LockStateU::Unlocked, queue: Seq::empty(), queue_state: EndpointState::RECEIVE, owning_threads: set![(thrd_ptr, ep_idx)],
@@ -236,7 +236,7 @@ pub proof fn kernel_thread_exit_fields_and_unlocks_implies_u_step(
             }, kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, flushed_default_pcid)
         }),
 {
-    kernel_u_domains_projection(post); kernel_u_domains_projection(pre);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre);
     let old_u = kernel_k_to_kernel_u(*pre);
     let mode = LockStateU::Unlocked;
     let pre_u = KernelU {
@@ -272,7 +272,7 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_cpu_array(pre: &KernelK
             kernel_k_to_kernel_u(*post).cpu_array == cpus.update(cpu_id as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..cpus[cpu_id as int] })
         }),
 {
-    kernel_u_domains_projection(post); kernel_u_domains_projection(pre);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let cpus = old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] });
@@ -316,7 +316,7 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_container_map(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     reveal(kernel_thread_exit_fields);
     let old_u = kernel_k_to_kernel_u(*pre);
     let zombie = old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(thrd_ptr).len() == 0;
@@ -360,7 +360,7 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_process_map(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     reveal(kernel_thread_exit_fields);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
@@ -384,7 +384,7 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_thread_map(pre: &Kernel
         thread_cpu_wf(post.thrd_mp, post.cpu_arr),
     ensures kernel_k_to_kernel_u(*post).thread_map == kernel_k_to_kernel_u(*pre).thread_map.remove(thrd_ptr),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     reveal(kernel_thread_exit_fields);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, kernel_k_to_kernel_u(*pre).thread_map.remove(thrd_ptr), t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
@@ -399,7 +399,7 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_endpoint_map(pre: &Kern
     requires kernel_thread_exit_fields(pre, post, cpu_id, thrd_ptr, flushed_default_pcid),
     ensures kernel_k_to_kernel_u(*post).endpoint_map == kernel_k_to_kernel_u(*pre).endpoint_map,
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     reveal(kernel_thread_exit_fields);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).endpoint_map, kernel_k_to_kernel_u(*pre).endpoint_map, e => {
         if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
@@ -422,7 +422,7 @@ proof fn kernel_thread_exit_quota_returned_implies_u_container_map(pre: &KernelK
             })
         }),
 {
-    reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    reveal(kernel_thread_exit_quota_returned); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let t = pre.thrd_mp.spec_index(thrd_ptr).view();
     kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, t.owning_proc);
@@ -455,7 +455,7 @@ proof fn kernel_thread_exit_quota_returned_implies_u_process_map(pre: &KernelK, 
             })
         }),
 {
-    reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    reveal(kernel_thread_exit_quota_returned); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let t = pre.thrd_mp.spec_index(thrd_ptr).view();
     kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, t.owning_proc); kernel_process_projection_at(post, t.owning_proc);
@@ -490,7 +490,7 @@ proof fn kernel_thread_exit_quota_returned_implies_u_thread_map(pre: &KernelK, p
             })
         }),
 {
-    reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    reveal(kernel_thread_exit_quota_returned); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr);
     let thread = a.thread_map[thrd_ptr];
@@ -521,7 +521,7 @@ proof fn kernel_thread_exit_quota_returned_implies_u_cpu_array_and_endpoint_map(
             &&& b.pci_bars == a.pci_bars
         }),
 {
-    reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    reveal(kernel_thread_exit_quota_returned); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     assert_seqs_equal!(b.cpu_array == a.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
@@ -615,7 +615,7 @@ pub proof fn kernel_caller_woken_implies_u_step(before: &KernelK, after: &Kernel
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     kernel_cpu_array_unchanged_implies_u_cpu_array(before, after);
     kernel_process_maps_unchanged_implies_u_process_map(before, after);
     kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
@@ -646,7 +646,7 @@ proof fn kernel_caller_woken_implies_u_container_map(before: &KernelK, after: &K
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_thread_projection_at(before, caller_ptr);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after); kernel_thread_projection_at(before, caller_ptr);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     let container = pre.thread_map[caller_ptr].owning_container;
@@ -689,7 +689,7 @@ proof fn kernel_caller_woken_implies_u_thread_map(before: &KernelK, after: &Kern
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..pre.thread_map[thrd_ptr] }).insert(caller_ptr, ThreadU {
@@ -757,7 +757,7 @@ pub proof fn kernel_descriptor_dropped_implies_u_step(
         }),
 {
     kernel_thread_projection_at(before, thrd_ptr); kernel_endpoint_projection_at(before, ep_ptr);
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU {

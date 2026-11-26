@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// The projected map domains and scalar fields of the unwrapped user projection, without unfolding any projected entry.
-pub proof fn kernel_u_user_domains_projection(krnl: &KernelK)
+pub proof fn kernel_k_user_projection_implies_domains_and_scalars_from_k(krnl: &KernelK)
     ensures
         kernel_k_user_projection(*krnl).cpu_array.len() == NUM_CPUS,
         kernel_k_user_projection(*krnl).container_map.dom() == krnl.ctn_mp.dom(),

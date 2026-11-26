@@ -115,7 +115,7 @@ pub(super) proof fn mmap_1g_enter_step_from_u(
         mmap_1g_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range),
         mmap_1g_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range),
 {
-    kernel_u_domains_projection(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
     reveal(mmap_1g_enter_step_pre); reveal(mmap_1g_enter_step);
 }
 

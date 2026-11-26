@@ -46,7 +46,7 @@ pub(super) proof fn map_pci_bar_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
 {
     let c = krnl.cpu_arr.spec_index(cpu_id).value.view().view();
     let thread = krnl.thrd_mp.spec_index(c.current_thread->Some_0).view();
-    kernel_cpu_projection_at(krnl, cpu_id); kernel_u_domains_projection(krnl);
+    kernel_cpu_projection_at(krnl, cpu_id); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     if !(ret is CpuIdle) {
         kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None); kernel_thread_projection_at(krnl, c.current_thread->Some_0);
         if !(ret is ErrorThreadKilled) { kernel_process_projection_at(krnl, thread.owning_proc); }
@@ -125,7 +125,7 @@ pub(super) proof fn map_pci_bar_2m_exit_step_from_k(
         map_pci_bar_2m_exit_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, va),
         map_pci_bar_2m_exit_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, va, f, entry),
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     kernel_pagetable_mappings_projection_at(krnl, prc_ptr); kernel_process_projection_at(krnl, prc_ptr);
     reveal(map_pci_bar_2m_exit_step_pre); reveal(map_pci_bar_2m_exit_step);
@@ -211,7 +211,7 @@ pub(super) proof fn map_pci_bar_2m_enter_step_from_k(
 {
     map_pci_bar_2m_result_from_k(krnl, cpu_id, slot, index, va, RetValueType::Success);
     pagetable_unlocked_implies_projected_window_unlocked(krnl, prc_ptr, window_of(va));
-    kernel_u_domains_projection(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
     reveal(map_pci_bar_2m_enter_step_pre); reveal(map_pci_bar_2m_enter_step);
 }
 
@@ -271,7 +271,7 @@ pub(super) proof fn map_pci_bar_2m_l1_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pcid == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid,
 {
     reveal(map_pci_bar_2m_l1_step_pre);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_u_domains_projection(krnl);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
 }
@@ -439,7 +439,7 @@ pub(super) proof fn map_pci_bar_2m_trace_exit_step(
         entry == (MapEntry { is_io: true, addr, write: true, execute_disable: true, present: true, owning_container: Ghost(ctn_ptr) }),
     ensures map_pci_bar_2m_syscall_trace(steps.view(), cpu_id, slot, index, va),
 {
-    kernel_u_domains_projection(entry_k); kernel_cpu_projection_at(entry_k, cpu_id); kernel_thread_projection_at(entry_k, thrd_ptr);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(entry_k); kernel_cpu_projection_at(entry_k, cpu_id); kernel_thread_projection_at(entry_k, thrd_ptr);
     reveal(map_pci_bar_2m_trace_after_range); reveal(map_pci_bar_2m_syscall_trace);
 }
 } // verus!

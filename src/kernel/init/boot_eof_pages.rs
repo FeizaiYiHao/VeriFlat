@@ -221,7 +221,9 @@ pub(super) proof fn boot_memory_management_inv_eof_pcid_allocator_pages(
     ensures pcid_allocator_pages_wf(krnl.pcid_allc_mp, krnl.pg_arr),
 {
     hide(Seq::no_duplicates);
-    assert(page_ptr_valid(layout.pcid_allocator) && index_valid(NUM_PAGES, page_ptr2page_index(layout.pcid_allocator)) && page_index2page_ptr(page_ptr2page_index(layout.pcid_allocator)) == layout.pcid_allocator) by { page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); };
+    assert(page_ptr_valid(layout.pcid_allocator) && index_valid(NUM_PAGES, page_ptr2page_index(layout.pcid_allocator)) && page_index2page_ptr(page_ptr2page_index(layout.pcid_allocator)) == layout.pcid_allocator) by {
+        page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
+    };
     reveal(pcid_allocator_pages_wf); reveal(boot_page_array_ready);
 }
 

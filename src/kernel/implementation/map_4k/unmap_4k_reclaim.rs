@@ -121,7 +121,9 @@ pub fn remove_last_4k_mapping_to_allocator(
     assert(krnl.allc_4k_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view()) by { kernel_inv_implies_allocator_4k_quota_plus_thread_pending_le_total_free_pages(krnl, thrd_ptr, owner, depth); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     let indices = va2index(va);
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); };
+    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by {
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
+    };
     proof {
         let window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);

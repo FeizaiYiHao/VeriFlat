@@ -4,7 +4,7 @@ use crate::*;
 use super::*;
 
 verus! {
-pub(super) proof fn new_container_page_positions(pages: Seq<PagePtr>)
+pub(super) proof fn pages_no_duplicates_implies_new_container_pages_pairwise_distinct(pages: Seq<PagePtr>)
     requires
         pages.len() == 9,
         pages.no_duplicates(),
@@ -174,7 +174,7 @@ pub(super) proof fn new_container_staged_pages_disjoint(
     assert(new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, child_sched_ptr, cpu_set_page, child_prc_ptr, child_pagetable_ptr, l4_page)
         .subset_of(pages_4k.view().to_set())) by { reveal(new_container_bootstrap_4k_pages); pages_4k.view().to_set_ensures(); };
     assert(moved_pages.union(funding_page_set).len() == 2 * 512 + 8 + funding_pages.len()) by {
-        reveal(new_container_moved_pages); new_container_page_positions(pages_4k.view()); funding_pages.unique_seq_to_set();
+        reveal(new_container_moved_pages); pages_no_duplicates_implies_new_container_pages_pairwise_distinct(pages_4k.view()); funding_pages.unique_seq_to_set();
         page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head);
         broadcast use vstd::set_lib::lemma_set_disjoint_lens;
     };

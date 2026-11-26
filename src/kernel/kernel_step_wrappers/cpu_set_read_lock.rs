@@ -21,7 +21,7 @@ pub proof fn kernel_cpu_set_lock_mode_changed_implies_u_step(before: &KernelK, a
             kernel_k_to_kernel_u(*after) == (KernelU { container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..pre.container_map[ctn_ptr] }), ..pre })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     let cpu_set_lock = after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
@@ -54,7 +54,7 @@ pub proof fn kernel_pcid_allocator_lock_mode_changed_implies_u_step(before: &Ker
             kernel_k_to_kernel_u(*after) == (KernelU { container_map: pre.container_map.insert(ctn_ptr, ContainerU { pcid_allocator_lock, ..pre.container_map[ctn_ptr] }), ..pre })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     let pcid_allocator_lock = after.pcid_allc_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).lock_state_u();
@@ -114,7 +114,7 @@ pub proof fn kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_impli
         }),
 {
     let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
-    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap); kernel_container_projection_at(snap, ctn_ptr);
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(snap); kernel_container_projection_at(snap, ctn_ptr);
     kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
     kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr);
     kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thrd_ptr);
@@ -210,7 +210,7 @@ impl KernelK {
             kernel_cpu_tlb_updated_implies_u_step(&mid, &*self);
         };
         assert(locked != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(locked, kernel_k_to_kernel_u(*self), pcid, Some(ctn_ptr))) by {
-            reveal(kernel_u_cpu_tlb_cleared); kernel_u_domains_projection(&snap);
+            reveal(kernel_u_cpu_tlb_cleared); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&snap);
             if locked != kernel_k_to_kernel_u(*self) {
                 kernel_cpu_projection_at(&snap, cpu_id);
                 cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));

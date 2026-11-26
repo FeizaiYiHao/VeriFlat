@@ -21,7 +21,7 @@ pub proof fn kernel_cpu_owner_changed_implies_u_cpu_array(before: &KernelK, afte
             kernel_k_to_kernel_u(*after).cpu_array == a.cpu_array.update(cpu as int, CpuU { lock_state: LockStateU::Unlocked, owning_container: target, ..a.cpu_array[cpu as int] })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let a = kernel_k_to_kernel_u(*before);
     let b = kernel_k_to_kernel_u(*after);
     assert_seqs_equal!(b.cpu_array == a.cpu_array.update(cpu as int, CpuU { lock_state: LockStateU::Unlocked, owning_container: target, ..a.cpu_array[cpu as int] }), i => {
@@ -65,7 +65,7 @@ pub proof fn kernel_page_owner_changed_implies_u_container_map(before: &KernelK,
             }).insert(target, ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let a = kernel_k_to_kernel_u(*before);
     let b = kernel_k_to_kernel_u(*after);
     container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, source); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, target);
@@ -98,7 +98,7 @@ pub proof fn kernel_thread_progress_changed_implies_u_thread_map(pre: &KernelK, 
             kernel_k_to_kernel_u(*post).thread_map == a.thread_map.insert(thread, ThreadU { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(b.thread_map, a.thread_map.insert(thread, ThreadU { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }), t => {
@@ -149,7 +149,7 @@ pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre:
         }),
 {
     hide(Map::filter_keys);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let process_u = a.process_map[process];

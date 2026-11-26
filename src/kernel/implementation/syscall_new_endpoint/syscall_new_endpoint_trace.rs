@@ -124,7 +124,7 @@ pub(super) proof fn new_endpoint_finish_step_pre_from_k(
             &&& u.cpu_array[cpu_id as int].state == krnl.cpu_arr.spec_index(cpu_id).view().view().view().state
             &&& u.thread_map.spec_index(thrd_ptr).syscall_progress == Some(SyscallProgress::NewEndpoint { slot: ep_idx })
         }),
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); reveal(new_endpoint_finish_step_pre); }
+{ write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); reveal(new_endpoint_finish_step_pre); }
 
 /// Publishing the new endpoint while releasing the caller's context locks is the finish step on `pre`/`post`.
 pub(super) proof fn new_endpoint_finish_step_from_u(

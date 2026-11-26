@@ -179,7 +179,7 @@ pub(super) proof fn thread_exit_drop_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(prc_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == ctn_ptr,
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_container == ctn_ptr,
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); reveal(thread_exit_drop_step_pre); }
+{ write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); reveal(thread_exit_drop_step_pre); }
 
 /// Releasing descriptor `index`, the first one at or after the recorded position `next`, is the drop step on
 /// `pre`/`post`.
@@ -278,7 +278,7 @@ pub(super) proof fn thread_exit_finish_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(prc_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == ctn_ptr,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr); kernel_container_projection_at(krnl, ctn_ptr);
     reveal(thread_exit_finish_step_pre);
 }
@@ -397,7 +397,7 @@ pub(super) proof fn thread_exit_lock_table_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_proc == prc_ptr,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
     kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
     reveal(thread_exit_lock_table_step_pre);
@@ -436,7 +436,7 @@ pub(super) proof fn thread_exit_lock_table_step_from_k(
         kernel_k_to_kernel_u(*stale) == (KernelU { cpu_tlb: stale.cpu_tlb.view(), ..kernel_k_to_kernel_u(*post) }),
     ensures thread_exit_lock_table_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*stale), cpu_id),
 {
-    kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     post.thrd_mp.typed_lock_map_aligned_write_at(post_lctx.thread_lock_map(), post_lctx.thread_id(), thrd_ptr);
     post.pt_mp.typed_lock_map_aligned_write_at(post_lctx.pagetable_lock_map(), post_lctx.thread_id(), pagetable);
     assert(post.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(post_lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
@@ -505,7 +505,7 @@ pub(super) proof fn thread_exit_unown_step_from_k(
         thread_exit_unown_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
         iommu_table is Some || pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() != Set::<PciBdf>::empty() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
-    kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_process_projection_at(pre, prc_ptr);
     let table = kernel_k_to_kernel_u(*pre).process_map[prc_ptr].pagetable->Some_0;
     assert(table.mapping_4k =~= Map::empty() && table.mapping_2m =~= Map::empty() && table.mapping_1g =~= Map::empty() && table.pagetable_window_locks =~= Map::empty());
@@ -540,7 +540,7 @@ pub(super) proof fn thread_exit_table_hidden_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_proc == prc_ptr,
         kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable is Some,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     reveal(thread_exit_reclaim_step_pre);
 }
 
@@ -674,7 +674,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].iommu_table is Some,
         kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].iommu_table->Some_0.lock_state is WriteLocked,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     reveal(thread_exit_reclaim_step_pre);
 }
 
@@ -801,7 +801,7 @@ pub(super) proof fn thread_exit_flush_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_container == ctn_ptr,
         kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pcid == pcid,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
     let table = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
     assert(table.mapping_4k =~= Map::empty() && table.mapping_2m =~= Map::empty() && table.mapping_1g =~= Map::empty() && table.pagetable_window_locks =~= Map::empty());
     reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre);
@@ -917,7 +917,7 @@ pub(super) proof fn thread_exit_quota_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].syscall_progress == krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(),
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
     assert(kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0.pci_functions =~= Map::empty());
     if krnl.prc_mp.spec_index(prc_ptr).view().iommu_table is Some { kernel_iommu_table_4k_unmapped_projection_at(krnl, prc_ptr); }
     reveal(thread_exit_quota_step_pre); reveal(thread_exit_reclaim_step_pre);
@@ -996,7 +996,7 @@ pub(super) proof fn thread_exit_unlock_table_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_proc == prc_ptr,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
     let table = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
     assert(table.mapping_4k =~= Map::empty() && table.mapping_2m =~= Map::empty() && table.mapping_1g =~= Map::empty() && table.pagetable_window_locks =~= Map::empty());
     assert(table.pci_functions =~= Map::empty());

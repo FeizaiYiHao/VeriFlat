@@ -70,7 +70,7 @@ pub proof fn kernel_zombie_process_retired_implies_u_step(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, ctn_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     kernel_zombie_process_retired_implies_u_container_map(pre, post, prc_ptr, ctn_ptr, allc_ptr);

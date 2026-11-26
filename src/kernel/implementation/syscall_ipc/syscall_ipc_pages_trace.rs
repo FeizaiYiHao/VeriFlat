@@ -54,7 +54,7 @@ pub(super) proof fn ipc_pages_finish_step_pre_from_k(
         }),
 {
     container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_ptr);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, peer_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, Some(channel_ptr)); write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, peer_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, peer_ptr, Some(channel_ptr)); kernel_thread_projection_at(krnl, thrd_ptr);
 }
 
@@ -186,7 +186,7 @@ pub(super) proof fn ipc_pages_lock_tables_step_pre_from_k(
         }),
 {
     krnl.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), channel_ptr);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thrd_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, source_process, thrd_ptr, Some(channel_ptr)); write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, target_process, peer_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); kernel_thread_projection_at(krnl, thrd_ptr);
     kernel_pagetable_mappings_projection_at(krnl, source_process); kernel_pagetable_mappings_projection_at(krnl, target_process);
     kernel_process_projection_at(krnl, source_process); kernel_process_projection_at(krnl, target_process);
@@ -251,7 +251,7 @@ pub(super) proof fn ipc_pages_check_step_pre_from_k(
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable);
     if tables is Fill { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
     else { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thrd_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, source_process, thrd_ptr, Some(channel_ptr)); write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, target_process, peer_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); kernel_thread_projection_at(krnl, thrd_ptr);
     kernel_pagetable_mappings_projection_at(krnl, source_process); kernel_pagetable_mappings_projection_at(krnl, target_process);
     ipc_pages_check_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx);
@@ -424,8 +424,8 @@ pub(super) proof fn ipc_pages_unlock_tables_step_pre_from_k(
 {
     reveal(share_4k_objects_k);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable); krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thrd_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
-    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); kernel_share_4k_objects_projection(krnl, lctx, cpu_id);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, source_process, thrd_ptr, None); write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, target_process, peer_ptr, None);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); share_4k_write_held_implies_share_4k_locked_and_objects_projected(krnl, lctx, cpu_id);
     kernel_pagetable_mappings_projection_at(krnl, source_process); kernel_pagetable_mappings_projection_at(krnl, target_process);
     ipc_pages_unlock_tables_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id);
 }
@@ -934,8 +934,8 @@ pub(super) proof fn ipc_pages_downgrade_step_pre_from_k(
 {
     reveal(share_4k_objects_k);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable); krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thrd_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
-    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); kernel_share_4k_objects_projection(krnl, lctx, cpu_id);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, source_process, thrd_ptr, None); write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, target_process, peer_ptr, None);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); share_4k_write_held_implies_share_4k_locked_and_objects_projected(krnl, lctx, cpu_id);
     kernel_pagetable_mappings_projection_at(krnl, source_process); kernel_pagetable_mappings_projection_at(krnl, target_process);
     ipc_pages_downgrade_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id);
 }

@@ -9,7 +9,7 @@ use super::syscall_kill_process_retire_eof_process::{kill_retire_eof_container_r
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_retire_eof_tree::kill_retire_eof_tree;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_retire_pages::kill_retire_pages_held_and_owned;
+use super::syscall_kill_process_retire_pages::kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached;
 
 verus! {
 /// The retired zombie, its tables, and its pages returned to its container's 4K allocator keep the kernel invariant.
@@ -67,7 +67,7 @@ pub(crate) proof fn kill_retire_eof(
         post.inv(),
         !post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
 {
-    kill_retire_pages_held_and_owned(pre, target, kill_retire_pages(pre, target).to_set(), allc_ptr, cpu_id);
+    kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached(pre, target, kill_retire_pages(pre, target).to_set(), allc_ptr, cpu_id);
     kill_retire_eof_memory(pre, post, cpu_id, target, Some(parent_ptr), ctn_ptr, allc_ptr);
     kill_retire_eof_container_relations(pre, post, cpu_id, target, Some(parent_ptr), ctn_ptr, allc_ptr);
     kill_retire_eof_process_relations(pre, post, lctx, cpu_id, target, Some(parent_ptr), ctn_ptr, allc_ptr);

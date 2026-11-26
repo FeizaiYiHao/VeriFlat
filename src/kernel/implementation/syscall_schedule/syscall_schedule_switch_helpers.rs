@@ -49,7 +49,10 @@ pub(super) fn schedule_switch_read_target(
             &&& krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.wf()
             &&& krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().len() == krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.len()
             &&& krnl.sched_mp.spec_index(sched_ptr).owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container
-        }) by { scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread); reveal(LinkedList::wf_value_list); };
+        }) by {
+            scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr);
+            container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread); reveal(LinkedList::wf_value_list);
+        };
         thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, next_thread);
     }
     let thread = krnl.thrd_mp.borrow_typed(next_thread, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(next_lock_perm));
