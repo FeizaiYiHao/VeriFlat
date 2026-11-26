@@ -245,7 +245,7 @@ pub proof fn kernel_inv_implies_iotlb_entry_names_iommu_mapped_page(krnl: &Kerne
     let owner = irt.spec_index_owner(anchor.0, anchor.1, anchor.2)->Some_0;
     let it = krnl.prc_mp.spec_index(owner).view().iommu_table->Some_0;
     assert(krnl.it_mp.spec_index(it).view().mapping_4k().contains_key(iova));
-    iommu_table_perms_wf_at(krnl.it_mp, it); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+    iommu_table_perms_wf_at(krnl.it_mp, it); page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
     let pg = page_ptr2page_index(krnl.it_mp.spec_index(it).view().mapping_4k().spec_index(iova).addr);
     assert(krnl.pg_arr.spec_index(pg).view().view().iommu_mappings().contains((it, iova)));
 }

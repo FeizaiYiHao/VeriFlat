@@ -327,7 +327,7 @@ pub proof fn kernel_wf_implies_u_ownership_wf(krnl: &KernelK)
     };
     assert(kernel_u_object_page_owner_wf(kernel_k_to_kernel_u(*krnl))) by {
         reveal(kernel_u_object_page_owner_wf); reveal(container_owned_pages_wf); reveal(thread_pages_wf); reveal(endpoint_pages_wf); reveal(page_object_owner_wf);
-        reveal(container_thread_wf); reveal(container_endpoint_wf); page_ptr_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        reveal(container_thread_wf); reveal(container_endpoint_wf); page_ptr_roundtrip(); page_ptr_valid_implies_page_index_valid();
     };
     assert(kernel_u_thread_caller_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_thread_caller_wf); reveal(thread_caller_callee_wf); };
     assert(kernel_u_ipc_transit_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_ipc_transit_wf); reveal(thread_perms_wf); reveal(thread_ipc_transit_wf); };
@@ -419,7 +419,7 @@ proof fn kernel_wf_implies_u_io_leaf_wf(krnl: &KernelK)
     let u = kernel_k_to_kernel_u(*krnl);
     let bars = krnl.pci_bars.view();
     reveal(kernel_k_to_kernel_u); reveal(kernel_u_io_leaf_wf);
-    page_ptr_roundtrip(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_ptr_valid_implies_page_index_valid();
     assert forall|p: RwLockProcessPtr, va: VAddr| #![trigger u.process_map[p].pagetable->Some_0.mapping_4k[va]]
         u.process_map.dom().contains(p) && u.process_map[p].pagetable is Some && u.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(va) implies {
             let e = u.process_map[p].pagetable->Some_0.mapping_4k[va];
