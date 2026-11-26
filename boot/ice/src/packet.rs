@@ -25,8 +25,8 @@ pub struct UdpFrame {
     pub dst_ip: [u8; 4],
     pub src_port: u16,
     pub dst_port: u16,
-    /// Frame length without the CRC: `MIN_FRAME..=MAX_FRAME`, or up to `MAX_JUMBO_FRAME` on a port configured for jumbo
-    /// frames.
+    /// Frame length without the CRC: `MIN_FRAME..=MAX_FRAME`, or with feature `payload-path` up to `MAX_JUMBO_FRAME` on a
+    /// port configured for jumbo frames.
     pub len: usize,
 }
 
@@ -42,7 +42,11 @@ pub fn ipv4_checksum(hdr: &[u8]) -> u16 {
 impl UdpFrame {
     /// Writes the frame into `buf[..self.len]`.
     pub fn write(&self, buf: &mut [u8]) {
-        assert!((MIN_FRAME..=MAX_JUMBO_FRAME).contains(&self.len) && buf.len() >= self.len, "bad frame length");
+        #[cfg(not(feature = "payload-path"))]
+        const LARGEST: usize = MAX_FRAME;
+        #[cfg(feature = "payload-path")]
+        const LARGEST: usize = MAX_JUMBO_FRAME;
+        assert!((MIN_FRAME..=LARGEST).contains(&self.len) && buf.len() >= self.len, "bad frame length");
         let f = &mut buf[..self.len];
         f.fill(0);
         f[0..6].copy_from_slice(&self.dst_mac);

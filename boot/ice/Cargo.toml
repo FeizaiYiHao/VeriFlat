@@ -9,6 +9,10 @@ description = "Hardware-independent polling driver core for the Intel E810 (ice)
 [features]
 # The software device model (`mock`), for dom0 runs without an E810; host tests always have it.
 mock = []
+# The payload-path experiment: `chan` with the copy and map data paths, payload touch and jumbo frames
+# (src/chan_payload.rs), `Config::max_frame` (Set MAC Config) and jumbo Tx frame slots. Off by default so the default
+# build has the code and data layout of the zero-copy channel.
+payload-path = []
 
 [dependencies]
 log = "0.4.19"

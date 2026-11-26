@@ -21,6 +21,13 @@ extern crate alloc;
 
 pub mod aq;
 pub mod bench;
+// The default `chan` is the zero-copy channel only; feature `payload-path` swaps in the one with the copy and map data
+// paths, payload touch and jumbo frames (chan_payload.rs), kept out of the default build so its code and data layout
+// stay those of the plain channel.
+#[cfg(not(feature = "payload-path"))]
+pub mod chan;
+#[cfg(feature = "payload-path")]
+#[path = "chan_payload.rs"]
 pub mod chan;
 pub mod ctx;
 pub mod desc;

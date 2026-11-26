@@ -16,7 +16,9 @@ pub struct TxFrame {
     pub buf: DmaRegion,
     pub len: u16,
     pub count: usize,
-    /// Bytes per copy: `SLOT`, or the frame rounded up to 128 bytes for a jumbo frame.
+    /// Bytes per copy: `SLOT`, or the frame rounded up to 128 bytes for a jumbo frame. Feature `payload-path` only; the
+    /// default build has `SLOT`.
+    #[cfg(feature = "payload-path")]
     pub slot: usize,
 }
 
@@ -29,17 +31,32 @@ impl TxFrame {
 
     /// `count` copies of `frame`.
     pub fn pool(p: &impl Platform, frame: &UdpFrame, count: usize) -> Result<TxFrame> {
+        #[cfg(feature = "payload-path")]
         let slot = Self::SLOT.max(frame.len.next_multiple_of(128));
+        #[cfg(not(feature = "payload-path"))]
+        let slot = Self::SLOT;
         let buf = p.dma_alloc(count.max(1) * slot, 128).ok_or(Error::NoDmaMemory)?;
+        #[cfg(feature = "payload-path")]
         let mut f = TxFrame { buf, len: 0, count: count.max(1), slot };
+        #[cfg(not(feature = "payload-path"))]
+        let mut f = TxFrame { buf, len: 0, count: count.max(1) };
         f.write(frame);
         Ok(f)
+    }
+
+    /// Bytes per copy.
+    #[inline(always)]
+    pub fn slot_bytes(&self) -> usize {
+        #[cfg(feature = "payload-path")]
+        return self.slot;
+        #[cfg(not(feature = "payload-path"))]
+        return Self::SLOT;
     }
 
     /// Writes `frame` into every copy (while no queue sends this frame).
     pub fn write(&mut self, frame: &UdpFrame) {
         for i in 0..self.count {
-            frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * self.slot), self.slot) });
+            frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * self.slot_bytes()), self.slot_bytes()) });
         }
         self.len = frame.len as u16;
     }
@@ -47,12 +64,12 @@ impl TxFrame {
     /// Writes `frame` into copy i only (its length must be the one of every copy).
     pub fn write_copy(&mut self, i: usize, frame: &UdpFrame) {
         assert!(i < self.count && frame.len as u16 == self.len);
-        frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * self.slot), self.slot) });
+        frame.write(unsafe { core::slice::from_raw_parts_mut(self.buf.va.add(i * self.slot_bytes()), self.slot_bytes()) });
     }
 
     /// Copy i as (IOVA, length).
     pub fn copy(&self, i: usize) -> (u64, u16) {
-        (self.buf.iova + (i * self.slot) as u64, self.len)
+        (self.buf.iova + (i * self.slot_bytes()) as u64, self.len)
     }
 }
 
@@ -88,7 +105,7 @@ pub fn run_queue_pair<P: Platform>(
     while now < end {
         if let Some(f) = frame {
             tx.clean();
-            tx.send_batches_pool(f.buf.iova, f.slot, f.count, f.len, &mut cursor, TX_BATCHES);
+            tx.send_batches_pool(f.buf.iova, f.slot_bytes(), f.count, f.len, &mut cursor, TX_BATCHES);
         }
         if do_rx {
             let got = rx.poll(RX_BUDGET);

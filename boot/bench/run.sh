@@ -12,6 +12,8 @@
 # variant on the driver's software device model instead (numbers of the IPC and the model, not of a NIC).
 # ICE_CHAN_MOCK=1 runs only the two-process ice::chan shapes (src/ice_chan.rs) on that model; VERIFLAT_ICE_SHAPE,
 # VERIFLAT_ICE_PATH (zero, copy, map), VERIFLAT_ICE_TOUCH, VERIFLAT_ICE_FRAME, VERIFLAT_ICE_MODE, .. pick what it runs.
+# PAYLOAD_PATH=1 adds feature dom0-bench/payload-path, which path copy or map, a payload touch, frames above 1518 bytes
+# and VERIFLAT_PARALLEL=iommu,handoff / flushcpus need (without it such a build fails).
 # VERIFLAT_BOOT_2M_BLOCKS=n (default 4) sets the free 2M blocks of the kernel build, the root container's 2M quota;
 # VERIFLAT_BOOT_1G_BLOCKS=0|1 (default 1) sets the free 1G block [1 GiB, 2 GiB) of the kernel build, the root container's
 # 1G quota (0 without CPUID pdpe1gb). The page array covers [0, 4 GiB); `-m 2304` is RAM, the rest stays Unavailable,
@@ -40,6 +42,7 @@ if [ "${ICE_BENCH:-0}" = 1 ]; then BUILD_FEATURES+=(--features kernel/no-timer,d
 if [ "${ICE_XPROC:-0}" = 1 ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0-bench/ice-xproc); fi
 if [ "${ICE_MOCK:-0}" = 1 ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0-bench/ice-mock); fi
 if [ "${ICE_CHAN_MOCK:-0}" = 1 ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0-bench/ice-chan-mock); fi
+if [ "${PAYLOAD_PATH:-0}" = 1 ]; then BUILD_FEATURES+=(--features dom0-bench/payload-path); fi
 cargo +1.99.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0-bench "${BUILD_FEATURES[@]}"
 OUT=target/x86_64-unknown-none/$PROFILE
 

@@ -6,9 +6,17 @@
 extern crate alloc;
 
 mod bar;
+#[cfg(feature = "payload-path")]
 mod courier;
+#[cfg(feature = "payload-path")]
 mod handoff;
 mod ice_bench;
+// The default `ice_chan` runs the zero-copy shapes only; feature `payload-path` swaps in the one with the copy and map
+// data paths, payload touch and jumbo frames (ice_chan_payload.rs), see `payload_gate` below.
+#[cfg(not(feature = "payload-path"))]
+mod ice_chan;
+#[cfg(feature = "payload-path")]
+#[path = "ice_chan_payload.rs"]
 mod ice_chan;
 mod ice_xproc;
 mod nvme;
@@ -626,6 +634,133 @@ const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
 /// Whether `PARALLEL` lists the parallel timing `name`.
 fn runs_parallel(name: &str) -> bool {
     PARALLEL.split(',').any(|listed| listed.trim() == name)
+}
+
+/// Without feature `payload-path` the build has only the zero-copy `ice_chan` and no hand-off timings: a build that
+/// asks for a copy or map data path, a payload touch, the map path's IOMMU setting, a jumbo frame or one of the
+/// payload-path timings fails here instead of silently running zero copy.
+#[cfg(not(feature = "payload-path"))]
+mod payload_gate {
+    /// Whether the comma-separated `list` has an item (spaces trimmed) that is not empty and not `allowed`.
+    const fn has_other(list: &str, allowed: &[&str]) -> bool {
+        let b = list.as_bytes();
+        let mut i = 0;
+        while i <= b.len() {
+            let mut j = i;
+            while j < b.len() && b[j] != b',' {
+                j += 1;
+            }
+            let (mut s, mut e) = (i, j);
+            while s < e && b[s] == b' ' {
+                s += 1;
+            }
+            while e > s && b[e - 1] == b' ' {
+                e -= 1;
+            }
+            if e > s && !is_one_of(b, s, e, allowed) {
+                return true;
+            }
+            i = j + 1;
+        }
+        false
+    }
+
+    /// Whether `b[s..e]` is one of `words`.
+    const fn is_one_of(b: &[u8], s: usize, e: usize, words: &[&str]) -> bool {
+        let mut w = 0;
+        while w < words.len() {
+            let x = words[w].as_bytes();
+            if x.len() == e - s {
+                let mut k = 0;
+                while k < x.len() && x[k] == b[s + k] {
+                    k += 1;
+                }
+                if k == x.len() {
+                    return true;
+                }
+            }
+            w += 1;
+        }
+        false
+    }
+
+    /// Whether the comma-separated `list` names one of `words`.
+    const fn lists_any(list: &str, words: &[&str]) -> bool {
+        let mut w = 0;
+        while w < words.len() {
+            if names(list, words[w]) {
+                return true;
+            }
+            w += 1;
+        }
+        false
+    }
+
+    /// Whether the comma-separated `list` has the item `word`.
+    const fn names(list: &str, word: &str) -> bool {
+        let b = list.as_bytes();
+        let mut i = 0;
+        while i <= b.len() {
+            let mut j = i;
+            while j < b.len() && b[j] != b',' {
+                j += 1;
+            }
+            let (mut s, mut e) = (i, j);
+            while s < e && b[s] == b' ' {
+                s += 1;
+            }
+            while e > s && b[e - 1] == b' ' {
+                e -= 1;
+            }
+            if is_one_of(b, s, e, &[word]) {
+                return true;
+            }
+            i = j + 1;
+        }
+        false
+    }
+
+    /// A decimal number, or 0 when `s` is not one (the run then reports it).
+    const fn decimal(s: &str) -> u64 {
+        let b = s.as_bytes();
+        let (mut i, mut v) = (0, 0u64);
+        while i < b.len() {
+            if !b[i].is_ascii_digit() || v > u64::MAX / 100 {
+                return 0;
+            }
+            v = v * 10 + (b[i] - b'0') as u64;
+            i += 1;
+        }
+        v
+    }
+
+    const fn opt(v: Option<&'static str>) -> &'static str {
+        match v {
+            Some(s) => s,
+            None => "",
+        }
+    }
+
+    const _: () = assert!(
+        !has_other(opt(option_env!("VERIFLAT_ICE_PATH")), &["zero"]),
+        "VERIFLAT_ICE_PATH copy or map needs feature dom0-bench/payload-path"
+    );
+    const _: () = assert!(
+        !has_other(opt(option_env!("VERIFLAT_ICE_TOUCH")), &["off"]),
+        "VERIFLAT_ICE_TOUCH read or write needs feature dom0-bench/payload-path"
+    );
+    const _: () = assert!(
+        option_env!("VERIFLAT_ICE_MAP_IOMMU").is_none(),
+        "VERIFLAT_ICE_MAP_IOMMU (map path) needs feature dom0-bench/payload-path"
+    );
+    const _: () = assert!(
+        decimal(opt(option_env!("VERIFLAT_ICE_FRAME"))) <= 1518,
+        "VERIFLAT_ICE_FRAME above 1518 (jumbo frames) needs feature dom0-bench/payload-path"
+    );
+    const _: () = assert!(
+        !lists_any(super::PARALLEL, &["iommu", "handoff", "flushcpus"]),
+        "VERIFLAT_PARALLEL iommu, handoff and flushcpus need feature dom0-bench/payload-path"
+    );
 }
 
 /// One client/server pair of the parallel call timing, alone on its cache lines, so the pairs share
@@ -2594,6 +2729,7 @@ pub extern "C" fn _start() -> ! {
         ice_xproc::run();
         unsafe { sys_debug_exit(0) };
     }
+    #[cfg(feature = "payload-path")]
     if runs_parallel("iommu") || runs_parallel("handoff") || runs_parallel("flushcpus") {
         // The payload-path microbenchmarks (see src/handoff.rs), first and alone: `iommu` then `handoff` in one boot,
         // `flushcpus` in a boot of its own (its spinners keep every CPU).

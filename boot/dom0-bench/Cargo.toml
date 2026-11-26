@@ -31,6 +31,10 @@ ice-chan = []
 ice-chan-mock = ["ice-chan", "mock-device"]
 # The E810 front ends drive `ice::mock` instead of an E810.
 mock-device = ["ice/mock"]
+# The payload-path benchmark: `ice-chan`'s copy and map data paths, payload touch and jumbo frames
+# (src/ice_chan_payload.rs) and the hand-off timings (`VERIFLAT_PARALLEL=iommu,handoff` / `flushcpus`, src/handoff.rs).
+# Off by default: a build that asks for any of them without it fails at build time (`payload_gate` in src/main.rs).
+payload-path = ["ice/payload-path"]
 
 [dependencies]
 vsys = { path = "../vsys" }

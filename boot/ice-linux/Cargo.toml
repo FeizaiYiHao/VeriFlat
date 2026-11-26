@@ -7,7 +7,7 @@ publish = false
 description = "Linux user-space front end of the boot/ice E810 driver core, for debugging on the real machine"
 
 [dependencies]
-ice = { path = "../ice" }
+ice = { path = "../ice", features = ["payload-path"] }
 libc = "0.2"
 log = { version = "0.4.19", features = ["std"] }
 

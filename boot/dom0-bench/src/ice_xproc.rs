@@ -225,7 +225,10 @@ impl Settings {
     }
 
     fn config(&self, queues: usize) -> Config {
-        Config { queues, tx_ring: TX_RING, rx_ring: RX_RING, tx_batch: 32, rx_buf: RX_BUF, steering: self.steering, max_frame: 0 }
+        Config { queues, tx_ring: TX_RING, rx_ring: RX_RING, tx_batch: 32, rx_buf: RX_BUF, steering: self.steering,
+            #[cfg(feature = "payload-path")]
+            max_frame: 0,
+        }
     }
 }
 
