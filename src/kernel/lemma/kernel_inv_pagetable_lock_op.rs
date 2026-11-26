@@ -12,7 +12,7 @@ pub open spec fn pagetable_invariant_fields_unchanged(pre: PageTableLockedMap, p
         pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr) == whole_pagetable(pre, pt_lower, pt_ptr)
 }
 
-pub proof fn pagetable_lock_op_preserves_invariant_fields(pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap, changed: RwLockPageTableRoot)
+pub proof fn pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap, changed: RwLockPageTableRoot)
     requires
         post.unchanged_except(&pre, changed),
         post.spec_index(changed).view().higher == pre.spec_index(changed).view().higher,

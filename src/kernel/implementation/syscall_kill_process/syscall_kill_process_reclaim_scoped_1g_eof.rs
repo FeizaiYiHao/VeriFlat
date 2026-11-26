@@ -110,7 +110,7 @@ proof fn kill_reclaim_nonempty_1g_page_scoped_eof_mapped_4k_2m_pages(
 {
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
     reveal(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     pre.default_pagetable_wf_at(pagetable);
 }
 
@@ -142,7 +142,7 @@ proof fn kill_reclaim_nonempty_1g_page_scoped_eof_mapped_1g_pages(
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, spec_index2va_2m_valid;
     reveal(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing); reveal(mapped_1g_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     page_ptr_roundtrip(); page_index_roundtrip();
@@ -179,7 +179,7 @@ proof fn kill_reclaim_nonempty_1g_page_scoped_eof_page_relations(
 {
     reveal(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     kill_reclaim_nonempty_1g_page_scoped_eof_mapped_4k_2m_pages(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);
@@ -216,7 +216,7 @@ proof fn kill_reclaim_nonempty_1g_page_scoped_eof_global_pool_1g_pages(
 {
     reveal(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(allocator_global_pool_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by {
         reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
         seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();
@@ -250,7 +250,7 @@ proof fn kill_reclaim_nonempty_1g_page_scoped_eof_free_1g_pages(
 {
     reveal(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_1g_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
@@ -291,7 +291,7 @@ proof fn kill_reclaim_nonempty_1g_page_scoped_eof_page_owners(
 {
     reveal(kill_reclaim_nonempty_1g_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);

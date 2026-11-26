@@ -81,7 +81,7 @@ pub broadcast proof fn page_1g_ptr_prefix_contains_implies_valid_ptr_head_or_tai
     assert(count > 0) by { if count == 0 { } };
     let last = (head as int + count as int - 1) as usize;
     if pg_ptr == spec_page_index2page_ptr(last) {
-        page_index_valid_imply_page_ptr_valid();
+        page_index_valid_implies_page_ptr_valid();
         page_index_roundtrip();
     } else {
         page_1g_ptr_prefix_contains_implies_valid_ptr_head_or_tail_index_in_bounds(head, (count - 1) as nat, pg_ptr);

@@ -155,7 +155,7 @@ verus! {
             final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
     {
         proof {
-            thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
+            thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
             cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, cpu_id); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, caller_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, ep_ptr, caller_ptr);
             container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, caller_ptr);
@@ -358,7 +358,7 @@ verus! {
             final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
     {
         proof {
-            thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
+            thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, ep_ptr, callee_ptr);
             container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, callee_ptr);
         }
@@ -542,7 +542,7 @@ verus! {
             } else { None },
             ret is Success || ret is SuccessUsize || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorCallAcrossContainers,
     {
-        assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(ep_ptr).is_init() && krnl.ep_mp.spec_index(ep_ptr).view().queue.wf()) by { endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); };
+        assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(ep_ptr).is_init() && krnl.ep_mp.spec_index(ep_ptr).view().queue.wf()) by { endpoint_perms_wf_implies_map_perms_wf(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); };
         let endpoint_ref = krnl.ep_mp.borrow_typed(ep_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm));
         let (_, peer_thrd_ptr) = endpoint_ref.queue.peek_head();
         proof {

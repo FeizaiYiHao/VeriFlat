@@ -99,7 +99,7 @@ verus! {
     {
         assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf() && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.inv()
             && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.inv() && krnl.thrd_mp.perms_wf() && krnl.pg_arr.inv()
-        ) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); thread_perms_wf_map(krnl.thrd_mp); page_array_wf_map(krnl.pg_arr); };
+        ) by { allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); page_array_wf_implies_page_array_inv(krnl.pg_arr); };
         let (node_addr, pg_ptr) = match source {
             Some(cpu_id) => krnl.allc_4k_mp.borrow_cache_typed(alloc_ptr_4k, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).linked_list.peek_head(),
             None => krnl.allc_4k_mp.borrow_global_pool_typed(alloc_ptr_4k, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).peek_head(),
@@ -135,7 +135,7 @@ verus! {
                 old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, node_addr2);
             }
         }
-        assert(krnl.pg_arr.inv() && krnl.thrd_mp.spec_index(thrd_ptr).is_init()) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
+        assert(krnl.pg_arr.inv() && krnl.thrd_mp.spec_index(thrd_ptr).is_init()) by { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         {
             let mut page = krnl.pg_arr.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
@@ -157,7 +157,8 @@ verus! {
         proof {
             lctx.enter_kernel_view_release();
             lctx.update_lock_id(KernelObjId::Page(pg_idx), old_page_lock_id, krnl.pg_arr.lock_id_by_index(pg_idx));
-            map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            map_insert_twice_implies_eq_last_insert(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
+                TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         }
         assert(old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view().contains(pg_ptr) == false) by {
             if old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view().contains(pg_ptr) {

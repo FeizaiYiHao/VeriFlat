@@ -333,7 +333,7 @@ pub(super) fn new_container_lock_source_windows(
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == root && ret.2.view().dom().contains(w)),
 {
     let start_indices = va2index(range.start);
-    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); }; }
+    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); }; }
     let pagetable = krnl.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
     if pagetable.higher.kernel_l4_end > start_indices.0 {
         let tracked empty_perms: Map<WindowVa, LockPerm> = Map::tracked_empty();

@@ -167,7 +167,7 @@ impl IommuTable {
         proof {
             self.wf_l4_at(target_l4i);
         }
-        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_imply_mem_valid(page_map_ptr); };
+        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_implies_mem_valid(page_map_ptr); };
         iommu_page_map_set_published_in_map(self.cr3, Tracked(self.l4_table.borrow_mut()), target_l4i,
             PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: false } },
             Tracked(&mut *lctx));
@@ -225,7 +225,7 @@ impl IommuTable {
             self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
         }
 
-        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_imply_mem_valid(page_map_ptr); };
+        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_implies_mem_valid(page_map_ptr); };
         iommu_page_map_set_published_in_map(target_l3_p, Tracked(self.l3_tables.borrow_mut()), target_l3i,
             PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } },
             Tracked(&mut *lctx));
@@ -284,7 +284,7 @@ impl IommuTable {
             self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
         }
 
-        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_imply_mem_valid(page_map_ptr); };
+        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_implies_mem_valid(page_map_ptr); };
         iommu_page_map_set_published_in_map(target_l2_p, Tracked(self.l2_tables.borrow_mut()), target_l2i,
             PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } },
             Tracked(&mut *lctx));
@@ -345,7 +345,7 @@ impl IommuTable {
             self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
             self.wf_l1_at(self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr, target_l1i);
         }
-        assert(mem_valid(target_entry.addr)) by { page_ptr_valid_imply_mem_valid(target_entry.addr); };
+        assert(mem_valid(target_entry.addr)) by { page_ptr_valid_implies_mem_valid(target_entry.addr); };
         iommu_page_map_set_published_in_map(target_l1_p, Tracked(self.l1_tables.borrow_mut()), target_l1i,
             PageEntry { addr: target_entry.addr, perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: false, kernel_present: true } },
             Tracked(&mut *lctx));

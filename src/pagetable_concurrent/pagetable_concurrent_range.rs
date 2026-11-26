@@ -108,7 +108,7 @@ impl WholePageTable {
         let va_l3i = spec_v2l3index(va);
         let va_l2i = spec_v2l2index(va);
         let va_l1i = spec_v2l1index(va);
-        assert(pei_valid(va_l4i) && pei_valid(va_l3i) && pei_valid(va_l2i) && pei_valid(va_l1i)) by { spec_va_4k_valid_imply_indices_valid(); };
+        assert(pei_valid(va_l4i) && pei_valid(va_l3i) && pei_valid(va_l2i) && pei_valid(va_l1i)) by { spec_va_4k_valid_implies_indices_valid(); };
         assert(spec_index2va(spec_va2index(va)) == va) by { spec_va_4k_index_roundtrip_at(va, va_l4i, va_l3i, va_l2i, va_l1i); };
         spec_index2va_le_implies_4k_indices_lex_le((start_l4i, start_l3i, start_l2i, start_l1i), (va_l4i, va_l3i, va_l2i, va_l1i));
         spec_index2va_le_implies_4k_indices_lex_le((va_l4i, va_l3i, va_l2i, va_l1i), (end_l4i, end_l3i, end_l2i, end_l1i));
@@ -958,14 +958,14 @@ impl PageTableHigher {
             match resolved.1 {
                 PageTableErrorCode::NoError | PageTableErrorCode::EntryTakenBy4k | PageTableErrorCode::EntryTakenBy1g | PageTableErrorCode::EntryTakenBy2m => {
                     proof {
-                        assert(!c.spec_mapping_4k_va_range_buildable(range)) by { range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_imply_indices_valid(); };
+                        assert(!c.spec_mapping_4k_va_range_buildable(range)) by { range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_implies_indices_valid(); };
                         assert({
                             let indices = spec_va2index(range.view().spec_index(i as int));
                             ||| self.mapping_1g.view().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
                             ||| lower.mapping_2m.dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                             ||| lower.mapping_4k.dom().contains(range.view().spec_index(i as int))
                         }) by {
-                            range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_imply_indices_valid(); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
+                            range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_implies_indices_valid(); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
                             self.wf_mapping_1g_at(l4i, l3i); c.wf_mapping_2m_at(l4i, l3i, l2i); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i);
                         };
                     }
@@ -986,7 +986,7 @@ impl PageTableHigher {
                     &&& !lower.mapping_2m.dom().contains(spec_index2va((checked_indices.0, checked_indices.1, checked_indices.2, 0)))
                     &&& !lower.mapping_4k.dom().contains(range.view().spec_index(i as int))
                 }) by {
-                    range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_imply_indices_valid();
+                    range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_implies_indices_valid();
                     assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
                     self.wf_mapping_1g_at(l4i, l3i); c.wf_mapping_2m_at(l4i, l3i, l2i); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i);
                 };

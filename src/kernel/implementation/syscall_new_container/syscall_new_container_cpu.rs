@@ -101,7 +101,7 @@ pub(super) fn transfer_new_container_cpu(
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().wf()
             &&& !krnl.cpu_arr.spec_index(transfer_cpu_id).view().being_killed()
         }) by {
-            cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, parent_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, child_cpu_set);
+            cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, parent_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, child_cpu_set);
             container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_ctn_ptr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ctn_ptr, transfer_cpu_id);
             cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, transfer_cpu_id);
         };

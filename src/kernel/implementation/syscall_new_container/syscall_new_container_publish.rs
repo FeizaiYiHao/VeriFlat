@@ -358,7 +358,7 @@ pub(super) fn publish_new_container_staged_root(
     let tracked pagetable_page_lock_perm = page_4k_lock_perms.tracked_remove(pagetable_page);
     let tracked l4_page_lock_perm = page_4k_lock_perms.tracked_remove(l4_page);
     let tracked thread_page_lock_perm = page_4k_lock_perms.tracked_remove(thread_page);
-    proof { assert(staged_4k_page_chain(krnl.pg_arr, funding_pages)) by { page_ptr_valid_imply_page_index_valid(); }; }
+    proof { assert(staged_4k_page_chain(krnl.pg_arr, funding_pages)) by { page_ptr_valid_implies_page_index_valid(); }; }
     let Tracked(transfer_cpu_lock_perm) = krnl.wlock_off_cpu(transfer_cpu_id, parent_cpu_set, Tracked(&mut *lctx));
     proof { assert(kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, krnl.cpu_arr)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
     let ghost staged_k = *krnl;

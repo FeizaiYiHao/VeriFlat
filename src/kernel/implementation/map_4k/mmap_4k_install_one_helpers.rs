@@ -702,9 +702,9 @@ verus! {
         krnl.wunlock_page(page_ptr2page_index(pg_ptr), Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {
             assert(nonwindow_typed_lock_maps_unchanged(&entry_lctx, lctx)) by {
-                map_insert_overwrite_lemma(entry_lctx.page_lock_map(), page_ptr2page_index(pg_ptr), TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
+                map_insert_twice_implies_eq_last_insert(entry_lctx.page_lock_map(), page_ptr2page_index(pg_ptr), TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
                     TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
-                map_insert_remove_absent_lemma(entry_lctx.page_lock_map(), page_ptr2page_index(pg_ptr), TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
+                absent_key_implies_map_insert_remove_eq_map(entry_lctx.page_lock_map(), page_ptr2page_index(pg_ptr), TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
             };
             assert(kernel_thread_quota_4k_changed(old(krnl), krnl, quota_thrd_ptr, -1)) by { reveal(kernel_thread_quota_4k_changed); };
         }

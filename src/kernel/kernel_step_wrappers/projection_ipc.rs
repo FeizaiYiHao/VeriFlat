@@ -759,7 +759,7 @@ pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
-    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))); }
+    if let Some(pcid) = flushed_pcid { cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))); }
 }
 
 pub(super) proof fn kernel_ipc_accept_call_fields_implies_u_step(
@@ -826,7 +826,7 @@ pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map.insert(ep_ptr, EndpointU {
         queue: endpoint.queue.push(callee_ptr), queue_state: if endpoint.queue.len() == 0 { EndpointState::RECEIVE } else { endpoint.queue_state }, ..endpoint
     }), e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, e); } });
-    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))); }
+    if let Some(pcid) = flushed_pcid { cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))); }
 }
 
 /// The reply-handoff fields project to the cpu array with only `cpu_id` switched to the caller.
@@ -979,7 +979,7 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
         if iommu_roots_attached(pre.irt.view().iommu_roots())[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
             assert(post.iommu_tlb.view().dom().contains(old_did->Some_0));
             assert(vtd_domain_id_valid(old_did->Some_0)) by { reveal(IommuTLB::inv); };
-            kernel_iommu_tlb_within_may_cache_projection(post, old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0));
+            iommu_tlb_within_may_cache_implies_iommu_tlb_within_may_cache_u(post, old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0));
         }
     }
     kernel_ipc_rendezvous_fields_implies_u_cpu_array(pre, post, cpu_id, caller_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, pci_transfer);

@@ -86,7 +86,7 @@ pub proof fn seq_first_difference_smaller_implies_seq_to_nat_smaller(
     }
 }
 
-pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V)
+pub proof fn absent_key_implies_map_insert_remove_eq_map<K, V>(m: Map<K, V>, key: K, value: V)
     requires
         !m.dom().contains(key),
     ensures
@@ -94,13 +94,13 @@ pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V
 {
 }
 
-pub proof fn map_insert_overwrite_lemma<K, V>(m: Map<K, V>, key: K, old_value: V, new_value: V)
+pub proof fn map_insert_twice_implies_eq_last_insert<K, V>(m: Map<K, V>, key: K, old_value: V, new_value: V)
     ensures
         m.insert(key, old_value).insert(key, new_value) == m.insert(key, new_value),
 {
 }
 
-pub proof fn map_union_remove_right_domain_disjoint_lemma<K, V>(left: Map<K, V>, right: Map<K, V>)
+pub proof fn disjoint_domains_implies_map_union_remove_right_keys_eq_left<K, V>(left: Map<K, V>, right: Map<K, V>)
     requires
         left.dom().disjoint(right.dom()),
     ensures

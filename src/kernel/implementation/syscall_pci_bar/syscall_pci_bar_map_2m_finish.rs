@@ -188,7 +188,7 @@ pub(super) fn map_pci_bar_2m_map_and_finish(
             broadcast use spec_va_2m_valid_index_roundtrip;
         };
         assert(spec_va_4k_valid(va)) by (bit_vector) requires spec_va_2m_valid(va);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.wf_mapping_1g_at(indices.0, indices.1);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_2m_at(indices.0, indices.1, indices.2);
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
@@ -254,7 +254,7 @@ pub(super) fn map_pci_bar_2m_map_and_finish(
         }
         proof {
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+            pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
             table.higher.wf_l4_at(indices.0);
             table.l3_links_l2_wf_at(table.spec_resolve_mapping_l4(indices.0)->0.addr, indices.1);
             table.wf_l2_at(table.window_l2_page(indices.0, indices.1), indices.2);

@@ -415,7 +415,7 @@ impl KernelK {
         proof { window_stale_cpus_update_eof_held_windows(*old(self), root, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id()); }
         let ghost new_map = window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), WRITE, lctx.thread_id());
         proof {
-            pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, root);
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
             let tracked mut lower = self.pt_lower.borrow_mut().tracked_remove(root);
@@ -508,7 +508,7 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
     {
         proof {
-            pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, root);
             old(self).pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), root);
         }

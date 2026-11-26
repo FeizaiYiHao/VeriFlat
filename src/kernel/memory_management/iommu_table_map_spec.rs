@@ -34,7 +34,7 @@ pub proof fn iommu_table_perms_wf_at(it_mp: IommuTableLockedMap, it_ptr: RwLockP
         it_mp.spec_index(it_ptr).view().inv(),
 { reveal(iommu_table_perms_wf); }
 
-pub proof fn iommu_table_perms_wf_map(it_mp: IommuTableLockedMap)
+pub proof fn iommu_table_perms_wf_implies_map_perms_wf(it_mp: IommuTableLockedMap)
     requires iommu_table_perms_wf(it_mp)
     ensures it_mp.perms_wf()
 { reveal(iommu_table_perms_wf); }

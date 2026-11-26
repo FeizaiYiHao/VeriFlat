@@ -140,13 +140,13 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_table_pages(
         page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
-    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); };
+    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf); };
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by {
-        reveal(process_object_pages_owner_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+        reveal(process_object_pages_owner_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     };
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
 }
@@ -198,7 +198,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_page_relations(
 {
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
         allocator_2m_pages_wf_preserved_for_page_state_eq(pre.allc_2m_mp, post.allc_2m_mp, pre.pg_arr, post.pg_arr);
@@ -259,7 +259,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_l3(
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), table).spec_resolve_mapping_l3(i4, i3) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l3(i4, i3),
 {
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
-    pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
+    pagetable_perms_wf_implies_map_perms_wf(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
     broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
         PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
@@ -287,7 +287,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_l2(
 {
     mmap_1g_reclaim_table_page_to_cache_eof_resolved_l3(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr);
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
-    pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
+    pagetable_perms_wf_implies_map_perms_wf(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
     broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
         PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
@@ -316,7 +316,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_4k(
     mmap_1g_reclaim_table_page_to_cache_eof_resolved_l3(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr);
     mmap_1g_reclaim_table_page_to_cache_eof_resolved_l2(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr);
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
-    pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
+    pagetable_perms_wf_implies_map_perms_wf(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
     broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
         PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
@@ -344,7 +344,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_2m(
 {
     mmap_1g_reclaim_table_page_to_cache_eof_resolved_l3(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr);
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
-    pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
+    pagetable_perms_wf_implies_map_perms_wf(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
     broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
         PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,
@@ -371,7 +371,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_resolved_1g(
                     && whole_pagetable(post.pt_mp, post.pt_lower.view(), table).spec_resolve_mapping_1g_l3(i4, i3) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_1g_l3(i4, i3),
 {
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
-    pagetable_perms_wf_map(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
+    pagetable_perms_wf_implies_map_perms_wf(pre.pt_mp); pagetable_perms_wf_at(pre.pt_mp, table); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), table);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), table);
     broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_nonempty_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_nonempty_l3_eq,
         PageTableHigher::spec_nonempty_l4_resolves_implies_spec_nonempty_1g_l3_eq_resolve, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_nonempty_l2_eq,

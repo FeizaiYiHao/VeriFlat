@@ -27,7 +27,7 @@ proof fn set_4k_page_staging_next_eof_page_object_owner(pre: KernelK, post: Kern
     ensures page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(set_4k_page_staging_next_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); };
 }
 
@@ -40,7 +40,7 @@ proof fn set_4k_page_staging_next_eof_allocator_free_4k_pages(pre: KernelK, post
     ensures allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(set_4k_page_staging_next_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_free_page_ptrs_wf);
     };
@@ -60,7 +60,7 @@ pub(super) proof fn set_4k_page_staging_next_eof(pre: KernelK, post: KernelK, pg
 {
     reveal(set_4k_page_staging_next_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(page_array_wf); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);

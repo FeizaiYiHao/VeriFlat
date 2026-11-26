@@ -115,7 +115,7 @@ pub(crate) fn kill_retire_hold_roots(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
 {
     proof {
-        process_perms_wf_map(krnl.prc_mp);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
         let pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);

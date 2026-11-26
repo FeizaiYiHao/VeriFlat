@@ -67,7 +67,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
     {
         proof {
-            pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
@@ -92,7 +92,7 @@ impl KernelK {
             wlock_pagetable_eof_l2_entries_unlocked(*old(self), *self, pagetable_ptr);
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(pagetable_window_typed_lock_map_aligned);
-                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+                pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -246,7 +246,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
     {
         proof {
-            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
+            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
@@ -254,7 +254,7 @@ impl KernelK {
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
-                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+                pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -300,7 +300,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: old(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Read }),
     {
         proof {
-            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
+            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
@@ -308,7 +308,7 @@ impl KernelK {
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
-                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+                pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -553,7 +553,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Read }),
     {
         proof {
-            pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
@@ -569,7 +569,7 @@ impl KernelK {
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
-                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+                pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -609,7 +609,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
     {
         proof {
-            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
+            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).rlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_read_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
@@ -617,7 +617,7 @@ impl KernelK {
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
-                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+                pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {

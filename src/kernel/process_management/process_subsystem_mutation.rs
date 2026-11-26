@@ -42,7 +42,7 @@ pub fn thread_map_consume_staged_4k(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwL
         final(thrd_mp).spec_index(thrd_ptr).view_ghost() == old(thrd_mp).spec_index(thrd_ptr).view_ghost(),
 {
     assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init()
-        && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+        && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.consume_staged_4k(pg_ptr);
     proof {
@@ -87,7 +87,7 @@ pub fn thread_map_add_free_quota_pending_4k(thrd_mp: &mut ThreadLockedMap, thrd_
             == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().update(depth as int, *final(counter)) }
             else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() },
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.add_free_quota_pending_4k(depth, counter);
     proof {
@@ -131,7 +131,7 @@ pub fn thread_map_clear_free_quota_pending_4k(thrd_mp: &mut ThreadLockedMap, thr
             == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().update(depth as int, 0usize) }
             else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() },
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.clear_free_quota_pending_4k(depth, counter);
     proof {
@@ -174,7 +174,7 @@ pub fn thread_map_refund_direct_free_quota_pending_4k(thrd_mp: &mut ThreadLocked
         final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view() == 0,
         *final(counter) == 0,
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.refund_direct_free_quota_pending_4k(counter);
     proof {
@@ -219,7 +219,7 @@ pub fn thread_map_add_free_quota_pending_2m(thrd_mp: &mut ThreadLockedMap, thrd_
             == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().update(depth as int, *final(counter)) }
             else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() },
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.add_free_quota_pending_2m(depth, counter);
     proof {
@@ -263,7 +263,7 @@ pub fn thread_map_clear_free_quota_pending_2m(thrd_mp: &mut ThreadLockedMap, thr
             == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().update(depth as int, 0usize) }
             else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() },
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.clear_free_quota_pending_2m(depth, counter);
     proof {
@@ -306,7 +306,7 @@ pub fn thread_map_refund_direct_free_quota_pending_2m(thrd_mp: &mut ThreadLocked
         final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view() == 0,
         *final(counter) == 0,
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.refund_direct_free_quota_pending_2m(counter);
     proof {
@@ -351,7 +351,7 @@ pub fn thread_map_add_free_quota_pending_1g(thrd_mp: &mut ThreadLockedMap, thrd_
             == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, *final(counter)) }
             else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() },
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.add_free_quota_pending_1g(depth, counter);
     proof {
@@ -395,7 +395,7 @@ pub fn thread_map_clear_free_quota_pending_1g(thrd_mp: &mut ThreadLockedMap, thr
             == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, 0usize) }
             else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() },
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.clear_free_quota_pending_1g(depth, counter);
     proof {
@@ -438,7 +438,7 @@ pub fn thread_map_refund_direct_free_quota_pending_1g(thrd_mp: &mut ThreadLocked
         final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == 0,
         *final(counter) == 0,
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.refund_direct_free_quota_pending_1g(counter);
     proof {
@@ -491,7 +491,7 @@ pub fn process_map_add_owned_thread(prc_mp: &mut ProcessLockedMap, prc_ptr: RwLo
         final(prc_mp).spec_index(prc_ptr).being_killed() == old(prc_mp).spec_index(prc_ptr).being_killed(),
 {
     assert(prc_mp.perms_wf() && prc_mp.spec_index(prc_ptr).is_init()
-        && prc_mp.spec_index(prc_ptr).inv()) by { process_perms_wf_map(*prc_mp); process_perms_wf_at(*prc_mp, prc_ptr); };
+        && prc_mp.spec_index(prc_ptr).inv()) by { process_perms_wf_implies_map_perms_wf(*prc_mp); process_perms_wf_at(*prc_mp, prc_ptr); };
     let process = prc_mp.borrow_mut_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(process_lock_perm));
     process.add_owned_thread(thrd_ptr, node_addr, node_perm);
     proof {
@@ -537,7 +537,7 @@ pub fn scheduler_map_enqueue_scheduled_thread(
         scheduler_shards_of(final(sched_mp).spec_index(sched_ptr))
             == scheduler_shards_of(old(sched_mp).spec_index(sched_ptr)).update(cpu_id as int, scheduler_shards_of(old(sched_mp).spec_index(sched_ptr))[cpu_id as int].push(thrd_ptr)),
 {
-    proof { scheduler_perms_wf_map(*sched_mp); scheduler_perms_wf_at(*sched_mp, sched_ptr); }
+    proof { scheduler_perms_wf_implies_map_perms_wf(*sched_mp); scheduler_perms_wf_at(*sched_mp, sched_ptr); }
     let shard = sched_mp.borrow_mut_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(shard_lock_perm));
     shard.queue.push_tail(node_addr, node_perm);
     proof {
@@ -582,7 +582,7 @@ pub fn scheduler_map_remove_scheduled_thread(sched_mp: &mut SchedulerUnLockedMap
         scheduler_shards_of(final(sched_mp).spec_index(sched_ptr)) == scheduler_shards_of(old(sched_mp).spec_index(sched_ptr)).update(cpu_id as int,
             scheduler_shards_of(old(sched_mp).spec_index(sched_ptr))[cpu_id as int].remove_value(old(sched_mp).spec_index(sched_ptr).shard(cpu_id).queue.map().spec_index(node_addr))),
 {
-    proof { scheduler_perms_wf_map(*sched_mp); scheduler_perms_wf_at(*sched_mp, sched_ptr); }
+    proof { scheduler_perms_wf_implies_map_perms_wf(*sched_mp); scheduler_perms_wf_at(*sched_mp, sched_ptr); }
     let shard = sched_mp.borrow_mut_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(shard_lock_perm));
     let (_, node_perm) = shard.queue.remove(node_addr);
     proof {
@@ -644,7 +644,7 @@ pub fn scheduler_map_move_shard_head(sched_mp: &mut SchedulerUnLockedMap, sched_
         final(sched_mp).spec_index(sched_ptr).shard(to).queue.map() == old(sched_mp).spec_index(sched_ptr).shard(to).queue.map().insert(ret, old(sched_mp).spec_index(sched_ptr).shard(from).queue.view()[0]),
         final(sched_mp).spec_index(sched_ptr).shard(to).queue.dom() == old(sched_mp).spec_index(sched_ptr).shard(to).queue.dom().insert(ret),
 {
-    proof { scheduler_perms_wf_map(*sched_mp); scheduler_perms_wf_at(*sched_mp, sched_ptr); sched_mp.spec_index(sched_ptr).shard(from).queue.wf_implies_view_len_eq_len(); }
+    proof { scheduler_perms_wf_implies_map_perms_wf(*sched_mp); scheduler_perms_wf_at(*sched_mp, sched_ptr); sched_mp.spec_index(sched_ptr).shard(from).queue.wf_implies_view_len_eq_len(); }
     let shard = sched_mp.borrow_mut_shard_typed(sched_ptr, from, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(from_lock_perm));
     let (node_addr, node_perm) = shard.queue.pop_head();
     let shard = sched_mp.borrow_mut_shard_typed(sched_ptr, to, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(to_lock_perm));
@@ -682,7 +682,7 @@ pub fn pcid_allocator_map_alloc(pcid_allc_mp: &mut PcidAllocatorLockedMap, allc_
             },
 {
     assert(pcid_allc_mp.perms_wf() && pcid_allc_mp.spec_index(allc_ptr).is_init()
-        && pcid_allc_mp.spec_index(allc_ptr).inv()) by { pcid_allocator_perms_wf_map(*pcid_allc_mp); pcid_allocator_perms_wf_at(*pcid_allc_mp, allc_ptr); };
+        && pcid_allc_mp.spec_index(allc_ptr).inv()) by { pcid_allocator_perms_wf_implies_map_perms_wf(*pcid_allc_mp); pcid_allocator_perms_wf_at(*pcid_allc_mp, allc_ptr); };
     let allocator = pcid_allc_mp.borrow_mut_typed(allc_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(lctx), Tracked(allocator_lock_perm));
     allocator.alloc(pcid, prc_ptr);
     proof {
@@ -721,7 +721,7 @@ pub fn pcid_allocator_map_release(pcid_allc_mp: &mut PcidAllocatorLockedMap, all
             },
 {
     assert(pcid_allc_mp.perms_wf() && pcid_allc_mp.spec_index(allc_ptr).is_init()
-        && pcid_allc_mp.spec_index(allc_ptr).inv()) by { pcid_allocator_perms_wf_map(*pcid_allc_mp); pcid_allocator_perms_wf_at(*pcid_allc_mp, allc_ptr); };
+        && pcid_allc_mp.spec_index(allc_ptr).inv()) by { pcid_allocator_perms_wf_implies_map_perms_wf(*pcid_allc_mp); pcid_allocator_perms_wf_at(*pcid_allc_mp, allc_ptr); };
     let allocator = pcid_allc_mp.borrow_mut_typed(allc_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(lctx), Tracked(allocator_lock_perm));
     allocator.release(pcid, prc_ptr);
     proof {
@@ -796,7 +796,7 @@ pub fn process_map_link_new_child(
             },
 {
     assert(prc_mp.perms_wf() && prc_mp.spec_index(child_ptr).is_init() && prc_mp.spec_index(child_ptr).inv() && prc_mp.spec_index(parent_ptr).is_init()
-        && prc_mp.spec_index(parent_ptr).inv()) by { process_perms_wf_map(*prc_mp); process_perms_wf_at(*prc_mp, child_ptr); process_perms_wf_at(*prc_mp, parent_ptr); };
+        && prc_mp.spec_index(parent_ptr).inv()) by { process_perms_wf_implies_map_perms_wf(*prc_mp); process_perms_wf_at(*prc_mp, child_ptr); process_perms_wf_at(*prc_mp, parent_ptr); };
     let child = prc_mp.borrow_mut_typed(child_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(child_lock_perm));
     let (child_node_addr, child_node_perm) = child.parent_linkedlist_node.take();
     proof { assert(prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
@@ -871,7 +871,7 @@ pub fn process_map_unlink_child(
         ret.view().addr() == old(prc_mp).spec_index(child_ptr).view().parent_linkedlist_node.addr(),
         ret.view().value().view() == child_ptr,
 {
-    assert(prc_mp.perms_wf() && prc_mp.spec_index(child_ptr).is_init()) by { process_perms_wf_map(*prc_mp); process_perms_wf_at(*prc_mp, child_ptr); };
+    assert(prc_mp.perms_wf() && prc_mp.spec_index(child_ptr).is_init()) by { process_perms_wf_implies_map_perms_wf(*prc_mp); process_perms_wf_at(*prc_mp, child_ptr); };
     let node_addr = prc_mp.borrow_typed(child_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(child_lock_perm)).parent_linkedlist_node.addr();
     assert(prc_mp.spec_index(parent_ptr).is_init() && prc_mp.spec_index(parent_ptr).inv() && prc_mp.spec_index(parent_ptr).view().children.dom().contains(node_addr)) by {
         process_perms_wf_at(*prc_mp, parent_ptr); prc_mp.spec_index(parent_ptr).view().children.wf_map_at(node_addr);
@@ -1112,7 +1112,7 @@ pub fn thread_map_consume_new_container_staging(
             quota_2m: (old(threads).spec_index(current_thrd_ptr).view().quota_2m as int - 2) as usize, ..old(threads).spec_index(current_thrd_ptr).view() }),
 {
     assert(threads.perms_wf() && threads.spec_index(current_thrd_ptr).is_init()
-        && threads.spec_index(current_thrd_ptr).view().inv()) by { thread_perms_wf_map(*threads); thread_perms_wf_at(*threads, current_thrd_ptr); };
+        && threads.spec_index(current_thrd_ptr).view().inv()) by { thread_perms_wf_implies_map_perms_wf(*threads); thread_perms_wf_at(*threads, current_thrd_ptr); };
     let thread = threads.borrow_mut_typed(current_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(current_thread_lock_perm));
     thread.temp_alloc_cache_4k = Ghost(Set::empty().insert(thread_page));
     thread.temp_alloc_cache_2m = Ghost(Set::empty());
@@ -1259,7 +1259,7 @@ pub fn thread_map_set_endpoint_descriptor(
         final(thrd_mp).spec_index(thrd_ptr).killer_info() == old(thrd_mp).spec_index(thrd_ptr).killer_info(),
         final(thrd_mp).spec_index(thrd_ptr).view_ghost() == old(thrd_mp).spec_index(thrd_ptr).view_ghost(),
 {
-    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
     let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.endpoint_descriptors.set(ep_idx, ep_ptr);
     proof {

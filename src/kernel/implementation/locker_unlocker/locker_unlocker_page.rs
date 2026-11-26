@@ -80,7 +80,7 @@ impl KernelK {
             lock_ensures(old(lctx), final(lctx), old(self).pg_arr.lock_id_by_index(pg_idx), KernelObjId::Page(pg_idx)),
     {
         proof {
-            page_array_wf_map(old(self).pg_arr);
+            page_array_wf_implies_page_array_inv(old(self).pg_arr);
             page_array_wf_at(old(self).pg_arr, pg_idx);
             assert(old(lctx).lock_id_acyclic(old(self).pg_arr.lock_id_by_index(pg_idx))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
@@ -97,7 +97,7 @@ impl KernelK {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             page_lock_op_eof(*old(self), *self, pg_idx);
-            assert(self.pg_arr.inv() && self.pg_arr.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_map(self.pg_arr); page_array_wf_at(self.pg_arr, pg_idx); };
+            assert(self.pg_arr.inv() && self.pg_arr.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_implies_page_array_inv(self.pg_arr); page_array_wf_at(self.pg_arr, pg_idx); };
         }
         ret
     }
@@ -127,7 +127,7 @@ impl KernelK {
             wunlock_ensures(old(self).pg_arr.spec_index(pg_idx).view(), final(self).pg_arr.spec_index(pg_idx).view()),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Page(pg_idx), old(self).pg_arr.lock_id_by_index(pg_idx)),
     {
-        assert(self.pg_arr.inv() && self.pg_arr.spec_index(pg_idx).view().inv()) by { page_array_wf_map(self.pg_arr); page_array_wf_at(self.pg_arr, pg_idx); };
+        assert(self.pg_arr.inv() && self.pg_arr.spec_index(pg_idx).view().inv()) by { page_array_wf_implies_page_array_inv(self.pg_arr); page_array_wf_at(self.pg_arr, pg_idx); };
         assert({
             &&& lctx.lock_entry_contains(self.pg_arr.lock_id_by_index(pg_idx), KernelObjId::Page(pg_idx))
             &&& self.pg_arr.spec_index(pg_idx).view().wlocked_by(&*lctx)

@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::share_mapping_4k::{share_mapping_4k_leaf_owner_compatible, share_mapping_4k_target_map_with_shared_prefix, share_mapping_4k_target_range_empty_from, prove_share_mapping_4k_iteration_target_partition};
+use super::share_mapping_4k::{share_mapping_4k_leaf_owner_compatible, share_mapping_4k_target_map_with_shared_prefix, share_mapping_4k_target_range_empty_from, target_slot_shared_implies_target_map_matches_next_shared_prefix};
 #[cfg(verus_keep_ghost)]
 use super::share_mapping_4k_spec::{share_4k_range_step, share_4k_leaf_step_pre, share_4k_leaf_step};
 #[cfg(verus_keep_ghost)]
@@ -421,7 +421,7 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         quota_thread, progress_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, source_write_held, target_write_held);
     reveal(share_mapping_4k_build_and_share_eol_loop_framing);
     share_4k_range_steps_from_leaf(post_steps, mid_steps.view(), pre_steps.view().len() as int, cpu_id);
-    prove_share_mapping_4k_iteration_target_partition(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k(), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).mapping_4k(),
+    target_slot_shared_implies_target_map_matches_next_shared_prefix(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k(), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).mapping_4k(),
         source_range, target_range, i, pre_lctx.pagetable_window_lock_map().dom(), target_pagetable, whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k(), whole_pagetable(mid.pt_mp, mid.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va));
     if target_write_held {

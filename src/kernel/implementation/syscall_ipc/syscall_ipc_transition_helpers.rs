@@ -260,7 +260,7 @@ pub(super) fn ipc_schedule_peer_on_shard(
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(peer_thrd_ptr), old_peer_thread_lock_id, krnl.thrd_mp.lock_id_by_key(peer_thrd_ptr));
-        scheduler_perms_wf_map(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_sched_ptr);
+        scheduler_perms_wf_implies_map_perms_wf(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_sched_ptr);
         assert(ipc_schedule_waiting_peer_eof_transition_framing(*old(krnl), *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, result, lctx.thread_id())) by {
             reveal(ipc_schedule_waiting_peer_eof_transition_framing);
         };

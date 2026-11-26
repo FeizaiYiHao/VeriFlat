@@ -28,7 +28,7 @@ pub(super) fn pci_bar_va_4k_free(krnl: &KernelK, pagetable_ptr: RwLockPageTableR
     proof {
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         c.wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3); c.wf_mapping_2m_at(indices.0, indices.1, indices.2); c.higher.wf_mapping_1g_at(indices.0, indices.1);
     }
     let pt = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm));
@@ -58,7 +58,7 @@ pub(super) fn pci_bar_owner_entry(krnl: &KernelK, pagetable_ptr: RwLockPageTable
         ret matches Some(i) ==> i < PCI_FUNCTIONS_PER_PROCESS && krnl.pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(i as int).used
             && krnl.pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(i as int).bdf == bdf,
 {
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
+    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
     let pt = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm));
     let ret = pt.higher.pci.find(bdf.0, bdf.1, bdf.2);
     proof { if ret is Some { pt.higher.pci.wf_function_at(bdf); } }
@@ -95,7 +95,7 @@ pub(super) fn pci_bar_va_2m_free(krnl: &KernelK, pagetable_ptr: RwLockPageTableR
         assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && spec_index2va((indices.0, indices.1, indices.2, 0usize)) == va) by {
             broadcast use spec_va_2m_valid_index_roundtrip;
         };
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         table.wf_mapping_2m_at(indices.0, indices.1, indices.2); table.higher.wf_mapping_1g_at(indices.0, indices.1);
     }
     let pt = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm));

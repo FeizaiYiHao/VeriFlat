@@ -46,7 +46,7 @@ pub proof fn container_perms_wf_implies_parent_node_addr(ctn_mp: ContainerLocked
     ensures ctn_mp.spec_index(ctn_ptr).view().parent_linkedlist_node.addr() == container_parent_node_addr(ctn_ptr),
 { reveal(container_perms_wf); }
 
-pub proof fn container_perms_wf_map(ctn_mp: ContainerLockedMap)
+pub proof fn container_perms_wf_implies_map_perms_wf(ctn_mp: ContainerLockedMap)
     requires container_perms_wf(ctn_mp)
     ensures ctn_mp.perms_wf()
 { reveal(container_perms_wf); }
@@ -295,7 +295,7 @@ pub open spec fn container_tree_wf(root_container: RwLockContainerPtr, ctn_mp: C
 
 /// If the domain and every container's children, parent list node, rodata, upper-tree sequence, and subtree set are
 /// unchanged, `container_tree_wf` is preserved.
-pub proof fn container_no_change_to_tree_fields_imply_wf(root_container: RwLockContainerPtr, old_ctn_mp: ContainerLockedMap, new_ctn_mp: ContainerLockedMap)
+pub proof fn container_no_change_to_tree_fields_implies_wf(root_container: RwLockContainerPtr, old_ctn_mp: ContainerLockedMap, new_ctn_mp: ContainerLockedMap)
     requires
         container_tree_wf(root_container, old_ctn_mp),
         old_ctn_mp.dom() =~= new_ctn_mp.dom(),

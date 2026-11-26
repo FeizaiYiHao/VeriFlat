@@ -346,7 +346,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     let Tracked(process_lock_perm) = locked.process_lock_perm;
     let Tracked(thread_lock_perm) = locked.thread_lock_perm;
     let (ctn_ptr, prc_ptr, thrd_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
-    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); process_perms_wf_map(krnl.prc_mp); }
+    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); process_perms_wf_implies_map_perms_wf(krnl.prc_mp); }
     let thread = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
     let pagetable_ptr = thread.proc_pagetable_ptr;
     let quota_4k = thread.quota_4k;
@@ -372,7 +372,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     proof {
         assert(krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.dom() =~= (if pt_before_rlock is Read { pt_before_rlock->Read_reader_map.dom() } else { Set::empty() }).insert(cpu_id));
     }
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
+    proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
     proof { krnl.default_pagetable_wf_at(pagetable_ptr); }
     let user_range = va2index(va).0 >= krnl.dflt_pt.borrow().kernel_l4_end;
     let Tracked(iommu_table_lock_perm) = krnl.wlock_iommu_table(iommu_table_ptr, Tracked(&mut *lctx));
@@ -388,7 +388,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
         proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::Error); }
         RetValueType::Error
     } else {
-        proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
+        proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm));
         let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
         let (present, ram) = pagetable.higher.mapping_4k_va_range_present(Tracked(lower), &va_range);
@@ -396,7 +396,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::ErrorIommuVaNotMapped); }
             RetValueType::ErrorIommuVaNotMapped
         } else {
-            proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); }
+            proof { iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); }
             let it = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(&iommu_table_lock_perm));
             if !it.mapping_4k_va_range_absent(&iova_range) {
                 proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::ErrorIommuIovaAlreadyMapped); }

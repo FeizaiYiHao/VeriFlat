@@ -148,7 +148,7 @@ proof fn install_staged_4k_page_table_page_eof_page_mappings_4k(
     ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_4k_valid_index_roundtrip;
     reveal(pagetable_lower_wf); reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf);
 }
@@ -176,7 +176,7 @@ proof fn install_staged_4k_page_table_page_eof_page_mappings_2m(
     ensures mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_2m_valid_index_roundtrip;
     reveal(pagetable_lower_wf); reveal(pagetable_perms_wf); reveal(mapped_2m_page_pagetable_wf);
 }
@@ -198,7 +198,7 @@ proof fn install_staged_4k_page_table_page_eof_page_mappings_1g(
     ensures mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_1g_valid_index_roundtrip;
     reveal(pagetable_lower_wf); reveal(mapped_1g_page_pagetable_wf);
 }
@@ -228,7 +228,7 @@ proof fn install_staged_4k_page_table_page_eof_table_roots(
         pagetable_root_page_backward_wf(post.pt_mp, post.pg_arr),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     page_ptr_roundtrip(); page_ptr2page_index_injective();
     reveal(pagetable_pages_wf);
 }
@@ -258,7 +258,7 @@ proof fn install_staged_4k_page_table_page_eof_table_closures(
         pagetable_closure_page_backward_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     page_ptr_roundtrip(); page_ptr2page_index_injective();
     reveal(pagetable_pages_wf);
 }
@@ -317,7 +317,7 @@ proof fn install_staged_4k_page_table_page_eof_process_tables(
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     page_ptr_roundtrip(); page_ptr2page_index_injective();
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_pagetable_fields_eq(post.prc_mp, pre.pt_mp, post.pt_mp); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
@@ -360,7 +360,7 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
     install_staged_4k_page_table_page_eof_page_mappings_4k(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
     install_staged_4k_page_table_page_eof_page_mappings_2m(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
     install_staged_4k_page_table_page_eof_page_mappings_1g(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     install_staged_4k_page_table_page_eof_pagetable_pages_wf(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
 }
 
@@ -408,7 +408,7 @@ proof fn install_staged_4k_page_table_page_eof_memory_management_inv(
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { install_staged_4k_page_table_page_eof_memory_management_inv_pci_bar_pages(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { install_staged_4k_page_table_page_eof_memory_management_inv_pci_mappings(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr); };
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);

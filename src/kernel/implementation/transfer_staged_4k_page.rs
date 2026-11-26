@@ -77,10 +77,10 @@ pub fn transfer_staged_4k_page_to_child_container(
     let ghost pre = *krnl;
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
-        assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
-        page_array_wf_map(krnl.pg_arr);
+        assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
+        page_array_wf_implies_page_array_inv(krnl.pg_arr);
         page_array_wf_at(krnl.pg_arr, pg_idx);
-        container_perms_wf_at(krnl.ctn_mp, parent_ctn_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, child_ctn_ptr);
+        container_perms_wf_at(krnl.ctn_mp, parent_ctn_ptr); container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, child_ctn_ptr);
         krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), child_ctn_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), staging_thrd_ptr);
     }

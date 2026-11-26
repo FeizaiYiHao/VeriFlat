@@ -445,7 +445,7 @@ pub(super) fn schedule_lock_queue_head(
             &&& krnl.sched_mp.spec_index(sched_ptr).owning_container == ctn_ptr
             &&& (current_thread is Some ==> !krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap()))
         }) by {
-            scheduler_perms_wf_map(krnl.sched_mp);
+            scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp);
             scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
             container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, current_thread.unwrap()); reveal(LinkedList::wf_value_list);
         };

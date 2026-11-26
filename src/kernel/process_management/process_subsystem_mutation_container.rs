@@ -29,7 +29,7 @@ pub proof fn container_map_add_owned_process(tracked ctn_mp: &mut ContainerLocke
                 &&& final(ctn_mp).view().spec_index(ptr).addr() == old(ctn_mp).view().spec_index(ptr).addr()
             },
 {
-    assert(ctn_mp.perms_wf() && ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_map(*ctn_mp); container_perms_wf_at(*ctn_mp, ctn_ptr); };
+    assert(ctn_mp.perms_wf() && ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_implies_map_perms_wf(*ctn_mp); container_perms_wf_at(*ctn_mp, ctn_ptr); };
     let ghost pre_ghost = ctn_mp.spec_index(ctn_ptr).view_ghost();
     ctn_mp.update_ghost(ctn_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().insert(prc_ptr)), ..pre_ghost });
     assert(container_perms_wf(*ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
@@ -62,7 +62,7 @@ pub proof fn container_map_remove_owned_process(tracked ctn_mp: &mut ContainerLo
                 &&& final(ctn_mp).view().spec_index(ptr).addr() == old(ctn_mp).view().spec_index(ptr).addr()
             },
 {
-    assert(ctn_mp.perms_wf() && ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_map(*ctn_mp); container_perms_wf_at(*ctn_mp, ctn_ptr); };
+    assert(ctn_mp.perms_wf() && ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_implies_map_perms_wf(*ctn_mp); container_perms_wf_at(*ctn_mp, ctn_ptr); };
     let ghost pre_ghost = ctn_mp.spec_index(ctn_ptr).view_ghost();
     ctn_mp.update_ghost(ctn_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().remove(prc_ptr)), ..pre_ghost });
     assert(container_perms_wf(*ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
@@ -392,7 +392,7 @@ pub fn container_map_unlink_child(
         ret.view().value().view() == child_ptr,
 {
     assert(ctn_mp.perms_wf() && ctn_mp.spec_index(child_ptr).is_init() && ctn_mp.spec_index(parent_ptr).inv()) by {
-        container_perms_wf_map(*ctn_mp); container_perms_wf_at(*ctn_mp, child_ptr); container_perms_wf_at(*ctn_mp, parent_ptr);
+        container_perms_wf_implies_map_perms_wf(*ctn_mp); container_perms_wf_at(*ctn_mp, child_ptr); container_perms_wf_at(*ctn_mp, parent_ptr);
     };
     let node_addr = ctn_mp.borrow_typed(child_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(child_lock_perm)).parent_linkedlist_node.addr();
     assert(ctn_mp.spec_index(parent_ptr).view().children.dom().contains(node_addr)) by { ctn_mp.spec_index(parent_ptr).view().children.wf_map_at(node_addr); };

@@ -99,7 +99,7 @@ verus! {
                 krnl.prc_mp.perms_wf()
                 && krnl.allc_4k_mp.perms_wf()
                 && krnl.prc_mp.spec_index(prc_ptr).is_init()
-            ) by { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); };
+            ) by { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); };
         }
         if alloc_amount > 0 {
             let process_mut = krnl.prc_mp.borrow_mut_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm.borrow()));
@@ -119,7 +119,7 @@ verus! {
         krnl.wunlock_allocator_quota_4k(alloc_ptr_4k, Tracked(&mut *lctx), quota_lock_perm);
         krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), process_lock_perm);
         proof {
-            assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
+            assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx); };
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             if alloc_amount > 0 {
                 let quota_before = steps.view();
@@ -243,7 +243,7 @@ verus! {
                 && krnl.thrd_mp.perms_wf()
                 && krnl.prc_mp.spec_index(prc_ptr).is_init()
                 && krnl.thrd_mp.spec_index(thrd_ptr).is_init()
-            ) by { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
+            ) by { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         }
         let process_mut = krnl.prc_mp.borrow_mut_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm.borrow()));
         process_mut.quota_4k = process_mut.quota_4k - alloc_amount;
@@ -365,7 +365,7 @@ verus! {
     {
         proof {
             assert(krnl.prc_mp.perms_wf() && krnl.allc_2m_mp.perms_wf() && krnl.prc_mp.spec_index(prc_ptr).is_init()) by {
-                process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m);
+                process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m);
             };
         }
         if alloc_amount > 0 {
@@ -386,7 +386,7 @@ verus! {
         krnl.wunlock_allocator_quota_2m(alloc_ptr_2m, Tracked(&mut *lctx), quota_lock_perm);
         krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), process_lock_perm);
         proof {
-            assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
+            assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx); };
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             if alloc_amount > 0 {
                 let quota_before = steps.view();
@@ -510,7 +510,7 @@ verus! {
                 && krnl.thrd_mp.perms_wf()
                 && krnl.prc_mp.spec_index(prc_ptr).is_init()
                 && krnl.thrd_mp.spec_index(thrd_ptr).is_init()
-            ) by { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
+            ) by { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
         }
         let process_mut = krnl.prc_mp.borrow_mut_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm.borrow()));
         process_mut.quota_2m = process_mut.quota_2m - alloc_amount;

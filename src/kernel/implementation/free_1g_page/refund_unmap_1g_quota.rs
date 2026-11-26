@@ -285,7 +285,7 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().len() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth,
 {
     assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(thrd_ptr).inv() && krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().len() == krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth) by {
-        thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
     };
     let thread = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
     let thread_depth = thread.container_depth;

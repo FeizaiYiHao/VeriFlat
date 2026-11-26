@@ -871,7 +871,7 @@ impl KernelK {
             typed_lock_maps_aligned(self, lctx),
         ensures ret == whole_pagetable(self.pt_mp, self.pt_lower.view(), root).higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
     {
-        proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, root); }
+        proof { pagetable_perms_wf_implies_map_perms_wf(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, root); }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(big));
         match higher.higher.get_entry_l4(l4i) { Some(l4_entry) => higher.higher.get_entry_l3(l4i, l3i, &l4_entry).is_some(), None => false }
     }

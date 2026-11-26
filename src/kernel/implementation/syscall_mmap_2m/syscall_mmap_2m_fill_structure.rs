@@ -174,7 +174,7 @@ fn mmap_2m_fill_page_directories(
         spec_v2l4index_monotonic(range.start, cur_va);
         spec_index2va_le_implies_4k_indices_lex_le(start_indices, cur);
         spec_index2va_le_implies_4k_indices_lex_le(cur, end_indices);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     }
     let (l4_present, l3_present) = {
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));

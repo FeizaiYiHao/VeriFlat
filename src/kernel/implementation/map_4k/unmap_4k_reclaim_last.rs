@@ -5,7 +5,7 @@ use super::unmap_iommu_4k_reclaim::remove_last_iommu_4k_mapping_to_allocator;
 use super::unmap_4k_reclaim_last_cache::reclaim_last_lock_4k_cache_with_room;
 
 verus! {
-proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, thread_depth: usize)
+proof fn mapped_4k_page_owner_implies_position_in_thread_container_chain(krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, thread_depth: usize)
     requires
         krnl.inv(),
         krnl.pt_mp.dom().contains(pagetable),
@@ -54,7 +54,7 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &
     }
 }
 
-proof fn prove_unmapped_iommu_4k_page_owner_position_in_thread_container_chain(
+proof fn iommu_mapped_4k_page_owner_implies_position_in_thread_container_chain(
     krnl: &KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, thread_depth: usize,
 )
     requires
@@ -246,10 +246,10 @@ pub fn reclaim_last_4k_mapping(
     let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
     let depth = owner_ro.depth;
     let allc_ptr = owner_ro.allocator_ptr_4k;
-    proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
     let thread = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
     let thread_depth = thread.container_depth;
-    proof { prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl, pagetable, va, pg_ptr, thrd_ptr, owner, depth, thread_depth); }
+    proof { mapped_4k_page_owner_implies_position_in_thread_container_chain(krnl, pagetable, va, pg_ptr, thrd_ptr, owner, depth, thread_depth); }
     proof { assert(krnl.allc_4k_mp.dom().contains(allc_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }; }
     let ghost cache_lctx = *lctx;
     let Tracked(cache_perm) = reclaim_last_lock_4k_cache_with_room(krnl, allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps));
@@ -379,10 +379,10 @@ pub fn reclaim_last_iommu_4k_mapping(
     let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
     let depth = owner_ro.depth;
     let allc_ptr = owner_ro.allocator_ptr_4k;
-    proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
     let thread = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
     let thread_depth = thread.container_depth;
-    proof { prove_unmapped_iommu_4k_page_owner_position_in_thread_container_chain(krnl, iommu_table, spec_index2va(indices), pg_ptr, thrd_ptr, owner, depth, thread_depth); }
+    proof { iommu_mapped_4k_page_owner_implies_position_in_thread_container_chain(krnl, iommu_table, spec_index2va(indices), pg_ptr, thrd_ptr, owner, depth, thread_depth); }
     proof { assert(krnl.allc_4k_mp.dom().contains(allc_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }; }
     proof { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); }
     let Tracked(cache_perm) = reclaim_last_lock_4k_cache_with_room(krnl, allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps));

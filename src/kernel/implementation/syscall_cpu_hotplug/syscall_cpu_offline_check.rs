@@ -185,13 +185,13 @@ pub(super) fn cpu_offline_commit(
             &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
             &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
         }) by {
-            scheduler_perms_wf_map(krnl.sched_mp);
-            scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr);
+            scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp);
+            scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr);
             container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, flags_ptr);
             cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
             scheduler_queue_len_bounded(&*krnl, sched_ptr, cpu_id);
         };
-        if current_thread is Some { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thread.unwrap()); }
+        if current_thread is Some { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thread.unwrap()); }
     }
     cpu_offline_commit_take_cpu_off(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, current_process,
         current_thread, process_lock_perm, thread_lock_perm, cpu_lock_perm, flag_lock_perm, cpu_set_lock_perm, scheduler_lock_perm);
@@ -237,7 +237,7 @@ pub fn cpu_offline_check(
     let cpu_lock_res = krnl.wlock_own_cpu(cpu_id, Tracked(&mut *lctx));
     if cpu_lock_res.is_none() {
         proof {
-            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); steps.rebase_snapshot_k_if_unchanged(&*krnl);
+            no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); steps.rebase_snapshot_k_if_unchanged(&*krnl);
             cpu_offline_check_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(krnl), cpu_id);
             cpu_offline_check_result_from_k(old(krnl), cpu_id, OfflineCheckResult::Continue);
         }

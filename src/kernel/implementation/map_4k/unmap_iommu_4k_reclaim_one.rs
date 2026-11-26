@@ -78,14 +78,14 @@ pub fn reclaim_unmapped_iommu_4k_page(
 {
     let iova = index2va(indices);
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
     }
     let (pg_ptr, l1_ptr) = unmap_iommu_4k_mapped_page_ptr(krnl, iommu_table, indices, Tracked(&*lctx), iommu_table_perm);
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof { assert(krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR) by { page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); }; }
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
+    proof { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     if page.ref_count > 1 {
@@ -98,7 +98,8 @@ pub fn reclaim_unmapped_iommu_4k_page(
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
             broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-            map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            map_insert_twice_implies_eq_last_insert(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
+                TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -194,14 +195,14 @@ pub fn reclaim_detached_iommu_4k_page(
 {
     let iova = index2va(indices);
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
     }
     let (pg_ptr, l1_ptr) = unmap_iommu_4k_mapped_page_ptr(krnl, iommu_table, indices, Tracked(&*lctx), iommu_table_perm);
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof { assert(krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR) by { page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); }; }
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
+    proof { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     if page.ref_count > 1 {
@@ -215,7 +216,8 @@ pub fn reclaim_detached_iommu_4k_page(
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
             broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-            map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            map_insert_twice_implies_eq_last_insert(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
+                TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &KernelK { it_mp: steps.snapshot_k().it_mp, ..*krnl })) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;

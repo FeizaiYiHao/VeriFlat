@@ -78,14 +78,14 @@ pub fn drop_endpoint_descriptor(
         },
 {
     proof {
-        thread_perms_wf_map(krnl.thrd_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         assert(krnl.ep_mp.dom().contains(ep_ptr) && krnl.ep_mp.spec_index(ep_ptr).view().owning_threads.view().contains((thrd_ptr, index))) by {
             thread_endpoint_ref_counter_wf_thread_at(krnl.thrd_mp, krnl.ep_mp, thrd_ptr, index);
         };
     }
     let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(ep_ptr, Tracked(&mut *lctx));
-    proof { endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); }
+    proof { endpoint_perms_wf_implies_map_perms_wf(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); }
     let rf_counter = krnl.ep_mp.borrow_typed(ep_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm)).rf_counter;
     let ghost locked = *krnl;
     let ghost owning_threads = krnl.ep_mp.spec_index(ep_ptr).view().owning_threads.view();
@@ -108,7 +108,7 @@ pub fn drop_endpoint_descriptor(
     }
     proof {
         assert(typed_lock_maps_aligned(krnl, lctx) && krnl.thrd_mp.lock_id_by_key(thrd_ptr) == old(krnl).thrd_mp.lock_id_by_key(thrd_ptr)) by {
-            lock_id_fields_eq_imply_eq(); reveal(LockedMap::typed_lock_map_aligned);
+            lock_id_fields_eq_implies_eq(); reveal(LockedMap::typed_lock_map_aligned);
         };
         assert(drop_endpoint_descriptor_eof_transition_framing(locked, *krnl, thrd_ptr, ep_ptr, index)) by { reveal(drop_endpoint_descriptor_eof_transition_framing); };
         drop_endpoint_descriptor_eof(locked, *krnl, thrd_ptr, ep_ptr, index);

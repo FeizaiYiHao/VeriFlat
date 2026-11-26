@@ -41,14 +41,14 @@ pub(crate) fn kill_leave_process(
 {
     let ghost pre = *krnl;
     proof {
-        process_perms_wf_map(krnl.prc_mp);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, prc_ptr);
         assert({
             &&& krnl.thrd_mp.dom().contains(victim_ptr)
             &&& krnl.thrd_mp.spec_index(victim_ptr).view().owning_proc == prc_ptr
             &&& !krnl.thrd_mp.spec_index(victim_ptr).view().proc_linkedlist_node.is_init()
         }) by { process_thread_wf_process_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, victim_ptr); };
-        thread_perms_wf_map(krnl.thrd_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, victim_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, victim_ptr);
         assert(krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.dom().contains(krnl.thrd_mp.spec_index(victim_ptr).view().proc_linkedlist_node.addr())) by {
             krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.wf_map_at(krnl.thrd_mp.spec_index(victim_ptr).view().proc_linkedlist_node.addr());
@@ -136,7 +136,7 @@ pub(crate) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
         }),
 {
     proof {
-        thread_perms_wf_map(krnl.thrd_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, victim_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, victim_ptr);
         container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, krnl.thrd_mp.spec_index(victim_ptr).view().owning_container);
         container_perms_wf_at(krnl.ctn_mp, krnl.thrd_mp.spec_index(victim_ptr).view().owning_container);
@@ -219,7 +219,7 @@ pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
             &&& final(krnl).thrd_mp.lock_id_by_key(victim_ptr) == old(krnl).thrd_mp.lock_id_by_key(victim_ptr)
         }),
 {
-    proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thrd_mp, krnl.ep_mp, victim_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thrd_mp, krnl.ep_mp, victim_ptr); }
     let (ep_ptr, node_addr) = {
         let victim = krnl.thrd_mp.borrow_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_lock_perm));
         (victim.blocking_endpoint_ptr.unwrap(), victim.endpoint_linkedlist_node.addr())
@@ -227,7 +227,7 @@ pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
     let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(ep_ptr, Tracked(&mut *lctx));
     let ghost pre = *krnl;
     proof {
-        thread_endpoint_queue_wf_thread_at(krnl.thrd_mp, krnl.ep_mp, victim_ptr); endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr);
+        thread_endpoint_queue_wf_thread_at(krnl.thrd_mp, krnl.ep_mp, victim_ptr); endpoint_perms_wf_implies_map_perms_wf(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr);
         assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.dom().contains(node_addr)) by { krnl.ep_mp.spec_index(ep_ptr).view().queue.wf_map_at(node_addr); };
     }
     let node_perm = {
@@ -306,7 +306,7 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
         }),
 {
     proof {
-        thread_perms_wf_map(krnl.thrd_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, victim_ptr);
         let killer_cpu = lctx.cpu_id();
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, killer_cpu);

@@ -86,7 +86,7 @@ pub fn release_endpoint_last_reference(
 {
     broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
     proof {
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         endpoint_pages_wf_page_at(krnl.ep_mp, krnl.pg_arr, ep_ptr);
     }
     let pg_idx = page_ptr2page_index(ep_ptr);
@@ -101,11 +101,11 @@ pub fn release_endpoint_last_reference(
     let ghost endpoint_owner = krnl.ep_mp.spec_index(ep_ptr).view().owning_container;
     proof {
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &entry)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
-        endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr);
-        container_perms_wf_map(krnl.ctn_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+        endpoint_perms_wf_implies_map_perms_wf(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr);
+        container_perms_wf_implies_map_perms_wf(krnl.ctn_mp);
         assert(krnl.ctn_mp.dom().contains(endpoint_owner)) by { container_endpoint_wf_endpoint_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); };
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).global_pool.view().view().contains(ep_ptr)) by {
             allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, ep_ptr); page_ptr_roundtrip();
@@ -141,7 +141,7 @@ pub fn release_endpoint_last_reference(
     let ghost mid = *krnl;
     proof {
         assert(typed_lock_maps_aligned(krnl, lctx) && krnl.thrd_mp.lock_id_by_key(thrd_ptr) == entry.thrd_mp.lock_id_by_key(thrd_ptr)) by {
-            lock_id_fields_eq_imply_eq(); reveal(LockedMap::typed_lock_map_aligned);
+            lock_id_fields_eq_implies_eq(); reveal(LockedMap::typed_lock_map_aligned);
         };
         assert(release_endpoint_eof_transition_framing(entry, mid, thrd_ptr, ep_ptr, index, allc_ptr, node_addr)) by { reveal(release_endpoint_eof_transition_framing); };
         release_endpoint_eof(entry, mid, thrd_ptr, ep_ptr, index, owner, allc_ptr, node_addr);

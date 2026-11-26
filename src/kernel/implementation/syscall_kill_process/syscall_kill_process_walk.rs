@@ -68,7 +68,7 @@ pub(crate) fn kill_mark_child(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
     let child_ptr = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.get(0)
@@ -189,7 +189,7 @@ pub(crate) fn kill_first_thread(
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
     let tracked target_perm = chain_perms.tracked_borrow(target);
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().owned_threads.wf_implies_view_len_eq_len(); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().owned_threads.wf_implies_view_len_eq_len(); }
     let victim_ptr = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).owned_threads.get(0);
     proof {
         let target_ro = krnl.prc_mp.spec_index(target).view_rodata().view();
@@ -438,7 +438,7 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, victim_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, victim_ptr); }
     let (scheduled, running) = match krnl.thrd_mp.borrow_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_perm)).state {
         ThreadState::SCHEDULED { .. } => (true, false),
         ThreadState::RUNNING { .. } => (false, true),

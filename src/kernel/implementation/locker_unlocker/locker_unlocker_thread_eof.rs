@@ -21,7 +21,7 @@ pub(super) proof fn wlock_thread_eof(pre: KernelK, post: KernelK, thrd_ptr: RwLo
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
-    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thrd_mp, post.thrd_mp, thrd_ptr); };
+    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { thread_lock_op_implies_thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp, thrd_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by {
@@ -70,7 +70,7 @@ pub(super) proof fn mark_thread_kill_eof(pre: KernelK, post: KernelK, pre_lctx: 
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
-    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thrd_mp, post.thrd_mp, thrd_ptr); };
+    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { thread_lock_op_implies_thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp, thrd_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by {
@@ -114,7 +114,7 @@ pub(super) proof fn wunlock_thread_eof(pre: KernelK, post: KernelK, thrd_ptr: Rw
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
-    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thrd_mp, post.thrd_mp, thrd_ptr); };
+    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { thread_lock_op_implies_thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp, thrd_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by {

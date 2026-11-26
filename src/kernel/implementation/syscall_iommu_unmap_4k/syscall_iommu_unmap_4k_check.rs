@@ -145,7 +145,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
     let Tracked(process_perm) = locked.process_lock_perm;
     let Tracked(thread_perm) = locked.thread_lock_perm;
     let (ctn_ptr, prc_ptr, thrd_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
-    proof { process_perms_wf_map(krnl.prc_mp); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); }
     let iommu_table_opt = krnl.prc_mp.borrow_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_perm)).iommu_table;
     proof { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }
     if iommu_table_opt.is_none() {
@@ -158,7 +158,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
     let Tracked(iommu_table_perm) = krnl.wlock_iommu_table(iommu_table, Tracked(&mut *lctx));
     let iova_range = VaRange4K::new(iova, range);
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
         assert(iova_range == spec_va_range_4k(iova, range)) by { iova_range.wf_implies_view_index_is_start_plus_offset(); };
     }
     let present = va2index(iova).0 >= krnl.dflt_pt.borrow().kernel_l4_end && {

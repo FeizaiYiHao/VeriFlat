@@ -119,9 +119,9 @@ pub(crate) fn kill_retire_structure_pages(
 {
     let ghost entry_thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
     proof {
-        process_perms_wf_map(krnl.prc_mp);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
-        thread_perms_wf_map(krnl.thrd_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
     }
@@ -366,7 +366,7 @@ pub(crate) fn kill_retire_table_pages(
         let scan = if iommu {
             proof {
                 process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
-                iommu_table_perms_wf_map(krnl.it_mp);
+                iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp);
                 iommu_table_perms_wf_at(krnl.it_mp, table);
             }
             krnl.it_mp.borrow_typed(table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(table_perm)).next_structure_page()
@@ -374,7 +374,7 @@ pub(crate) fn kill_retire_table_pages(
             proof {
                 process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
                 process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
-                pagetable_perms_wf_map(krnl.pt_mp);
+                pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp);
                 pagetable_perms_wf_at(krnl.pt_mp, table);
                 pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table);
             }
@@ -867,8 +867,8 @@ pub(crate) fn kill_retire_table_page_to_cache(
     let pg_idx = page_ptr2page_index(pg_ptr);
     let ghost owner = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
     proof {
-        page_array_wf_at(krnl.pg_arr, pg_idx); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
-        allocator_perms_wf_map(krnl.allc_4k_mp);
+        page_array_wf_at(krnl.pg_arr, pg_idx); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr); };
         kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);

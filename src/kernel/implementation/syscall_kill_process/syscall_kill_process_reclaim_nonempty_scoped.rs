@@ -98,7 +98,7 @@ pub(crate) fn kill_reclaim_nonempty_leaves_scoped(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view(),
 {
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         assert(!thread_is_dangling(krnl.thrd_mp.spec_index(thrd_ptr)) && krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); };
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
@@ -187,7 +187,7 @@ pub(crate) fn kill_reclaim_nonempty_leaves_scoped(
         cursor = kill_reclaim_nonempty_leaf_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
             Tracked(process_perm), Tracked(thread_perm), pagetable, Ghost(iommu_table), Tracked(pagetable_perm), Tracked(iommu_perm), next, kind, leaf.addr, leaf.perm.is_io,
             Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-        proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
+        proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
         found = pagetable_map_next_nonempty_leaf_from(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, cursor, Tracked(&*lctx), Tracked(pagetable_perm));
     }
     proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); }
@@ -282,7 +282,7 @@ fn kill_reclaim_nonempty_leaf_scoped(
 {
     let va = index2va(next);
     proof {
-        page_index_valid_imply_page_ptr_valid();
+        page_index_valid_implies_page_ptr_valid();
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let ghost c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
@@ -291,13 +291,13 @@ fn kill_reclaim_nonempty_leaf_scoped(
         NonemptyLeaf::L1g => {
             proof {
                 mapped_1g_page_pagetable_wf_nonempty_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1);
-                mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va); page_index_valid_imply_page_ptr_valid();
+                mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va); page_index_valid_implies_page_ptr_valid();
                 spec_va_1g_valid_index_roundtrip(va); spec_index2va_injective();
                 assert(c.spec_nonempty_l3(next.0, next.1) is None);
             }
             kill_reclaim_nonempty_1g_page_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, pagetable, va, pg_ptr, Tracked(pagetable_perm),
                 Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-            proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
+            proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
             (next.0, next.1, 511, 512)
         },
         NonemptyLeaf::L2m => {
@@ -313,14 +313,14 @@ fn kill_reclaim_nonempty_leaf_scoped(
             } else {
                 proof {
                     mapped_2m_page_pagetable_wf_nonempty_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1, next.2);
-                    mapped_2m_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va); page_index_valid_imply_page_ptr_valid();
+                    mapped_2m_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va); page_index_valid_implies_page_ptr_valid();
                 }
                 kill_reclaim_nonempty_2m_page_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, pagetable, va, pg_ptr, Tracked(pagetable_perm),
                     Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
             }
             proof {
                 assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_2m_l2(next.0, next.1, next.2) is None);
-                pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+                pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
             }
             (next.0, next.1, next.2, 512)
         },
@@ -344,7 +344,7 @@ fn kill_reclaim_nonempty_leaf_scoped(
             }
             let ret = (next.0, next.1, next.2, next.3 + 1);
             proof {
-                index_path_successor_implies_path_le_drops_only_predecessor(next, ret); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
+                index_path_successor_implies_path_le_drops_only_predecessor(next, ret); pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
                 pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
             }
             ret

@@ -41,7 +41,7 @@ pub fn page_array_retype_owned_4k(
         ret.view().is_init(),
         ret.view().addr() == final(page_array).spec_index(pg_idx).view().view().addr,
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let ret = retype_owned_4k_to_kernel_object(page, new_state);
     proof {
@@ -86,7 +86,7 @@ pub fn page_array_add_4k_mapping(page_array: &mut PageLockedArray, pg_idx: PageI
         final(page_array).spec_index(pg_idx).view().view().perm_2m.view() == old(page_array).spec_index(pg_idx).view().view().perm_2m.view(),
         final(page_array).spec_index(pg_idx).view().view().perm_1g.view() == old(page_array).spec_index(pg_idx).view().view().perm_1g.view(),
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     add_4k_mapping(page, pagetable_ptr, va);
     proof {
@@ -131,7 +131,7 @@ pub fn page_array_add_4k_iommu_mapping(page_array: &mut PageLockedArray, pg_idx:
         final(page_array).spec_index(pg_idx).view().view().perm_2m.view() == old(page_array).spec_index(pg_idx).view().view().perm_2m.view(),
         final(page_array).spec_index(pg_idx).view().view().perm_1g.view() == old(page_array).spec_index(pg_idx).view().view().perm_1g.view(),
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     add_4k_iommu_mapping(page, iommu_table_ptr, iova);
     proof {
@@ -174,7 +174,7 @@ pub fn page_array_remove_4k_mapping_without_free(page_array: &mut PageLockedArra
         final(page_array).spec_index(pg_idx).view().view() == (Page { mappings: final(page_array).spec_index(pg_idx).view().view().mappings,
             ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     remove_shared_4k_mapping(page, pagetable_ptr, va);
     proof {
@@ -217,7 +217,7 @@ pub fn page_array_remove_2m_mapping_without_free(page_array: &mut PageLockedArra
         final(page_array).spec_index(pg_idx).view().view() == (Page { mappings: final(page_array).spec_index(pg_idx).view().view().mappings,
             ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     remove_shared_2m_mapping(page, pagetable_ptr, va);
     proof {
@@ -265,7 +265,7 @@ pub fn page_array_remove_last_4k_mapping_to_cache(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == old(page_array).spec_index(pg_idx).view().view().addr,
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = remove_last_4k_mapping_to_cache(page, pagetable_ptr, va, allc_ptr, cpu_id);
     proof {
@@ -314,7 +314,7 @@ pub fn page_array_remove_last_2m_mapping_to_cache(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == old(page_array).spec_index(pg_idx).view().view().addr,
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = remove_last_2m_mapping_to_cache(page, pagetable_ptr, va, allc_ptr, cpu_id);
     proof {
@@ -359,7 +359,7 @@ pub fn page_array_remove_4k_iommu_mapping_without_free(page_array: &mut PageLock
         final(page_array).spec_index(pg_idx).view().view() == (Page { iommu_mappings: final(page_array).spec_index(pg_idx).view().view().iommu_mappings,
             ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     remove_shared_4k_iommu_mapping(page, iommu_table_ptr, iova);
     proof {
@@ -408,7 +408,7 @@ pub fn page_array_remove_last_4k_iommu_mapping_to_cache(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == old(page_array).spec_index(pg_idx).view().view().addr,
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = remove_last_4k_iommu_mapping_to_cache(page, iommu_table_ptr, iova, allc_ptr, cpu_id);
     proof {
@@ -458,7 +458,7 @@ pub fn page_array_retire_kernel_object_4k_to_cache(
         ret.1.view().value().view() == old(page_array).spec_index(pg_idx).view().view().addr,
 {
     assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()
-        && page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+        && page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = convert_kernel_object_4k_to_free_cache(page, Tracked(perm), allc_ptr, cpu_id);
     proof {
@@ -509,7 +509,7 @@ pub fn page_array_retire_kernel_object_2m_to_global(
         ret.1.view().value().view() == old(page_array).spec_index(pg_idx).view().view().addr,
 {
     assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()
-        && page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+        && page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = convert_kernel_object_2m_to_free_global(page, Tracked(perm), allc_ptr, owning_container);
     proof {
@@ -560,7 +560,7 @@ pub fn page_array_retire_kernel_object_4k_to_global(
         ret.1.view().value().view() == old(page_array).spec_index(pg_idx).view().view().addr,
 {
     assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()
-        && page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+        && page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = convert_kernel_object_4k_to_free_global(page, Tracked(perm), allc_ptr, owning_container);
     proof {
@@ -595,7 +595,7 @@ pub fn page_array_move_free_4k_to_global_list(page_array: &mut PageLockedArray, 
         final(page_array).spec_index(pg_idx).view().view_ghost() == old(page_array).spec_index(pg_idx).view().view_ghost(),
         final(page_array).spec_index(pg_idx).view().view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::GlobalList }, ..old(page_array).spec_index(pg_idx).view().view() }),
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     page.state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::GlobalList };
     proof {
@@ -631,7 +631,7 @@ pub fn page_array_move_free_4k_to_cpu_cache(page_array: &mut PageLockedArray, pg
         final(page_array).spec_index(pg_idx).view().view_ghost() == old(page_array).spec_index(pg_idx).view().view_ghost(),
         final(page_array).spec_index(pg_idx).view().view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }, ..old(page_array).spec_index(pg_idx).view().view() }),
 {
-    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(*page_array); page_array_wf_at(*page_array, pg_idx); };
     let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     page.state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
     proof {
@@ -677,7 +677,7 @@ pub fn page_array_retype_owned_4k_for_container(pages: &mut PageLockedArray, chi
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(pages.inv() && pages.spec_index(pg_idx).view().is_init() && pages.spec_index(pg_idx).view().view().inv()
-        && pages.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_map(*pages); page_array_wf_at(*pages, pg_idx); };
+        && pages.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_implies_page_array_inv(*pages); page_array_wf_at(*pages, pg_idx); };
     let page = pages.borrow_mut_typed(pg_idx, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let Tracked(page_perm) = retype_owned_4k_to_kernel_object(page, PageState::Allocated4k { state: page_state });
     page.owning_container = child_ctn_ptr;
@@ -724,7 +724,7 @@ pub fn page_array_retype_owned_2m_for_container(pages: &mut PageLockedArray, chi
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(pages.inv() && pages.spec_index(pg_idx).view().is_init() && pages.spec_index(pg_idx).view().view().inv()
-        && pages.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_map(*pages); page_array_wf_at(*pages, pg_idx); };
+        && pages.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_implies_page_array_inv(*pages); page_array_wf_at(*pages, pg_idx); };
     let page = pages.borrow_mut_typed(pg_idx, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let Tracked(page_perm) = take_perm_2m(page);
     page.state = PageState::Allocated2m { state: page_state };

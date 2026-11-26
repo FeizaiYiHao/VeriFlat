@@ -170,7 +170,7 @@ pub(super) fn unmap_4k_unmap_and_finish(
 {
     let ghost checked_table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Unmap4k { range: *va_range, unmapped: 0, flushed: false })), Tracked(&*lctx), Tracked(&thread_perm));

@@ -68,7 +68,7 @@ impl PageTableHigher {
             c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_l1_at(target_l2_p, target_l2i);
-            if !target_entry.is_io { page_ptr_valid_imply_mem_valid(target_entry.addr); } else { reveal(io_page_range_valid); }
+            if !target_entry.is_io { page_ptr_valid_implies_mem_valid(target_entry.addr); } else { reveal(io_page_range_valid); }
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
         let tracked mut l1_perm = l2_entry_take_l1(&mut l2_perm, target_l2i, window_perm);
@@ -147,7 +147,7 @@ impl PageTableHigher {
             self.wf_l4_at(target_l4i);
             c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
-            if !target_entry.is_io { page_ptr_valid_imply_mem_valid(target_entry.addr); } else { reveal(io_page_range_valid); }
+            if !target_entry.is_io { page_ptr_valid_implies_mem_valid(target_entry.addr); } else { reveal(io_page_range_valid); }
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
         l2_entry_set_published_locked(&PPtr::<L2PageMap>::from_usize(target_l2_p), Tracked(&mut l2_perm), target_l2i, Tracked(window_perm),
@@ -251,7 +251,7 @@ impl PageTableHigher {
             self.wf_l4_at(target_l4i);
             self.wf_l3_at(target_l3_p);
             self.wf_mapping_1g_at(target_l4i, target_l3i);
-            page_ptr_valid_imply_mem_valid(target_entry.addr);
+            page_ptr_valid_implies_mem_valid(target_entry.addr);
         }
         page_map_set_published_in_map(target_l3_p, Tracked(self.l3_tables.borrow_mut()), target_l3i,
             PageEntry { addr: target_entry.addr, perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } },

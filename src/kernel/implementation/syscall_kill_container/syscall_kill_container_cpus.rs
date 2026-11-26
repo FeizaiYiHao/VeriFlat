@@ -189,7 +189,7 @@ pub(crate) fn kill_container_cpus(
             forall|j: CpuId| #![trigger krnl.cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j)] j < i ==> !krnl.cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j),
         decreases NUM_CPUS - i,
     {
-        proof { cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); }
+        proof { cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); }
         let (member, closed) = {
             let set = krnl.cpu_set_mp.borrow_typed(set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&set_perm));
             (set.owned_cpus.contains(i), set.owned_cpus.is_closed(i))
@@ -768,7 +768,7 @@ fn kill_container_move_cpu_commit(
 {
     proof {
         container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, owner_ptr);
-        cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, owner_set);
+        cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, owner_set);
         container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, cpu_i); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, owner_ptr, cpu_i);
         cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_i);
         thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_i);
@@ -794,7 +794,7 @@ fn kill_container_move_cpu_commit(
     proof {
         let entry = TypedHeldLock { lock_id: locked.cpu_arr.lock_id_by_index(cpu_i), mode: TypedLockMode::Write };
         lctx.update_lock_id(KernelObjId::Cpu(cpu_i), locked.cpu_arr.lock_id_by_index(cpu_i), krnl.cpu_arr.lock_id_by_index(cpu_i));
-        map_insert_overwrite_lemma(locked_lctx.cpu_lock_map(), cpu_i, entry, TypedHeldLock { lock_id: krnl.cpu_arr.lock_id_by_index(cpu_i), mode: TypedLockMode::Write });
+        map_insert_twice_implies_eq_last_insert(locked_lctx.cpu_lock_map(), cpu_i, entry, TypedHeldLock { lock_id: krnl.cpu_arr.lock_id_by_index(cpu_i), mode: TypedLockMode::Write });
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); };
         assert(kill_container_cpus_eof_transition_framing(locked, *krnl, set_ptr, owner_set, flags_ptr, cpu_i, owner_ptr, depth, closed)) by {
             reveal(kill_container_cpus_eof_transition_framing);

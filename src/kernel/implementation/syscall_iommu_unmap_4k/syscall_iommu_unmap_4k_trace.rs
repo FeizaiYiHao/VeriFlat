@@ -319,7 +319,7 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
     if let Some(did) = pre.it_mp.spec_index(iommu_table_ptr).view().did {
         assert(mid.iommu_tlb.view().dom().contains(did) ==> vtd_domain_id_valid(did)) by { reveal(IommuTLB::inv); };
         kernel_iommu_tlb_domain_invalidated_implies_u_step(pre, mid, did);
-        kernel_iommu_tlb_within_may_cache_projection(mid, did, mid.iommu_tlb.spec_index(did));
+        iommu_tlb_within_may_cache_implies_iommu_tlb_within_may_cache_u(mid, did, mid.iommu_tlb.spec_index(did));
     }
     kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thrd_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, ctn_ptr); kernel_thread_projection_at(pre, thrd_ptr);

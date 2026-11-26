@@ -104,10 +104,10 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
 {
     proof {
         assert(PAGE_SZ_4K == 4096) by (bit_vector);
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_4k);
-        allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator_2m);
-        page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, head);
-        thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thread);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_4k);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator_2m);
+        page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, head);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thread);
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thread); allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(krnl.allc_4k_mp, allocator_4k);
         container_allocator_4k_forward_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, allocator_4k);
         container_process_allocator_quota_4k_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.allc_4k_mp, krnl.thrd_mp.spec_index(thread).view().owning_container);

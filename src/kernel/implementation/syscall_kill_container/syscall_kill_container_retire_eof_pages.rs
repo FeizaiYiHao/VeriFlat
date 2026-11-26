@@ -77,7 +77,7 @@ pub(crate) proof fn kill_container_retire_eof_pool_moves(
     let heads = kill_container_retire_heads(ctn_ptr, ro);
     let pool_2m = pre.allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).global_pool.view().view();
     kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner_ptr);
     assert(pool_2m.insert(0, page_index2page_ptr(heads[0])).insert(0, page_index2page_ptr(heads[1])) =~= seq![page_index2page_ptr(heads[1]), page_index2page_ptr(heads[0])] + pool_2m);
@@ -96,7 +96,7 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_allocators(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_4k_pages_wf); };
     assert(allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_2m_pages_wf); };
     assert(allocator_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(allocator_1g_pages_wf); };
@@ -114,7 +114,7 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_containers(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_pages_wf); };
 }
 
@@ -134,7 +134,7 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_retired(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr)) by { reveal(pcid_allocator_pages_wf); };
@@ -155,7 +155,7 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_processes(
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { reveal(process_pages_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
@@ -177,7 +177,7 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_threads(
         thread_staged_pages_wf(post.thrd_mp, post.pg_arr),
 {
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
     assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf); };
@@ -196,7 +196,7 @@ pub(crate) proof fn kill_container_retire_eof_hugepages(
         hugepage_1g_wf(post.pg_arr),
 {
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
 }
@@ -226,7 +226,7 @@ pub(crate) proof fn kill_container_retire_eof_mappings_pagetable(
     ensures page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf); };
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf); };
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); };
@@ -247,7 +247,7 @@ pub(crate) proof fn kill_container_retire_eof_mappings(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(container_process_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(container_process_wf); reveal(iommu_table_perms_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
@@ -268,7 +268,7 @@ pub(crate) proof fn kill_container_retire_eof_page_owners(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {
         reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); broadcast use kill_container_retire_eof_no_endpoint;
@@ -310,7 +310,7 @@ pub(crate) proof fn kill_container_retire_eof_allocators(
         container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
     reveal(kill_container_retire_eof_transition_framing);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
@@ -336,7 +336,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_4k_pages(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;
@@ -357,7 +357,7 @@ proof fn kill_container_retire_eof_allocator_global_pool_2m_pages(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;
@@ -377,7 +377,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_2m_pages(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;
@@ -400,7 +400,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_1g_pages(
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
-    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_implies_page_ptr_valid(); page_ptr_valid_implies_page_index_valid();
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;

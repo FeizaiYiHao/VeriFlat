@@ -162,7 +162,7 @@ pub fn create_thread_from_staged_page_merged(
     let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     proof {
         process_perms_wf_at(krnl.prc_mp, prc_ptr);
-        container_perms_wf_map(krnl.ctn_mp);
+        container_perms_wf_implies_map_perms_wf(krnl.ctn_mp);
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         assert(krnl.sched_mp.spec_index(sched_ptr).owning_container == ctn_ptr) by { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); };
         assert(krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); };

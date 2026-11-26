@@ -31,7 +31,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_global_pool_4k_pages_wf(pre: 
         allocator_free_2m_pages_wf_at(pre.allc_2m_mp, pre.pg_arr, head);
         reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf);
         reveal(allocator_free_page_ptrs_wf); reveal(hugepage_2m_wf);
-        page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -61,7 +61,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_cpu_cache_4k_pages_wf(pre: Ke
         allocator_free_2m_pages_wf_at(pre.allc_2m_mp, pre.pg_arr, head);
         reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf);
         reveal(allocator_free_page_ptrs_wf); reveal(hugepage_2m_wf);
-        page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -90,7 +90,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_global_pool_2m_pages_wf(pre: 
     assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing);
         reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf);
         reveal(allocator_free_page_ptrs_wf); reveal(hugepage_2m_wf);
-        page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        page_index_roundtrip(); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -119,7 +119,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_cpu_cache_2m_pages_wf(pre: Ke
     assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing);
         reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf);
         reveal(allocator_free_page_ptrs_wf); reveal(hugepage_2m_wf);
-        page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        page_index_roundtrip(); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -338,7 +338,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_free_page_ptrs_wf(pre: Kernel
     };
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(split_2m_commit_eof_transition_framing);
         reveal(allocator_free_page_ptrs_wf);
-        page_index_valid_imply_page_ptr_valid();
+        page_index_valid_implies_page_ptr_valid();
     };
 }
 

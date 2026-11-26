@@ -215,7 +215,7 @@ pub fn create_process_from_staged_pages(
     );
     let ghost pagetable_page_locks = l4_page_locks.insert(pagetable_pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pagetable_pg_idx), mode: TypedLockMode::Write });
     thread_map_consume_staged_4k(&mut krnl.thrd_mp, staging_thrd_ptr, pagetable_pg_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); }; }
+    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); }; }
     let Tracked(pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(pagetable_pg_ptr, pagetable_higher, Tracked(pagetable_lower), Tracked(pagetable_page_perm), Tracked(&mut *lctx));
 
     let parent_depth = krnl.prc_mp.borrow_rodata(parent_ptr).borrow().depth;
@@ -234,7 +234,7 @@ pub fn create_process_from_staged_pages(
     let mut process_value = Process::new_fresh(parent_node, pcid, pagetable_pg_ptr, krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().depth, parent_depth + 1);
     process_value.uppertree_seq = Ghost(ancestors);
     thread_map_consume_staged_4k(&mut krnl.thrd_mp, staging_thrd_ptr, process_pg_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-    proof { assert(krnl.prc_mp.perms_wf()) by { process_perms_wf_map(krnl.prc_mp); }; }
+    proof { assert(krnl.prc_mp.perms_wf()) by { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); }; }
     let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_pg_ptr, process_value, process_rodata, process_ghost, Tracked(process_region_perm), Tracked(&mut *lctx));
     process_map_link_new_child(&mut krnl.prc_mp, parent_ptr, process_pg_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_lock_perm), Tracked(&process_lock_perm));
     proof { container_map_add_owned_process(&mut krnl.ctn_mp, ctn_ptr, process_pg_ptr, lctx.container_lock_map(), lctx.thread_id()); }

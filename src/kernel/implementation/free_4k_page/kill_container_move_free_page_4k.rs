@@ -101,12 +101,12 @@ pub fn kill_container_move_free_page_4k(
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
-        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
-        page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
+        page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
+        page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, src);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, dst);
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, src_allocator); allocator_perms_wf_at(krnl.allc_4k_mp, dst_allocator);
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, src); container_perms_wf_at(krnl.ctn_mp, dst);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, src_allocator); allocator_perms_wf_at(krnl.allc_4k_mp, dst_allocator);
+        container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, src); container_perms_wf_at(krnl.ctn_mp, dst);
         allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, src_allocator, pg_ptr);
         allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, dst_allocator, pg_ptr);
         allocator_free_4k_pages_wf_at(krnl.allc_4k_mp, krnl.pg_arr, pg_idx);

@@ -262,7 +262,7 @@ fn reclaim_nonempty_leaf(
     let ghost (krnl_i, lctx_i) = (*krnl, *lctx);
     proof {
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); c.higher.wf_l4_at(next.0);
-        kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); page_index_valid_imply_page_ptr_valid();
+        kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); page_index_valid_implies_page_ptr_valid();
         assert_maps_equal!(krnl.pt_lower.view(), krnl.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
     }
     match kind {

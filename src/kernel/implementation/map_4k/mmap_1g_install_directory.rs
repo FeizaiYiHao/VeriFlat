@@ -337,7 +337,7 @@ verus! {
         proof {
             assert(nonwindow_typed_lock_maps_unchanged(&entry_lctx, lctx)) by {
                 broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-                map_insert_overwrite_lemma(entry_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
+                map_insert_twice_implies_eq_last_insert(entry_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
                     TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
             };
             assert(kernel_thread_quota_4k_changed(old(krnl), krnl, thrd_ptr, -1)) by { reveal(kernel_thread_quota_4k_changed); };

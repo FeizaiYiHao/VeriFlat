@@ -58,7 +58,7 @@ proof fn kill_reclaim_nonempty_2m_page_scoped_eof_page_owners(
 {
     reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
@@ -124,7 +124,7 @@ proof fn kill_reclaim_nonempty_2m_page_scoped_eof_page_mappings(
 {
     reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_4k_valid_index_roundtrip,
@@ -186,7 +186,7 @@ proof fn kill_reclaim_nonempty_2m_page_scoped_eof_page_relations(
 {
     reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
@@ -240,7 +240,7 @@ proof fn kill_reclaim_nonempty_2m_page_scoped_eof_pagetable_pci_mappings_wf(
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(kill_reclaim_nonempty_2m_page_scoped_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     mapped_2m_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
     reveal(pagetable_pci_mappings_wf);
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;

@@ -96,7 +96,7 @@ impl KernelK {
             },
     {
         proof {
-            container_perms_wf_map(old(self).ctn_mp);
+            container_perms_wf_implies_map_perms_wf(old(self).ctn_mp);
             container_perms_wf_at(old(self).ctn_mp, ctn_ptr);
             if !old(self).ctn_mp.spec_index(ctn_ptr).being_killed() {
                 let lock_id = dynamic_container_lock_id(ctn_ptr, old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth, requested);
@@ -168,7 +168,7 @@ impl KernelK {
             },
     {
         proof {
-            container_perms_wf_map(old(self).ctn_mp);
+            container_perms_wf_implies_map_perms_wf(old(self).ctn_mp);
             container_perms_wf_at(old(self).ctn_mp, ctn_ptr);
             if !old(self).ctn_mp.spec_index(ctn_ptr).being_killed() {
                 assert(old(lctx).lock_id_acyclic(dynamic_container_lock_id(ctn_ptr, old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth, LockOwnerId::High))) by {
@@ -193,7 +193,7 @@ impl KernelK {
             if res is Some {
                 let entry = TypedHeldLock { lock_id: lock_id.view(), mode: TypedLockMode::Write };
                 lctx.update_lock_id(KernelObjId::Container(ctn_ptr), lock_id.view(), self.ctn_mp.lock_id_by_key(ctn_ptr));
-                map_insert_overwrite_lemma(old(lctx).container_lock_map(), ctn_ptr, entry, TypedHeldLock { lock_id: self.ctn_mp.lock_id_by_key(ctn_ptr), mode: TypedLockMode::Write });
+                map_insert_twice_implies_eq_last_insert(old(lctx).container_lock_map(), ctn_ptr, entry, TypedHeldLock { lock_id: self.ctn_mp.lock_id_by_key(ctn_ptr), mode: TypedLockMode::Write });
             }
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             mark_kill_container_eof(*old(self), *self, *old(lctx), ctn_ptr, killer_info, res is Some);
@@ -240,7 +240,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Container(ctn_ptr), old(self).ctn_mp.lock_id_by_key(ctn_ptr)),
     {
         proof {
-            assert(old(self).ctn_mp.perms_wf() && old(self).ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_map(old(self).ctn_mp); container_perms_wf_at(old(self).ctn_mp, ctn_ptr); };
+            assert(old(self).ctn_mp.perms_wf() && old(self).ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_implies_map_perms_wf(old(self).ctn_mp); container_perms_wf_at(old(self).ctn_mp, ctn_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).ctn_mp.lock_id_by_key(ctn_ptr), KernelObjId::Container(ctn_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.ctn_mp.spec_index(ctn_ptr).wlocked_by(&*lctx)) by { old(self).ctn_mp.typed_lock_map_aligned_write_at(old(lctx).container_lock_map(), old(lctx).thread_id(), ctn_ptr); };

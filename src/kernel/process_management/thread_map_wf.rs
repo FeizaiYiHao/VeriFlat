@@ -25,7 +25,7 @@ pub open spec fn thread_perms_wf(thrd_mp: ThreadLockedMap) -> bool {
     &&& thread_ipc_transit_wf(thrd_mp)
 }
 
-pub proof fn thread_perms_wf_map(thrd_mp: ThreadLockedMap)
+pub proof fn thread_perms_wf_implies_map_perms_wf(thrd_mp: ThreadLockedMap)
     requires thread_perms_wf(thrd_mp)
     ensures thrd_mp.perms_wf()
 { reveal(thread_perms_wf); }

@@ -49,7 +49,7 @@ pub open spec fn thread_quota_1g_fields_unchanged(pre: ThreadLockedMap, post: Th
         }
 }
 
-pub proof fn thread_lock_op_preserves_invariant_fields(pre: ThreadLockedMap, post: ThreadLockedMap, changed: RwLockThreadPtr)
+pub proof fn thread_lock_op_implies_thread_invariant_fields_unchanged(pre: ThreadLockedMap, post: ThreadLockedMap, changed: RwLockThreadPtr)
     requires
         post.unchanged_except(&pre, changed),
         post.spec_index(changed).view() == pre.spec_index(changed).view(),

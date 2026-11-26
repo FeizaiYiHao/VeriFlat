@@ -116,12 +116,12 @@ impl KernelK {
             } else {
                 self.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), root);
             }
-            pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, root);
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
             assert(spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && spec_v2l2index(w.va) == l2i) by { broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective(); };
             assert(old(lctx).lock_id_acyclic(window_lock_id(root, l4i, l3i, l2i))) by {
-                iommu_table_perms_wf_map(old(self).it_mp);
+                iommu_table_perms_wf_implies_map_perms_wf(old(self).it_mp);
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
@@ -164,7 +164,7 @@ impl KernelK {
             };
             assert(lock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id())) by {
                 reveal(lock_pagetable_window_eof_transition_framing);
-                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
+                pagetable_lock_op_implies_pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
             };
             lock_pagetable_window_eof(*old(self), *self, root, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
             assert(pre_c.lower.pagetable_window_locks[w] is Unlocked) by { reveal(lock_pagetable_window_eof_transition_framing); pre_c.wf_window_locks_va_at(w); };
@@ -271,7 +271,7 @@ impl KernelK {
             } else {
                 self.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), root);
             }
-            pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_implies_map_perms_wf(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, root);
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
             pagetable_window_typed_lock_map_aligned_at(old(self).pt_mp, old(self).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id(),

@@ -291,7 +291,7 @@ pub(crate) proof fn kill_retire_eof_per_container_process_tree_wf(
     assert(process_tree_dom.contains(parent_ptr)) by { reveal(process_children_parent_wf); };
     kill_retire_eof_target_uppers_in_tree(pre, root_process, process_tree_dom, target);
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
-        reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_imply_wf_forall();
+        reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_implies_wf_forall();
     };
 }
 

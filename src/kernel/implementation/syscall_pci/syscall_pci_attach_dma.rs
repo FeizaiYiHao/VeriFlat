@@ -92,7 +92,7 @@ pub fn syscall_pci_attach_dma(
         old(krnl).pt_mp.typed_lock_map_aligned_locked_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
     }
     let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(lctx));
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
+    proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
     let owns = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).higher.pci.find(bus, device, function).is_some();
     let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(lctx));
     let attached = krnl.irt.borrow(Tracked(&irt_lock_perm)).is_attached(bus, device, function);
@@ -102,7 +102,7 @@ pub fn syscall_pci_attach_dma(
         else { RetValueType::Success };
     proof { pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, result); }
     proof {
-        pagetable_perms_wf_map(old(krnl).pt_mp); pagetable_perms_wf_at(old(krnl).pt_mp, pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(old(krnl).pt_mp); pagetable_perms_wf_at(old(krnl).pt_mp, pagetable_ptr);
         if old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is Read {
             assert(old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id())
                 =~= old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map);

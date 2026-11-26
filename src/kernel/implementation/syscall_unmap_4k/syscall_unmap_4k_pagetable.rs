@@ -138,10 +138,10 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     };
     proof {
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     }
     let Tracked(pagetable_perm) = krnl.rlock_pagetable(cpu_id, pagetable, Tracked(&mut *lctx));
-    assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
+    assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
     let l4_ok = pt.higher.kernel_l4_end <= indices.0;

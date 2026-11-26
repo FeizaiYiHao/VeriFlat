@@ -120,7 +120,7 @@ pub(super) fn thread_exit_reclaim(
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
 {
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); }
     let process = krnl.prc_mp.borrow_rodata(prc_ptr).borrow();
     let pagetable = process.pagetable;
     let cr3 = process.cr3;

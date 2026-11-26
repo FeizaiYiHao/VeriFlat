@@ -68,7 +68,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_tables(
 {
     reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(pre.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table, spec_index2va(indices))) && pre.pg_arr.spec_index(pg_idx).view().view().mappings().len() == 0) by {
         reveal(page_iommu_table_wf); page_array_wf_at(pre.pg_arr, pg_idx); page_ptr_roundtrip();
     };
@@ -121,7 +121,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_free_4k_pages(
 {
     reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_global_pool_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_free_page_ptrs_wf); };
@@ -195,7 +195,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
 {
     reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_tables(pre, post, iommu_table, indices, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_free_4k_pages(pre, post, iommu_table, indices, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };

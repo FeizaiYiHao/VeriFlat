@@ -176,13 +176,13 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let pagetable_index = page_ptr2page_index(child_pagetable_ptr);
     let l4_index = page_ptr2page_index(l4_page);
     proof {
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         assert({
             &&& process_index != pagetable_index
             &&& process_index != l4_index
             &&& pagetable_index != l4_index
         });
-        assert(krnl.prc_mp.perms_wf() && krnl.pt_mp.perms_wf()) by { process_perms_wf_map(krnl.prc_mp); pagetable_perms_wf_map(krnl.pt_mp); };
+        assert(krnl.prc_mp.perms_wf() && krnl.pt_mp.perms_wf()) by { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); };
     }
     let default_pt = krnl.dflt_pt.borrow();
     let Tracked(l4_page_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, l4_page, Allocated4KPageState::PageTable { pagetable_root: child_pagetable_ptr, table_type: PT_TYPE }, Ghost(page_locks), Tracked(&*lctx), Tracked(l4_page_lock_perm));
@@ -410,7 +410,7 @@ pub(super) fn publish_new_container_allocators(
             &&& krnl.allc_4k_mp.perms_wf()
             &&& krnl.allc_2m_mp.perms_wf()
             &&& krnl.allc_1g_mp.perms_wf()
-        }) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_map(krnl.allc_1g_mp); };
+        }) by { allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_implies_map_perms_wf(krnl.allc_1g_mp); };
     }
     publish_new_container_allocator(
         &mut krnl.pg_arr, &mut krnl.allc_4k_mp, child_ctn_ptr, allocator_4k_page, Allocated4KPageState::As4KAllocator, allocator_4k_value,
@@ -481,7 +481,7 @@ pub(super) fn publish_new_container_scheduler(
         final(krnl).sched_mp.spec_index(child_sched_ptr) == scheduler_value,
         forall|ptr: RwLockSchedulerPtr| #![trigger final(krnl).sched_mp.spec_index(ptr)] old(krnl).sched_mp.dom().contains(ptr) ==> final(krnl).sched_mp.spec_index(ptr) == old(krnl).sched_mp.spec_index(ptr),
 {
-    proof { assert(krnl.sched_mp.perms_wf()) by { scheduler_perms_wf_map(krnl.sched_mp); }; }
+    proof { assert(krnl.sched_mp.perms_wf()) by { scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); }; }
     let Tracked(scheduler_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, scheduler_page, Allocated4KPageState::AsScheduler, Ghost(page_locks), Tracked(lctx), Tracked(scheduler_page_lock_perm));
     let ghost scheduler_page_locks = page_locks.insert(page_ptr2page_index(scheduler_page), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(scheduler_page)), mode: TypedLockMode::Write });
     scheduler_map_insert_new_4k(&mut krnl.sched_mp, child_sched_ptr, scheduler_value, Tracked(scheduler_perm), Tracked(lctx));
@@ -564,7 +564,7 @@ pub(super) fn publish_new_container_cpu_set(
         ret.0.view().thread_id() == final(lctx).thread_id(),
         ret.0.view().lock_id() == final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).locking_thread()->Write_lock_id,
 {
-    proof { assert(krnl.cpu_set_mp.perms_wf()) by { cpu_set_perms_wf_map(krnl.cpu_set_mp); }; }
+    proof { assert(krnl.cpu_set_mp.perms_wf()) by { cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp); }; }
     let Tracked(cpu_set_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, cpu_set_page, Allocated4KPageState::AsCpuSet, Ghost(page_locks), Tracked(&*lctx), Tracked(cpu_set_page_lock_perm));
     let ghost cpu_set_page_locks = page_locks.insert(page_ptr2page_index(cpu_set_page), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(cpu_set_page)), mode: TypedLockMode::Write });
     let cpu_set_lock_perm = cpu_set_map_insert_new_4k(&mut krnl.cpu_set_mp, child_cpu_set_ptr, cpu_set_value, Tracked(cpu_set_perm), Tracked(&mut *lctx));
@@ -725,7 +725,7 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
     hide(Seq::contains);
     proof {
         assert(krnl.pcid_allc_mp.perms_wf() && krnl.ctn_mp.perms_wf() && krnl.cpu_offline_mp.perms_wf()) by {
-            pcid_allocator_perms_wf_map(krnl.pcid_allc_mp); container_perms_wf_map(krnl.ctn_mp); cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr);
+            pcid_allocator_perms_wf_implies_map_perms_wf(krnl.pcid_allc_mp); container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr);
         };
     }
     let child_pcid_allocator_lock_perm = pcid_allocator_map_insert_new_2m(&mut krnl.pcid_allc_mp, child_pcid_allc_ptr, pcid_allocator_value, Tracked(pcid_allocator_perm), Tracked(&mut *lctx));

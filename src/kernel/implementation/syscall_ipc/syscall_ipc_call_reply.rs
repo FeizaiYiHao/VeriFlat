@@ -146,7 +146,7 @@ verus! {
             final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
     {
         proof {
-            thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
+            thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
             cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, cpu_id); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, ep_ptr, callee_ptr);
             container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, callee_ptr);
@@ -704,7 +704,7 @@ verus! {
             }
             return RetValueType::ErrorIpcSameDirection;
         }
-        proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
+        proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
         let callee_ref = krnl.thrd_mp.borrow_typed(current_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
         let caller_ptr = callee_ref.caller.unwrap();
         proof {

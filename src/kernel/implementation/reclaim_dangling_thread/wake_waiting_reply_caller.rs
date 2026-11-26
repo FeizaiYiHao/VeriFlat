@@ -79,7 +79,7 @@ pub fn wake_waiting_reply_caller(
 {
     proof {
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
-        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_caller_callee_wf_at(krnl.thrd_mp, thrd_ptr);
+        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_caller_callee_wf_at(krnl.thrd_mp, thrd_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id());
     }
     let sched_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().scheduler;

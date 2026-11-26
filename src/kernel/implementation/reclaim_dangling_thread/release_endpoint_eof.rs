@@ -79,7 +79,7 @@ proof fn release_endpoint_eof_page_relations(
 {
     reveal(release_endpoint_eof_transition_framing);
     let pg_idx = page_ptr2page_index(ep_ptr);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
         allocator_2m_pages_wf_preserved_for_page_state_eq(pre.allc_2m_mp, post.allc_2m_mp, pre.pg_arr, post.pg_arr);
@@ -163,7 +163,7 @@ proof fn release_endpoint_eof_process_relations(
     ensures post.process_management_inv(),
 {
     reveal(release_endpoint_eof_transition_framing);
-    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
+    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_implies_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
@@ -225,7 +225,7 @@ pub(super) proof fn release_endpoint_eof(
     release_endpoint_eof_page_relations(pre, post, thrd_ptr, ep_ptr, index, owner, allc_ptr, node_addr);
     release_endpoint_eof_allocator_quota_wf(pre, post, thrd_ptr, ep_ptr, index, allc_ptr, node_addr);
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        reveal(release_endpoint_eof_transition_framing); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        reveal(release_endpoint_eof_transition_framing); page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
         page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, page_ptr2page_index(ep_ptr));
         container_thread_endpoint_wf_at(pre.ctn_mp, pre.thrd_mp, pre.ep_mp, thrd_ptr, index); container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr);
         reveal(container_endpoint_wf); reveal(container_kill_retire_wf); reveal(container_allocator_wf);
