@@ -50,7 +50,7 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
         }),
 {
     let owner = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id);
     krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), owner); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
     krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
     kernel_process_projection_at(krnl, prc_ptr); kernel_thread_projection_at(krnl, thrd_ptr);
@@ -58,7 +58,7 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
     container_without_children_and_processes_owns_no_threads(*krnl, ctn_ptr);
     assert(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent is Some
         && krnl.ctn_mp.dom().contains(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent->Some_0)) by { container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); reveal(container_children_parent_wf); };
-    kernel_container_projection_at(krnl, owner); kernel_container_projection_at(krnl, ctn_ptr); kernel_u_domains_projection(krnl);
+    kernel_container_projection_at(krnl, owner); kernel_container_projection_at(krnl, ctn_ptr); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     reveal(kill_container_step_pre);
 }
 

@@ -64,7 +64,7 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     kernel_thread_projection_at(before, thrd_ptr); kernel_endpoint_projection_at(before, ep_ptr);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);

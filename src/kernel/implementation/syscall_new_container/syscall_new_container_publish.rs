@@ -325,7 +325,7 @@ pub(super) fn publish_new_container_staged_root(
     let l4_page = *pages_4k.get(6);
     let thread_page = *pages_4k.get(7);
     proof {
-        new_container_page_positions(pages_4k.view());
+        pages_no_duplicates_implies_new_container_pages_pairwise_distinct(pages_4k.view());
         assert(old(krnl).cpu_arr.spec_index(transfer_cpu_id).value.view().view().owning_container == parent_ctn_ptr) by {
             cpu_set_perms_wf_at(old(krnl).cpu_set_mp, parent_cpu_set); container_cpu_wf_container_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, parent_ctn_ptr, transfer_cpu_id);
         };

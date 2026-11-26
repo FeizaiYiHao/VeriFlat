@@ -10,7 +10,7 @@ use super::super::syscall_kill_process::syscall_kill_process_retire_roots::kill_
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_process::syscall_kill_process_retire_spec::*;
 #[cfg(verus_keep_ghost)]
-use super::super::syscall_kill_process::syscall_kill_process_retire_pages::kill_retire_pages_held_and_owned;
+use super::super::syscall_kill_process::syscall_kill_process_retire_pages::kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_process::syscall_kill_process_trace::kill_step_pre_from_k;
 #[cfg(verus_keep_ghost)]
@@ -432,7 +432,7 @@ pub(crate) fn kill_container_retire_root_commit(
             iommu_table_without_did_implies_root_named_by_no_context_entry(*krnl, it);
         }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        kill_retire_pages_held_and_owned(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
+        kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
     }
     let Tracked(process_page_perm) = kill_container_retire_root_unlink(krnl, Tracked(&mut *lctx), target, ctn_ptr, Tracked(target_perm), Tracked(container_perm));
     let tables = kill_retire_remove_tables(krnl, Tracked(&mut *lctx), pagetable, iommu_table, Tracked(pt_lock_perm), Tracked(it_lock_perm));

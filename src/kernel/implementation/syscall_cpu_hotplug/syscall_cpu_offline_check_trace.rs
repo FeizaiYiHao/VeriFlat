@@ -94,7 +94,7 @@ pub(super) proof fn cpu_offline_check_release_step_from_u(before: &KernelK, afte
         cpu_offline_check_release_step(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
 {
     let ct = before.cpu_arr.spec_index(cpu_id).view().view().view().current_thread;
-    kernel_u_domains_projection(before); kernel_cpu_projection_at(before, cpu_id);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_cpu_projection_at(before, cpu_id);
     if ct is Some && before.thrd_mp.dom().contains(ct->Some_0) { kernel_thread_projection_at(before, ct->Some_0); }
     reveal(cpu_offline_check_release_step_pre); reveal(cpu_offline_check_release_step);
 }

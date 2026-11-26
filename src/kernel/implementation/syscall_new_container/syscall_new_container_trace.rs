@@ -131,7 +131,7 @@ pub(super) proof fn new_container_publish_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thrd_ptr).syscall_progress == Some(SyscallProgress::NewContainer(record)),
         kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thrd_ptr).owning_container == ctn_ptr,
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, record.transfer_cpu); reveal(new_container_publish_step_pre);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, record.transfer_cpu); reveal(new_container_publish_step_pre);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), krnl.prc_mp.spec_index(prc_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
 }
 
@@ -192,9 +192,9 @@ pub(super) proof fn new_container_finish_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).process_map.spec_index(root_ptr).iommu_table is None,
 {
     process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); reveal(share_4k_objects_k);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, ep_ptr);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, root_ptr, thrd_ptr, None);
-    kernel_share_4k_objects_projection(krnl, lctx, cpu_id);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, ep_ptr);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, root_ptr, thrd_ptr, None);
+    share_4k_write_held_implies_share_4k_locked_and_objects_projected(krnl, lctx, cpu_id);
     kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), krnl.prc_mp.spec_index(prc_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
     reveal(new_container_finish_step_pre);

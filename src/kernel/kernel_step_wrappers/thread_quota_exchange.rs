@@ -43,7 +43,7 @@ pub proof fn kernel_thread_quotas_exchanged_implies_u_step(pre: &KernelK, post: 
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_projection_at(post, cpu_id);
     kernel_thread_projection_at(pre, thread); kernel_thread_projection_at(post, thread);
     let pre_u = kernel_k_to_kernel_u(*pre);

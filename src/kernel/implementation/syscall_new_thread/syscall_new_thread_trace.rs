@@ -106,7 +106,7 @@ pub proof fn new_thread_finish_step_pre_from_k(
         ep_idx matches Some(i) ==> edp_idx_valid(i) && ep_ptr is Some && krnl.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.spec_index(i) == ep_ptr,
     ensures
         new_thread_finish_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, ep_ptr); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, ep_ptr); reveal(new_thread_finish_step_pre); }
+{ write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, ep_ptr); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, ep_ptr); reveal(new_thread_finish_step_pre); }
 
 /// Publishing the new thread while releasing the caller's context locks is the finish step on `pre`/`post`.
 pub proof fn new_thread_finish_step_from_u(

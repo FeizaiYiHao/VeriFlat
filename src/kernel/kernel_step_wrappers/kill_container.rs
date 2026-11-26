@@ -50,7 +50,7 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
     kernel_container_quota_4k_changed_implies_u_step(&mid, post, owner, 1);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_container_projection_at(pre, origin);
     let changed = a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]);
     assert(b.container_map[owner] != a.container_map[owner]);
     assert(changed =~= set![owner]);
@@ -111,7 +111,7 @@ pub proof fn kernel_zombie_root_process_retired_implies_u_step(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let quota = post.allc_4k_mp.spec_index(allc_ptr).quota.view().view();

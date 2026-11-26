@@ -17,7 +17,7 @@ proof fn kernel_thread_dequeued_implies_u_container_map(before: &KernelK, entry:
         },
     ensures kernel_k_to_kernel_u(*after).container_map == kernel_k_to_kernel_u(*before).container_map,
 {
-    kernel_u_domains_projection(after); kernel_u_domains_projection(before);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before);
     assert_maps_equal!(kernel_k_to_kernel_u(*after).container_map, kernel_k_to_kernel_u(*before).container_map, p => {
         if after.ctn_mp.dom().contains(p) { kernel_container_projection_at(after, p); } if before.ctn_mp.dom().contains(p) { kernel_container_projection_at(before, p); }
         reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
@@ -42,7 +42,7 @@ proof fn kernel_thread_dequeued_implies_u_process_map(before: &KernelK, entry: &
     ensures
         kernel_k_to_kernel_u(*after).process_map == kernel_k_to_kernel_u(*before).process_map,
 {
-    kernel_u_domains_projection(after); kernel_u_domains_projection(before);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.process_map, pre.process_map, p => {
@@ -142,7 +142,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
         }),
 {
     assert(entry.dflt_pt == before.dflt_pt && entry.pci_bars == before.pci_bars) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     if before.thrd_mp.dom().contains(current_thrd_ptr) { kernel_thread_projection_at(before, current_thrd_ptr); }
     if before.thrd_mp.dom().contains(peer_thrd_ptr) { kernel_thread_projection_at(before, peer_thrd_ptr); }
     if before.ep_mp.dom().contains(channel_ep_ptr) { kernel_endpoint_projection_at(before, channel_ep_ptr); }
@@ -212,7 +212,7 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(
                 state: ThreadState::IPC_TRANSIT { partner: current_thrd_ptr, wait: if pre.thread_map[peer_thrd_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..pre.thread_map[peer_thrd_ptr] })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(current_thrd_ptr, ThreadU {
@@ -247,7 +247,7 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_endpoint_map(
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(channel_ep_ptr, EndpointU {
@@ -283,7 +283,7 @@ pub proof fn kernel_process_map_unchanged_implies_u_map(pre: &KernelK, post: &Ke
 {
     hide(Map::filter_keys);
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(after.process_map, before.process_map, p => {
@@ -341,7 +341,7 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
     hide(Map::filter_keys);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pre.prc_mp.spec_index(source).view().pagetable);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pre.prc_mp.spec_index(target).view().pagetable);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let processes = before.process_map;
@@ -455,7 +455,7 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
     post.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer);
     post.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), endpoint);
     assert(post.cpu_arr.spec_index(cpu).value.wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let processes = before.process_map;
@@ -512,7 +512,7 @@ proof fn kernel_two_threads_write_locked_implies_u_thread_map(pre: &KernelK, pos
                 .insert(peer, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.thread_map[peer] })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(after.thread_map, before.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.thread_map[caller] })
@@ -534,7 +534,7 @@ proof fn kernel_endpoint_write_locked_implies_u_endpoint_map(pre: &KernelK, post
     ensures
         kernel_k_to_kernel_u(*post).endpoint_map == kernel_k_to_kernel_u(*pre).endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..kernel_k_to_kernel_u(*pre).endpoint_map[endpoint] }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(after.endpoint_map, before.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.endpoint_map[endpoint] }), p => {
@@ -674,7 +674,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
             }
         }),
 {
-    kernel_u_cpu_array_projection(pre);
+    kernel_k_to_kernel_u_implies_cpu_array_from_cpu_arr(pre);
     if pagetable && post.inv() { reveal(KernelK::default_pagetable_wf); }
     if write_locked {
         if let Some(c) = container { post.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), c); }
@@ -687,7 +687,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
         if ep_ptr is Some { post.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), ep_ptr->Some_0); }
         assert(post.cpu_arr.spec_index(cpu_id).value.wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
     let mode = if write_locked { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked };
@@ -718,7 +718,7 @@ pub(super) proof fn kernel_ipc_block_fields_implies_u_step(
             cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_u_ipc_block_changed); reveal(kernel_ipc_block_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_u_ipc_block_changed); reveal(kernel_ipc_block_fields); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); if pre.thrd_mp.dom().contains(thrd_ptr) { kernel_thread_user_projection_at(pre, thrd_ptr); }
     if pre.ep_mp.dom().contains(ep_ptr) { kernel_endpoint_user_projection_at(pre, ep_ptr); }
     if pre.prc_mp.dom().contains(pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc); }
@@ -745,7 +745,7 @@ pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_ipc_call_handoff_fields);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id);
     if pre.thrd_mp.dom().contains(caller_ptr) { kernel_thread_user_projection_at(pre, caller_ptr); } if pre.thrd_mp.dom().contains(callee_ptr) { kernel_thread_user_projection_at(pre, callee_ptr); }
     if pre.ep_mp.dom().contains(ep_ptr) { kernel_endpoint_user_projection_at(pre, ep_ptr); }
@@ -775,7 +775,7 @@ pub(super) proof fn kernel_ipc_accept_call_fields_implies_u_step(
     reveal(kernel_u_ipc_accept_call_changed);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
-    reveal(kernel_ipc_accept_call_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_ipc_accept_call_fields); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); if pre.thrd_mp.dom().contains(callee_ptr) { kernel_thread_user_projection_at(pre, callee_ptr); }
     if pre.thrd_mp.dom().contains(caller_ptr) { kernel_thread_user_projection_at(pre, caller_ptr); }
     if pre.ep_mp.dom().contains(ep_ptr) { kernel_endpoint_user_projection_at(pre, ep_ptr); }
@@ -808,7 +808,7 @@ pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
             cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_u_ipc_reply_handoff_changed); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_u_ipc_reply_handoff_changed); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     kernel_ipc_reply_handoff_fields_implies_u_cpu_array(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid);
@@ -844,7 +844,7 @@ proof fn kernel_ipc_reply_handoff_fields_implies_u_cpu_array(
 {
     hide(kernel_k_user_projection);
     reveal(kernel_ipc_reply_handoff_fields);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     if pre.thrd_mp.dom().contains(caller_ptr) { kernel_thread_user_projection_at(pre, caller_ptr); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_user_projection_at(pre, cpu_id); }
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -873,7 +873,7 @@ proof fn kernel_ipc_reply_handoff_fields_implies_u_thread_map(
         }),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_ipc_reply_handoff_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_ipc_reply_handoff_fields); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     if pre.thrd_mp.dom().contains(callee_ptr) { kernel_thread_user_projection_at(pre, callee_ptr); } if pre.thrd_mp.dom().contains(caller_ptr) { kernel_thread_user_projection_at(pre, caller_ptr); }
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -901,7 +901,7 @@ proof fn kernel_ipc_reply_handoff_fields_implies_u_process_map(
     ensures kernel_k_user_projection(*post).process_map == kernel_k_user_projection(*pre).process_map,
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_ipc_reply_handoff_fields); reveal(kernel_process_nonlock_fields_unchanged); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_ipc_reply_handoff_fields); reveal(kernel_process_nonlock_fields_unchanged); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
@@ -921,7 +921,7 @@ proof fn kernel_ipc_reply_handoff_fields_implies_u_container_map(
 {
     hide(kernel_k_user_projection);
     reveal(kernel_ipc_reply_handoff_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.container_map, pre_u.container_map, c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); } });
@@ -962,7 +962,7 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
             cpu_id, caller_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, pci_transfer),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_u_ipc_rendezvous_changed); reveal(kernel_ipc_rendezvous_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_u_ipc_rendezvous_changed); reveal(kernel_ipc_rendezvous_fields); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); if pre.thrd_mp.dom().contains(caller_thrd_ptr) { kernel_thread_user_projection_at(pre, caller_thrd_ptr); }
     if pre.thrd_mp.dom().contains(peer_thrd_ptr) { kernel_thread_user_projection_at(pre, peer_thrd_ptr); }
     if pre.ep_mp.dom().contains(ep_ptr) { kernel_endpoint_user_projection_at(pre, ep_ptr); }
@@ -1015,7 +1015,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_cpu_array(
 {
     hide(kernel_k_user_projection);
     reveal(kernel_ipc_rendezvous_fields);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     match cpu_transfer {
@@ -1057,7 +1057,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_container_map(
         }),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_ipc_rendezvous_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_ipc_rendezvous_fields); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     if pre.thrd_mp.dom().contains(peer_thrd_ptr) { kernel_thread_user_projection_at(pre, peer_thrd_ptr); } if pre.thrd_mp.dom().contains(caller_thrd_ptr) { kernel_thread_user_projection_at(pre, caller_thrd_ptr); }
     if pre.ctn_mp.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().owning_container) { kernel_container_user_projection_at(pre, pre.thrd_mp.spec_index(peer_thrd_ptr).view().owning_container); }
     let pre_u = kernel_k_user_projection(*pre);
@@ -1234,7 +1234,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
         }),
 {
     hide(kernel_k_user_projection);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let s = pre_u.process_map.spec_index(sender);
@@ -1272,7 +1272,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_iommu_root_table(
         }),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_ipc_rendezvous_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    reveal(kernel_ipc_rendezvous_fields); kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached();
@@ -1312,7 +1312,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_thread_map(
 {
     hide(kernel_k_user_projection);
     reveal(kernel_ipc_rendezvous_fields);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     if pre.thrd_mp.dom().contains(caller_thrd_ptr) { kernel_thread_user_projection_at(pre, caller_thrd_ptr); } if pre.thrd_mp.dom().contains(peer_thrd_ptr) { kernel_thread_user_projection_at(pre, peer_thrd_ptr); }
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -1344,7 +1344,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_endpoint_map(
 {
     hide(kernel_k_user_projection);
     reveal(kernel_ipc_rendezvous_fields);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     if pre.ep_mp.dom().contains(ep_ptr) { kernel_endpoint_user_projection_at(pre, ep_ptr); }
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);

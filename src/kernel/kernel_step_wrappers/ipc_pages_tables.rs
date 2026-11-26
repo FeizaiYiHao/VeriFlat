@@ -149,7 +149,7 @@ pub proof fn kernel_pagetable_downgraded_implies_u_step(pre: &KernelK, post: &Ke
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, target); kernel_pagetable_mappings_projection_at(pre, target);
@@ -218,7 +218,7 @@ proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     kernel_thread_projection_at(pre, thread);
@@ -277,7 +277,7 @@ proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_process_map(
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(b.process_map, a.process_map.insert(source, ProcessU {

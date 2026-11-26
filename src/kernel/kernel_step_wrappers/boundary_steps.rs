@@ -117,7 +117,7 @@ impl KernelK {
             kernel_cpu_tlb_updated_implies_u_step(&steps.snapshot_k(), &*self);
         };
         assert(steps.snapshot_u() != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(steps.snapshot_u(), kernel_k_to_kernel_u(*self), pcid, None)) by {
-            reveal(kernel_u_cpu_tlb_cleared); kernel_u_domains_projection(&steps.snapshot_k()); kernel_u_domains_projection(&*self);
+            reveal(kernel_u_cpu_tlb_cleared); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&steps.snapshot_k()); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&*self);
             if steps.snapshot_u() != kernel_k_to_kernel_u(*self) {
                 cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));
                 assert(!steps.snapshot_u().cpu_tlb.dom().contains((cpu_id, pcid)) || steps.snapshot_u().cpu_tlb[(cpu_id, pcid)] != self.cpu_tlb.spec_index((cpu_id, pcid))) by {

@@ -66,7 +66,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
             post_u.process_map == unlocked.insert(prc_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thrd_ptr), ..process })
         }),
 {
-    reveal(kernel_new_thread_fields); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    reveal(kernel_new_thread_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let mode = LockStateU::Unlocked;

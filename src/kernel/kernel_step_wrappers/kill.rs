@@ -23,7 +23,7 @@ pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, a
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.process_map, pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.process_map[prc_ptr] }), p => {
@@ -54,7 +54,7 @@ pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, af
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr);
@@ -119,7 +119,7 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
             &&& kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after)
         },
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_process_projection_at(before, prc_ptr); kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr);
@@ -165,7 +165,7 @@ proof fn kernel_thread_left_process_implies_u_process_map(before: &KernelK, afte
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_process_projection_at(before, prc_ptr); kernel_thread_projection_at(before, thrd_ptr);
@@ -209,7 +209,7 @@ proof fn kernel_thread_left_process_implies_u_thread_map(before: &KernelK, after
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_thread_projection_at(before, thrd_ptr);
@@ -257,7 +257,7 @@ pub proof fn kernel_scheduled_thread_killed_implies_u_step(
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_container_projection_at(before, ctn_ptr); kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr);
@@ -313,7 +313,7 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_endpoint_projection_at(before, ep_ptr); kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr);
@@ -364,7 +364,7 @@ pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, 
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr); thread_cpu_wf_thread_at(before.thrd_mp, before.cpu_arr, thrd_ptr);

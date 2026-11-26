@@ -66,7 +66,7 @@ impl KernelSteps {
             &&& pre_u.endpoint_map.spec_index(ep_ptr).lock_state is Unlocked
             &&& pre_u.container_map.dom().contains(thread.owning_container)
         }) by {
-            reveal(kernel_ipc_block_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
+            reveal(kernel_ipc_block_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
             kernel_thread_projection_at(&self.snapshot_k(), thrd_ptr); kernel_endpoint_projection_at(&self.snapshot_k(), ep_ptr);
         };
         assert(kernel_u_ipc_block_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid)) by {
@@ -145,7 +145,7 @@ impl KernelSteps {
             &&& pre_u.endpoint_map.spec_index(ep_ptr).lock_state is Unlocked
             &&& pre_u.container_map.dom().contains(first.owning_container)
         }) by {
-            reveal(kernel_ipc_call_handoff_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
+            reveal(kernel_ipc_call_handoff_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
             kernel_thread_projection_at(&self.snapshot_k(), caller_ptr); kernel_thread_projection_at(&self.snapshot_k(), callee_ptr); kernel_endpoint_projection_at(&self.snapshot_k(), ep_ptr);
         };
         assert(kernel_u_ipc_call_handoff_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid)) by {
@@ -219,7 +219,7 @@ impl KernelSteps {
             &&& pre_u.endpoint_map.spec_index(ep_ptr).lock_state is Unlocked
             &&& pre_u.container_map.dom().contains(first.owning_container)
         }) by {
-            reveal(kernel_ipc_accept_call_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
+            reveal(kernel_ipc_accept_call_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
             kernel_thread_projection_at(&self.snapshot_k(), callee_ptr); kernel_thread_projection_at(&self.snapshot_k(), caller_ptr); kernel_endpoint_projection_at(&self.snapshot_k(), ep_ptr);
         };
         assert(kernel_u_ipc_accept_call_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr)) by {
@@ -295,7 +295,7 @@ impl KernelSteps {
             &&& pre_u.endpoint_map.spec_index(ep_ptr).lock_state is Unlocked
             &&& pre_u.container_map.dom().contains(first.owning_container)
         }) by {
-            reveal(kernel_ipc_reply_handoff_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
+            reveal(kernel_ipc_reply_handoff_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
             kernel_thread_projection_at(&self.snapshot_k(), callee_ptr); kernel_thread_projection_at(&self.snapshot_k(), caller_ptr); kernel_endpoint_projection_at(&self.snapshot_k(), ep_ptr);
         };
         assert(kernel_u_ipc_reply_handoff_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid)) by {

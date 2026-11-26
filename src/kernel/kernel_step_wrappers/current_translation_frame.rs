@@ -36,7 +36,7 @@ pub proof fn kernel_cpu_current_pcid_implies_tlb_subset_of_current_pagetable(k: 
         }),
 {
     let p = kernel_k_to_kernel_u(k).cpu_array[c as int].current_process->Some_0;
-    kernel_u_domains_projection(&k); kernel_cpu_projection_at(&k, c); process_cpu_wf_at(k.prc_mp, k.cpu_arr, c);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&k); kernel_cpu_projection_at(&k, c); process_cpu_wf_at(k.prc_mp, k.cpu_arr, c);
     kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
     cpu_hw_cr3_pcid_wf_at(k.cpu_hw_cr3_pcid, k.cpu_arr, k.pcid_needflush, k.cpu_op.view().view(), c); cpu_tlb_wf_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, c, pcid);
 }
@@ -209,7 +209,7 @@ broadcast proof fn kernel_owned_page_implies_u_iotlb_4k_entry_outside_frame_at(k
 {
     let fidx = page_ptr2page_index(frame);
     page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); hugepage_2m_wf_head_at(k.pg_arr, fidx); hugepage_1g_wf_head_at(k.pg_arr, fidx);
-    kernel_u_domains_projection(&k);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&k);
     if k.iommu_tlb.view().dom().contains(did) && k.iommu_tlb.spec_index(did).tlb_4k().dom().contains(va) {
         let irt = k.irt.view();
         let anchor = pci_bdf_of_did(did);

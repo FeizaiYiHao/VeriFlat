@@ -42,7 +42,7 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
 {
     let c = krnl.cpu_arr.spec_index(cpu_id).value.view().view();
     let thread = krnl.thrd_mp.spec_index(c.current_thread->Some_0).view();
-    kernel_cpu_projection_at(krnl, cpu_id); kernel_u_domains_projection(krnl);
+    kernel_cpu_projection_at(krnl, cpu_id); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     if !(ret is CpuIdle) {
         kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None); kernel_container_projection_at(krnl, thread.owning_container);
         kernel_process_projection_at(krnl, thread.owning_proc);
@@ -267,7 +267,7 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
     process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
     kernel_thread_syscall_progress_changed_implies_u_step(pre, mid, thrd_ptr);
     kernel_iommu_table_4k_present_cleared_implies_u_step(mid, post, iommu_table_ptr, iova);
-    kernel_u_domains_projection(pre);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre);
     kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, ctn_ptr);
     kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(mid, thrd_ptr);
     kernel_process_projection_at(pre, prc_ptr); kernel_iommu_table_mappings_projection_at(pre, prc_ptr);
@@ -462,8 +462,8 @@ pub(super) proof fn iommu_unmap_4k_thread_refund_step_from_k(
         iommu_unmap_4k_partial_trace(after, cpu_id, iova_range),
 {
     reveal(iommu_unmap_4k_partial_trace); reveal(iommu_unmap_4k_refund_step_pre); reveal(iommu_unmap_4k_range_step); reveal(iommu_unmap_4k_refund_step);
-    kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_thread_projection_at(pre, thrd_ptr);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    write_held_context_implies_projected_context_write_locked(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_thread_projection_at(pre, thrd_ptr);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k, ..pre_u.thread_map[thrd_ptr] }), t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }

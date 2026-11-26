@@ -50,7 +50,7 @@
   These need no approval.
 - Exec equations and their own contracts contain no U reasoning. Do not reveal a
   U step, step_pre, trace, or result spec; call a K-to-U projection lemma
-  (`*_projection_at`, `kernel_write_held_context_projection`, ...); call
+  (`*_projection_at`, `write_held_context_implies_projected_context_write_locked`, ...); call
   `use_type_invariant(&*steps)`; build `ThreadU{..}`/`KernelU{..}` literals or
   `kernel_k_to_kernel_u(..).x =~= ..` compositions; or put field-level
   `kernel_k_to_kernel_u(..)`/`kernel_k_to_nonlock_kernel_u(..)` clauses in an
