@@ -734,14 +734,16 @@ pub proof fn cpu_op_ipi_running_to_idle_implies_kernel_step_boundary_framing(pre
     reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
-/// The wake-up IPI of `CpuOpArray::mark_idle_after_wake` stays within the step-boundary framing of a thread between its sections that
-/// does not run on the target. The IPI runs inside the waker's section, so the invariant after it is assumed.
+/// The wake-up IPI of `CpuOpArray::mark_idle_after_wake`, which leaves every store buffer unchanged, stays within the step-boundary
+/// framing of a thread between its sections that does not run on the target. The IPI runs inside the waker's section, so the
+/// invariant after it is assumed.
 pub proof fn cpu_op_woken_implies_kernel_step_boundary_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
         post == (KernelK { cpu_op: post.cpu_op, ..pre }),
         post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle),
+        post.cpu_op.view().store_buffers() == pre.cpu_op.view().store_buffers(),
         typed_lock_maps_aligned(&pre, &lctx),
         post.inv(),
         cpu_id != lctx.cpu_id(),
