@@ -121,9 +121,9 @@ pub fn merge_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
 {
     proof {
         assert(PAGE_SZ_4K == 4096) by (bit_vector);
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_4k);
-        allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator_2m);
-        page_array_wf_map(krnl.pg_arr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thread);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_4k);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator_2m);
+        page_array_wf_implies_page_array_inv(krnl.pg_arr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thread);
         assert(krnl.allc_2m_mp.spec_index(allocator_2m).total_free_pages.view() < usize::MAX && krnl.thrd_mp.spec_index(thread).view().quota_2m < usize::MAX) by {
             allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(krnl.allc_2m_mp, allocator_2m);
             container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thread);

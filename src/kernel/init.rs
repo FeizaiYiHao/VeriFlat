@@ -355,7 +355,7 @@ pub open spec fn boot_cpu_hw_cr3_pcid_ready(hw_cr3_pcid: CpuHwCr3PcidArray, defa
         }
 }
 
-proof fn prove_boot_container_process_allocator_quota_4k_wf(krnl: &KernelK, layout: BootKernelLayout)
+proof fn boot_layout_implies_container_process_allocator_quota_4k_wf(krnl: &KernelK, layout: BootKernelLayout)
     requires
         krnl.ctn_mp.dom() =~= set![layout.root_container],
         krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view() =~= set![layout.root_process],
@@ -403,7 +403,7 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(krnl: &KernelK, layo
     reveal(container_process_allocator_quota_4k_wf);
 }
 
-proof fn prove_boot_container_process_allocator_quota_2m_wf(krnl: &KernelK, layout: BootKernelLayout)
+proof fn boot_layout_implies_container_process_allocator_quota_2m_wf(krnl: &KernelK, layout: BootKernelLayout)
     requires
         krnl.ctn_mp.dom() =~= set![layout.root_container],
         krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view() =~= set![layout.root_process],
@@ -451,7 +451,7 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(krnl: &KernelK, layo
     reveal(container_process_allocator_quota_2m_wf);
 }
 
-proof fn prove_boot_container_process_allocator_quota_1g_wf(krnl: &KernelK, layout: BootKernelLayout)
+proof fn boot_layout_implies_container_process_allocator_quota_1g_wf(krnl: &KernelK, layout: BootKernelLayout)
     requires
         krnl.ctn_mp.dom() =~= set![layout.root_container],
         krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view() =~= set![layout.root_process],
@@ -499,7 +499,7 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(krnl: &KernelK, layo
     reveal(container_process_allocator_quota_1g_wf);
 }
 
-proof fn prove_boot_container_page_owner_wf(
+proof fn boot_layout_implies_container_owned_pages_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
     free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, all_valid_pages: Set<PagePtr>,
@@ -512,10 +512,10 @@ proof fn prove_boot_container_page_owner_wf(
         forall|pg_ptr: PagePtr| #![trigger all_valid_pages.contains(pg_ptr)] all_valid_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
     ensures
         container_owned_pages_wf(krnl.ctn_mp, krnl.pg_arr),
-{ reveal(container_owned_pages_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_index_roundtrip(); }
+{ reveal(container_owned_pages_wf); reveal(boot_page_array_ready); page_ptr_valid_implies_page_index_valid(); page_index_valid_implies_page_ptr_valid(); page_index_roundtrip(); }
 
 /// Every boot object page is named by the root container, and the root container has no parent.
-proof fn prove_boot_page_object_owner_wf(
+proof fn boot_layout_implies_page_object_owner_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
     free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>, free_1g_pool: &LinkedList<PagePtr, 233>,
 )
@@ -533,7 +533,7 @@ proof fn prove_boot_page_object_owner_wf(
 { reveal(page_object_owner_wf); reveal(boot_page_array_ready); }
 
 /// Every boot page and the root process belong to the root container.
-proof fn prove_boot_process_kernel_pages_owner_wf(
+proof fn boot_layout_implies_process_object_pages_owner_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
     free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>,
@@ -552,7 +552,7 @@ proof fn prove_boot_process_kernel_pages_owner_wf(
         process_object_pages_owner_wf(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, krnl.pg_arr),
 { reveal(process_object_pages_owner_wf); reveal(boot_page_array_ready); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf); }
 
-proof fn prove_boot_iommu_table_pages_wf(
+proof fn boot_layout_implies_iommu_table_pages_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>,
     manifest_4k: Map<VAddr, MapEntry>, free_4k_pool: &LinkedList<PagePtr, 233>,
     free_2m_pool: &LinkedList<PagePtr, 233>, free_1g_pool: &LinkedList<PagePtr, 233>,
@@ -566,9 +566,9 @@ proof fn prove_boot_iommu_table_pages_wf(
         krnl.it_mp.spec_index(layout.iommu_table).view().page_closure() =~= set![layout.iommu_l4],
     ensures
         iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr),
-{ reveal(iommu_table_pages_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); }
+{ reveal(iommu_table_pages_wf); reveal(boot_page_array_ready); page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); }
 
-proof fn prove_boot_container_thread_scheduler_wf(krnl: &KernelK, layout: BootKernelLayout, scheduler_node_addr: usize)
+proof fn boot_layout_implies_container_thread_scheduler_wf(krnl: &KernelK, layout: BootKernelLayout, scheduler_node_addr: usize)
     requires
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().scheduler == layout.scheduler,
         krnl.thrd_mp.dom() =~= set![layout.root_thread],
@@ -591,7 +591,7 @@ proof fn prove_boot_container_thread_scheduler_wf(krnl: &KernelK, layout: BootKe
     assert(root_queue.view().contains(layout.root_thread)) by { root_queue.view().lemma_index_contains(0); };
 }
 
-proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, process_node_addr: usize)
+proof fn boot_layout_implies_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, process_node_addr: usize)
     requires
         krnl.prc_mp.dom() =~= set![layout.root_process],
         !krnl.prc_mp.spec_index(layout.root_process).view().zombie,

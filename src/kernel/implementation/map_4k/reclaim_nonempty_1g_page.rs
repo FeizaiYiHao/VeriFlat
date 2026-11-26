@@ -97,9 +97,9 @@ pub fn reclaim_nonempty_1g_page(
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().remove((pagetable, va)),
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
-    proof { page_ptr_valid_imply_page_index_valid(); }
+    proof { page_ptr_valid_implies_page_index_valid(); }
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
+    proof { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     if page.ref_count > 1 {
@@ -112,7 +112,8 @@ pub fn reclaim_nonempty_1g_page(
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
             broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-            map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            map_insert_twice_implies_eq_last_insert(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
+                TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -212,13 +213,13 @@ fn reclaim_last_nonempty_1g_mapping(
     proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     let ghost pg_idx = page_ptr2page_index(pg_ptr);
     proof {
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner);
     }
     let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
     let depth = owner_ro.depth;
     let allc_ptr = owner_ro.allocator_ptr_1g;
-    proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
     let thread = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
     let thread_depth = thread.container_depth;
     proof {
@@ -320,8 +321,8 @@ pub fn remove_nonempty_1g_mapping_without_free(krnl: &mut KernelK, pagetable: Rw
     let pg_idx = page_ptr2page_index(pg_ptr);
     let l4i = v2l4index(va);
     let l3i = v2l3index(va);
-    proof { spec_va_1g_valid_index_roundtrip(va); page_ptr_valid_imply_page_index_valid(); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
-    assert(krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().is_init() && krnl.pg_arr.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
+    proof { spec_va_1g_valid_index_roundtrip(va); page_ptr_valid_implies_page_index_valid(); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
+    assert(krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().is_init() && krnl.pg_arr.spec_index(pg_idx).view().view().inv()) by { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     {
         let page = krnl.pg_arr.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), page_perm);

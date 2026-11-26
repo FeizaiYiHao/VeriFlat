@@ -421,7 +421,7 @@ proof fn pop_stage_1g_page_eof_cpu_cache(pre: KernelK, post: KernelK, allocator:
     reveal(pop_stage_1g_page_eof_transition_framing);
     assert(allocator_cpu_cache_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by {
         reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf); reveal(allocator_free_page_ptrs_wf);
-        page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective(); reveal(allocator_perms_wf);
+        page_ptr_valid_implies_page_index_valid(); page_ptr2page_index_injective(); reveal(allocator_perms_wf);
     };
 }
 

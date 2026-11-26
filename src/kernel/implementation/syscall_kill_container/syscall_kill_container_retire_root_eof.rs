@@ -56,7 +56,7 @@ pub(crate) proof fn kill_container_retire_root_eof_tree(
     assert(ctn_ptr != pre.rt_ctn && pre.ctn_mp.dom().contains(pre.rt_ctn)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); broadcast use kill_container_retire_root_eof_only_root; };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
-        reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_imply_wf_forall();
+        reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_implies_wf_forall();
     };
 }
 

@@ -7,7 +7,7 @@ pub open spec fn page_invariant_fields_unchanged(pre: PageLockedArray, post: Pag
     forall|pg_idx: PageIndex| #![trigger pre.spec_index(pg_idx)] #![trigger post.spec_index(pg_idx)] index_valid(NUM_PAGES, pg_idx) ==> post.spec_index(pg_idx).view().view() == pre.spec_index(pg_idx).view().view()
 }
 
-pub proof fn page_lock_op_preserves_invariant_fields(pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
+pub proof fn page_lock_op_implies_page_invariant_fields_unchanged(pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
     requires
         post.unchanged_except(&pre, changed),
     ensures

@@ -128,12 +128,12 @@ pub fn remove_last_nonempty_1g_mapping_to_allocator(
     proof { spec_va_1g_valid_index_roundtrip(va); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
     assert(krnl.pg_arr.spec_index(pg_idx).view().view().addr == pg_ptr && index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.spec_index(pg_idx).view().is_init()
         && krnl.pg_arr.spec_index(pg_idx).view().view().inv() && krnl.pg_arr.inv()) by {
-        page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); page_ptr_roundtrip();
+        page_ptr_valid_implies_page_index_valid(); page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); page_ptr_roundtrip();
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     assert(krnl.thrd_mp.spec_index(thrd_ptr).is_init() && krnl.allc_1g_mp.perms_wf() && krnl.allc_1g_mp.spec_index(allc_ptr).wf()
         && !krnl.allc_1g_mp.spec_index(allc_ptr).global_pool.view().view().contains(pg_ptr)) by {
-        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr);
+        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); allocator_perms_wf_implies_map_perms_wf(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr);
         allocator_free_1g_pages_wf_global_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr, pg_ptr);
     };
     let (node_addr, node_perm) = {
@@ -147,7 +147,8 @@ pub fn remove_last_nonempty_1g_mapping_to_allocator(
     proof {
         lctx.update_lock_id(KernelObjId::Page(pg_idx), old_page_lock_id, krnl.pg_arr.lock_id_by_index(pg_idx));
         assert(typed_lock_maps_inserted(old(lctx), lctx, KernelObjId::Page(pg_idx), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write })) by {
-            map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            map_insert_twice_implies_eq_last_insert(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
+                TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         assert(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing(*old(krnl), *krnl, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, *old(counter), *counter, node_addr)) by {
             reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);

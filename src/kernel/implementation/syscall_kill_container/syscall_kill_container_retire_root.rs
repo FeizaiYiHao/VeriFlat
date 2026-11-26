@@ -99,7 +99,7 @@ pub(crate) fn kill_container_retire_root(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
 {
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let (pagetable, iommu_table) = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         let process = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
@@ -201,7 +201,7 @@ pub(crate) fn kill_container_retire_root_process(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
 {
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let (pagetable, iommu_table) = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         let process = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
@@ -407,8 +407,8 @@ pub(crate) fn kill_container_retire_root_commit(
 {
     let ghost entry = *krnl;
     proof {
-        process_perms_wf_map(krnl.prc_mp); container_perms_wf_map(krnl.ctn_mp);
-        allocator_perms_wf_map(krnl.allc_4k_mp);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp); container_perms_wf_implies_map_perms_wf(krnl.ctn_mp);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target);
         krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
@@ -508,10 +508,10 @@ pub(crate) fn kill_container_retire_root_unlink(
 {
     proof {
         let tree = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
-        process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); process_perms_wf_implies_parent_node_addr(krnl.prc_mp, target);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); process_perms_wf_implies_parent_node_addr(krnl.prc_mp, target);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr);
         process_root_wf_at(target, tree, krnl.prc_mp, target);
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
+        container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
     }
     let Tracked(node_perm) = {
         let process = krnl.prc_mp.borrow_mut_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&target_perm));

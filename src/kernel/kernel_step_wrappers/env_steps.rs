@@ -4,7 +4,7 @@ use crate::*;
 
 verus! {
 /// Under the kernel invariant, what CPU `cpu_id` may cache under `pcid` in K it may also cache in the user projection.
-pub proof fn kernel_cpu_tlb_within_may_cache_projection(krnl: &KernelK, cpu_id: CpuId, pcid: Pcid, tlb: SingleTLB, cache: PagingStructureCache)
+pub proof fn cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(krnl: &KernelK, cpu_id: CpuId, pcid: Pcid, tlb: SingleTLB, cache: PagingStructureCache)
     requires
         krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -27,7 +27,7 @@ pub proof fn kernel_cpu_tlb_within_may_cache_projection(krnl: &KernelK, cpu_id: 
 
 /// Under the kernel invariant, what the IOTLB may cache for domain `did` in K it may also cache in the user projection; a
 /// zombie anchor owner's emptied IOMMU table backs no translation.
-pub proof fn kernel_iommu_tlb_within_may_cache_projection(krnl: &KernelK, did: VtdDomainId, tlb: SingleTLB)
+pub proof fn iommu_tlb_within_may_cache_implies_iommu_tlb_within_may_cache_u(krnl: &KernelK, did: VtdDomainId, tlb: SingleTLB)
     requires
         krnl.inv(),
         vtd_domain_id_valid(did),
@@ -115,7 +115,7 @@ pub proof fn kernel_k_cpu_tlb_filled_implies_u_step(pre: &KernelK, post: &Kernel
     ensures kernel_u_cpu_tlb_filled_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, pcid, added),
 {
     reveal(kernel_u_cpu_tlb_filled_step); reveal(kernel_k_to_kernel_u);
-    kernel_cpu_tlb_within_may_cache_projection(pre, cpu_id, pcid, added, added_cache);
+    cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(pre, cpu_id, pcid, added, added_cache);
 }
 
 /// An IOTLB fill under the kernel invariant is the matching user IOTLB fill in the projection.
@@ -126,7 +126,7 @@ pub proof fn kernel_k_iommu_tlb_filled_implies_u_step(pre: &KernelK, post: &Kern
     ensures kernel_u_iommu_tlb_filled_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), did, added),
 {
     reveal(kernel_u_iommu_tlb_filled_step); reveal(kernel_k_to_kernel_u);
-    kernel_iommu_tlb_within_may_cache_projection(pre, did, added);
+    iommu_tlb_within_may_cache_implies_iommu_tlb_within_may_cache_u(pre, did, added);
 }
 
 /// A context-cache fill changes neither projection.

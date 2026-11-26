@@ -11,7 +11,7 @@ pub open spec fn scheduler_perms_wf(sched_mp: SchedulerUnLockedMap) -> bool {
         sched_mp.dom().contains(s) ==> sched_mp.spec_index(s).inv()
 }
 
-pub proof fn scheduler_perms_wf_map(sched_mp: SchedulerUnLockedMap)
+pub proof fn scheduler_perms_wf_implies_map_perms_wf(sched_mp: SchedulerUnLockedMap)
     requires scheduler_perms_wf(sched_mp)
     ensures sched_mp.perms_wf()
 { reveal(scheduler_perms_wf); }

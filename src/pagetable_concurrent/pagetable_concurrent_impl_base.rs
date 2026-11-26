@@ -62,7 +62,7 @@ impl PageTableHigher {
             forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_1g_l3(l4i, l3i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_nonempty_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_nonempty_1g_l3(l4i, l3i),
     {
-        proof { self.wf_l4_cr3_at(); page_ptr_valid_imply_mem_valid(page_map_ptr); }
+        proof { self.wf_l4_cr3_at(); page_ptr_valid_implies_mem_valid(page_map_ptr); }
         page_map_set_published_in_map(self.cr3, Tracked(self.l4_table.borrow_mut()), target_l4i,
             PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } },
             Tracked(&mut *lctx));
@@ -186,7 +186,7 @@ impl PageTableHigher {
         proof {
             self.wf_l4_at(target_l4i);
             self.wf_l3_at(target_l3_p);
-            page_ptr_valid_imply_mem_valid(page_map_ptr);
+            page_ptr_valid_implies_mem_valid(page_map_ptr);
         }
         let l2_perm_t = page_perm_to_l2_page_map(page_map_ptr, Tracked(page_perm));
         let tracked mut l2_perm = l2_perm_t.get();
@@ -315,7 +315,7 @@ impl PageTableHigher {
             self.wf_l4_at(target_l4i);
             c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
-            page_ptr_valid_imply_mem_valid(page_map_ptr);
+            page_ptr_valid_implies_mem_valid(page_map_ptr);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
         l2_entry_set_published_locked(&PPtr::<L2PageMap>::from_usize(target_l2_p), Tracked(&mut l2_perm), target_l2i, Tracked(window_perm),

@@ -49,7 +49,7 @@ fn ipc_pages_target_free(
     assert(end_va == spec_va_add_range(range_start, end_index)) by { target_range.wf_implies_view_index_is_start_plus_offset(); };
     let start_indices = va2index(range_start);
     proof {
-        assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(target_pagetable).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
+        assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(target_pagetable).inv()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
     }
     let pagetable = krnl.pt_mp.borrow_typed(target_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(target_pagetable_lock_perm));
@@ -692,7 +692,7 @@ pub(super) fn ipc_pages_check_tables(
     } else if !source_present {
         RetValueType::ErrorIpcSourceUnmapped
     } else {
-        proof { assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(target_thread).inv()) by { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, target_thread); }; }
+        proof { assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(target_thread).inv()) by { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, target_thread); }; }
         if krnl.thrd_mp.borrow_typed(target_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx),
             Tracked(if target_thread == current_thrd_ptr { current_thread_lock_perm } else { peer_thread_lock_perm })).quota_4k < 3usize * target_range.len {
             RetValueType::ErrorNoQuota

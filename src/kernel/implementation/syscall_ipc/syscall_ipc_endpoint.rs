@@ -80,8 +80,8 @@ pub(super) fn ipc_copy_endpoint_reference(
 {
     hide(Seq::contains);
     proof {
-        assert(krnl.thrd_mp.perms_wf()) by { thread_perms_wf_map(krnl.thrd_mp); };
-        assert(krnl.ep_mp.perms_wf()) by { endpoint_perms_wf_map(krnl.ep_mp); };
+        assert(krnl.thrd_mp.perms_wf()) by { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); };
+        assert(krnl.ep_mp.perms_wf()) by { endpoint_perms_wf_implies_map_perms_wf(krnl.ep_mp); };
         assert({
             &&& krnl.thrd_mp.view().spec_index(receiver_thrd_ptr).is_init()
             &&& krnl.thrd_mp.view().spec_index(receiver_thrd_ptr).addr() == receiver_thrd_ptr
@@ -111,7 +111,7 @@ pub(super) fn ipc_copy_endpoint_reference(
             &&& typed_lock_maps_aligned(krnl, lctx)
             &&& krnl.thrd_mp.lock_id_by_key(receiver_thrd_ptr) == old(krnl).thrd_mp.lock_id_by_key(receiver_thrd_ptr)
             &&& krnl.ep_mp.lock_id_by_key(payload_ep_ptr) == old(krnl).ep_mp.lock_id_by_key(payload_ep_ptr)
-        }) by { lock_id_fields_eq_imply_eq(); };
+        }) by { lock_id_fields_eq_implies_eq(); };
     }
 }
 
@@ -768,7 +768,7 @@ fn ipc_endpoint_check_slots(
     let tracked current_thread_lock_perm = current_thread_lock_perm.get();
     let tracked channel_endpoint_lock_perm = channel_endpoint_lock_perm.get();
     let tracked peer_thread_lock_perm = peer_thread_lock_perm.get();
-    proof { thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); }
+    proof { thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); }
     let source_lock_perm = Tracked(if source_thrd_ptr == current_thrd_ptr { &current_thread_lock_perm } else { &peer_thread_lock_perm });
     let source_endpoint_option = *krnl.thrd_mp.borrow_typed(source_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), source_lock_perm).endpoint_descriptors.get(source_ep_idx);
     let receiver_lock_perm = Tracked(if receiver_thrd_ptr == current_thrd_ptr { &current_thread_lock_perm } else { &peer_thread_lock_perm });

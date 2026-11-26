@@ -55,7 +55,7 @@ pub(super) fn mmap_2m_attempt(
         return (RetValueType::ErrorThreadKilled, Ghost(kernel_k_to_kernel_u(*old(krnl))));
     }
     let (prc_ptr, thrd_ptr, ctn_ptr, alloc_ptr_4k, pagetable_ptr, quota_4k, Tracked(thread_lock_perm), Tracked(cpu_lock_perm)) = locked.unwrap();
-    proof { thread_perms_wf_map(krnl.thrd_mp); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); }
     let quota_2m = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm)).quota_2m;
     if quota_2m < range || quota_4k < 2 * range {
         proof { mmap_2m_result_from_k(&*old(krnl), cpu_id, va, range, RetValueType::ErrorNoQuota, None, None, 0); }

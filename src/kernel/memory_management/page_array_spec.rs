@@ -25,7 +25,7 @@ pub proof fn page_array_wf_at(pg_arr: PageLockedArray, pg_idx: PageIndex)
         pg_arr.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx),
 { reveal(page_array_wf); }
 
-pub proof fn page_array_wf_map(pg_arr: PageLockedArray)
+pub proof fn page_array_wf_implies_page_array_inv(pg_arr: PageLockedArray)
     requires page_array_wf(pg_arr)
     ensures pg_arr.inv()
 { reveal(page_array_wf); }

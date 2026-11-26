@@ -198,7 +198,7 @@ proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_page_relations(
 {
     reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
@@ -246,7 +246,7 @@ proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_free_1g_pages(
 {
     reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_1g_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
@@ -291,7 +291,7 @@ proof fn remove_last_nonempty_1g_mapping_to_allocator_eof_page_owners(
 {
     reveal(remove_last_nonempty_1g_mapping_to_allocator_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);

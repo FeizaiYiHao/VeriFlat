@@ -59,7 +59,7 @@ pub broadcast proof fn kernel_inv_implies_pending_dma_target_mapped_4k_page_at(k
     };
     page_iommu_table_wf_table_at(k.ctn_mp, k.prc_mp, k.it_mp, k.pg_arr, it, r.iova);
     iommu_table_perms_wf_at(k.it_mp, it);
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
 }
 
 /// Under the kernel invariant every pending write reaches a page the kernel hands to user space: (a) each pending user store

@@ -175,7 +175,7 @@ pub(super) fn build_staged_4k_global_pool(
         decreases remaining,
     {
         let pg_ptr = current;
-        proof { assert(page_ptrs.to_set().contains(pg_ptr)) by { page_ptrs.to_set_ensures(); }; page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); }
+        proof { assert(page_ptrs.to_set().contains(pg_ptr)) by { page_ptrs.to_set_ensures(); }; page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); }
         let pg_idx = page_ptr2page_index(pg_ptr);
         proof { page_array_wf_at(*old(pages), pg_idx); }
         let ghost pages_before_step = *pages;

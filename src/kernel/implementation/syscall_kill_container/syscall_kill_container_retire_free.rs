@@ -219,7 +219,7 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
         proof {
             assert(cur_pool.view().insert(0, page_index2page_ptr(pg_idx)) =~= seq![page_index2page_ptr(pg_idx)] + cur_pool.view());
             assert(seq![page_index2page_ptr(pg_idx)][0] == page_index2page_ptr(pg_idx));
-            page_index_valid_imply_page_ptr_valid();
+            page_index_valid_implies_page_ptr_valid();
             assert(pages.view().subrange(0, k + 1) =~= pages.view().subrange(0, k as int).push(pg_idx));
         }
         k = k + 1;

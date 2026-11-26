@@ -88,7 +88,7 @@ pub fn iommu_root_table_detach_owned(
             && final(iommu_tlb).structure_caches() == old(iommu_tlb).structure_caches() && final(iommu_tlb).pending_dma() == old(iommu_tlb).pending_dma(),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
-    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init()) by { iommu_table_perms_wf_implies_map_perms_wf(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
     let root = iommu_table.cr3;
     let old_did = irt.borrow(Tracked(irt_lock_perm)).iommu_did(bus, device, function);
@@ -307,7 +307,7 @@ pub fn iommu_root_table_attach(
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init() && iommu_table_map.spec_index(iommu_table_ptr).view().inv()) by {
-        iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr);
+        iommu_table_perms_wf_implies_map_perms_wf(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr);
     };
     let iommu_table = iommu_table_map.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
     let root = iommu_table.cr3;
@@ -388,7 +388,7 @@ pub fn iommu_root_table_detach_array(
     broadcast use PciFunctionArray::wf_function_at;
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init() && iommu_table_map.spec_index(iommu_table_ptr).view().inv()) by {
-        iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr);
+        iommu_table_perms_wf_implies_map_perms_wf(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr);
     };
     let iommu_table = iommu_table_map.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
     let old_did = iommu_table.did;

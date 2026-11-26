@@ -66,7 +66,7 @@ proof fn remove_2m_mapping_without_free_in_window_eof_page_tables_mapped_4k_page
 {
     reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
@@ -94,7 +94,7 @@ proof fn remove_2m_mapping_without_free_in_window_eof_page_tables_mapped_2m_page
 {
     reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
@@ -127,7 +127,7 @@ proof fn remove_2m_mapping_without_free_in_window_eof_page_tables(pre: KernelK, 
 {
     reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { remove_2m_mapping_without_free_in_window_eof_page_tables_mapped_4k_pages(pre, post, pagetable, va, pg_ptr, l2_ptr); };
@@ -151,7 +151,7 @@ proof fn remove_2m_mapping_without_free_in_window_eof_pagetable_pci_mappings_wf(
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     mapped_2m_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
     reveal(pagetable_pci_mappings_wf);
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
@@ -178,7 +178,7 @@ proof fn remove_2m_mapping_without_free_in_window_eof_memory_management_inv(pre:
     reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
@@ -294,7 +294,7 @@ pub(super) proof fn remove_2m_mapping_without_free_in_window_eof(pre: KernelK, p
     reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_implies_page_index_valid(); };
     assert(post.subsystems_inv()) by { reveal(page_array_wf); reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     remove_2m_mapping_without_free_in_window_eof_page_tables(pre, post, pagetable, va, pg_ptr, l2_ptr);
     remove_2m_mapping_without_free_in_window_eof_pagetable_pci_mappings_wf(pre, post, pagetable, va, pg_ptr, l2_ptr);
@@ -471,7 +471,7 @@ proof fn remove_last_2m_mapping_to_allocator_in_window_eof_page_relations(
 {
     reveal(remove_last_2m_mapping_to_allocator_in_window_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
@@ -517,7 +517,7 @@ proof fn remove_last_2m_mapping_to_allocator_in_window_eof_free_2m_pages(
 {
     reveal(remove_last_2m_mapping_to_allocator_in_window_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
@@ -562,7 +562,7 @@ proof fn remove_last_2m_mapping_to_allocator_in_window_eof_page_owners(
 {
     reveal(remove_last_2m_mapping_to_allocator_in_window_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
@@ -704,7 +704,7 @@ pub(super) proof fn remove_last_2m_mapping_to_allocator_in_window_eof(
     reveal(remove_last_2m_mapping_to_allocator_in_window_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
         mapped_2m_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
         reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
     };

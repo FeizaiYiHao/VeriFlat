@@ -47,7 +47,7 @@ pub fn clear_iommu_4k_mapping_present(
         old(krnl).it_mp.spec_index(iommu_table).view().did is None ==> iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
 {
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
     }
     let l1_ptr;

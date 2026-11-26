@@ -486,9 +486,9 @@ fn rebalance_orphan_pull_move_head(
     let ghost before_move = *krnl;
     proof {
         kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), victim);
-        scheduler_perms_wf_map(krnl.sched_mp);
+        scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp);
         scheduler_perms_wf_at(krnl.sched_mp, sched_ptr);
-        thread_perms_wf_map(krnl.thrd_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, thrd_ptr);
         scheduler_queue_len_bounded(&*krnl, sched_ptr, cpu_id);
@@ -525,7 +525,7 @@ fn rebalance_orphan_pull_move_head(
             reveal(kernel_orphan_pull_fields); reveal(rebalance_orphan_pull_eof_transition_framing); assert(krnl.cpu_op.view().view() =~= snap.cpu_op.view().view());
         };
         steps.end_kernel_step_orphan_pull(&*krnl, &*lctx, cpu_id, victim, thrd_ptr);
-        no_locks_held_imply_all_objects_unlocked(krnl, lctx);
+        no_locks_held_implies_all_objects_unlocked(krnl, lctx);
         assert(orphan_pull_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(*krnl), cpu_id, cursor, true)) by {
             rebalance_orphan_pull_victim_from_k(&snap, snap.cpu_arr.spec_index(cpu_id).view().view().view().owning_container, cursor, cpu_id);
             rebalance_orphan_pull_step_from_u(kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(*krnl), cpu_id, cursor, victim, thrd_ptr);
@@ -637,7 +637,7 @@ fn rebalance_orphan_pull_locked(
     let ghost snap = steps.snapshot_k();
     let (Tracked(own_perm), Tracked(victim_perm)) = rebalance_orphan_pull_lock_shards(krnl, Tracked(&mut *lctx), cpu_id, sched_ptr, victim);
     proof {
-        scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), victim);
+        scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), victim);
         krnl.sched_mp.spec_index(sched_ptr).shard(victim).queue.wf_implies_view_len_eq_len();
     }
     let victim_len = krnl.sched_mp.borrow_shard_typed(sched_ptr, victim, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&victim_perm)).queue.len();
@@ -709,7 +709,7 @@ pub fn rebalance_orphan_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loc
     let cpu_lock_res = krnl.wlock_own_cpu(cpu_id, Tracked(&mut *lctx));
     if cpu_lock_res.is_none() {
         proof {
-            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
+            no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
             rebalance_orphan_pull_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, cursor);
             rebalance_orphan_pull_result_from_k(old(krnl), cpu_id, cursor, None, RebalanceResult::Nothing);
         }

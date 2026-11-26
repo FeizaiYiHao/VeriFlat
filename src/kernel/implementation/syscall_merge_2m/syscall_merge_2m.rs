@@ -297,7 +297,7 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             merge_2m_empty_trace_implies_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n, ret);
         }
         merge_2m_result_from_k(old(krnl), cpu_id, n, ret);
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
+        no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx);
     }
     (ret, Ghost(frozen_pages))
 }

@@ -276,7 +276,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
                 e.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_nonempty_2m_l2(i4, i3, i2) == e.spec_nonempty_2m_l2(i4, i3, i2),
         decreases 512 - l4i,
     {
-        proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
+        proof { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
         let root = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm).higher.get_entry_l4(l4i);
         if root.is_some() {
             let ghost before = steps.view();

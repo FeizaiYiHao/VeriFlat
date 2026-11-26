@@ -78,7 +78,7 @@ pub(crate) fn kill_container_walk_and_finish(
         let ghost iter_lctx = *lctx;
         let ghost iter_perms = chain_perms;
         if processes_left {
-            proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
+            proof { container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
             let has_children = {
                 let tracked target_perm = chain_perms.tracked_borrow(target);
                 krnl.ctn_mp.borrow_typed(target, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.len() != 0
@@ -139,7 +139,7 @@ pub(crate) fn kill_container_walk_and_finish(
         kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&cleared_k, &*krnl, &*lctx, cpu_id, prc_ptr, thrd_ptr, None, false, Some(owner_ptr), false, None);
         kill_container_finish_step_from_u(kernel_k_to_kernel_u(walk_k), kernel_k_to_kernel_u(cleared_k), kernel_k_to_kernel_u(*krnl), cpu_id, owner_ptr, prc_ptr, thrd_ptr);
         kill_container_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(walk_k), kernel_k_to_kernel_u(*krnl), cpu_id, child_index);
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
+        no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx);
     }
 }
 
@@ -183,7 +183,7 @@ pub(crate) fn kill_container_mark_child(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
+    proof { container_perms_wf_implies_map_perms_wf(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
     let child_ptr = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.ctn_mp.borrow_typed(target, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.get(0)
@@ -283,7 +283,7 @@ pub(crate) fn kill_container_retire_target(
         Ghost(killer_info), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&container_perm), Ghost(start), Ghost(pre), Ghost(ctx));
     proof {
         container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, target); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, cpu_set_ptr);
-        process_perms_wf_map(krnl.prc_mp); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
         krnl.ctn_mp.typed_lock_map_aligned_held_in_dom(lctx.container_lock_map(), lctx.thread_id());
         assert(krnl.ctn_mp.spec_index(target).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
@@ -303,7 +303,7 @@ pub(crate) fn kill_container_retire_target(
     }
     proof {
         assert(kill_container_walk_state(*krnl, *lctx, cpu_id, prc_ptr, thrd_ptr, owner_ptr, killer_info, chain.drop_last(), *cpu_perm, *process_perm, *thread_perm, *owner_perm,
-            *chain_perms)) by { process_perms_wf_map(krnl.prc_mp); reveal(LockedMap::typed_lock_map_aligned); };
+            *chain_perms)) by { process_perms_wf_implies_map_perms_wf(krnl.prc_mp); reveal(LockedMap::typed_lock_map_aligned); };
     }
     parent
 }

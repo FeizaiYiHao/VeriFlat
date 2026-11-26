@@ -82,7 +82,7 @@ pub fn pagetable_map_update_pci_mapping(
         }),
 {
     proof {
-        pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr);
         pagetable_map.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     }
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_lock_perm));

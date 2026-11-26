@@ -52,7 +52,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thrd_ptr,
 {
-    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.block_on_endpoint(thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, frame)
@@ -111,12 +111,12 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
             old(endpoint_map).spec_index(ep_ptr).view().queue_state
         },
 {
-    proof { endpoint_perms_wf_map(*old(endpoint_map)); endpoint_perms_wf_at(*old(endpoint_map), ep_ptr); }
+    proof { endpoint_perms_wf_implies_map_perms_wf(*old(endpoint_map)); endpoint_perms_wf_at(*old(endpoint_map), ep_ptr); }
     {
         let endpoint_mut = endpoint_map.borrow_mut_typed(ep_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.enqueue_waiter(thrd_ptr, waiting_state, node_addr, node_perm);
     }
-    proof { ipc_enqueue_endpoint_waiter_eof(*old(endpoint_map), *endpoint_map, ep_ptr); assert(endpoint_map.lock_id_by_key(ep_ptr) == old(endpoint_map).lock_id_by_key(ep_ptr)) by { lock_id_fields_eq_imply_eq(); }; }
+    proof { ipc_enqueue_endpoint_waiter_eof(*old(endpoint_map), *endpoint_map, ep_ptr); assert(endpoint_map.lock_id_by_key(ep_ptr) == old(endpoint_map).lock_id_by_key(ep_ptr)) by { lock_id_fields_eq_implies_eq(); }; }
 }
 
 pub(super) fn ipc_schedule_endpoint_waiter(
@@ -173,7 +173,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thrd_ptr,
 {
-    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_scheduled(thrd_ptr, wake_cpu, result, endpoint_node_perm)
@@ -228,7 +228,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
         final(thread_map).spec_index(thrd_ptr).view().scheduler_linkedlist_node == old(thread_map).spec_index(thrd_ptr).view().scheduler_linkedlist_node,
         final(thread_map).spec_index(thrd_ptr).view().ipc_payload == old(thread_map).spec_index(thrd_ptr).view().ipc_payload,
 {
-    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
     {
         let thread_mut = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_ipc_transit(thrd_ptr, current_thrd_ptr, endpoint_node_perm);
@@ -280,7 +280,7 @@ pub(super) fn ipc_schedule_transit_peer(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thrd_ptr,
 {
-    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
+    proof { thread_perms_wf_implies_map_perms_wf(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.ipc_transit_to_scheduled(thrd_ptr, wake_cpu, result)
@@ -338,7 +338,7 @@ pub(super) fn ipc_dequeue_endpoint_waiter(endpoint_map: &mut EndpointLockedMap, 
             final(endpoint_map).spec_index(ep_ptr).view().queue.view().contains(t_ptr) ==>
                 old(endpoint_map).spec_index(ep_ptr).view().queue.view().contains(t_ptr),
 {
-    proof { endpoint_perms_wf_map(*old(endpoint_map)); endpoint_perms_wf_at(*old(endpoint_map), ep_ptr); }
+    proof { endpoint_perms_wf_implies_map_perms_wf(*old(endpoint_map)); endpoint_perms_wf_at(*old(endpoint_map), ep_ptr); }
     let ret = {
         let endpoint_mut = endpoint_map.borrow_mut_typed(ep_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.dequeue_waiter(thrd_ptr)

@@ -110,7 +110,7 @@ pub(crate) fn kill_container_pages(
     proof {
         let caches = krnl.allc_4k_mp.spec_index(a4).cpu_caches;
         assert(krnl.allc_4k_mp.spec_index(a4).quota.view().value == 0) by {
-            allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(caches.view());
+            allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(caches.view());
             container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, ctn_ptr);
         };
     }
@@ -120,7 +120,7 @@ pub(crate) fn kill_container_pages(
     proof {
         let caches = krnl.allc_2m_mp.spec_index(a2).cpu_caches;
         assert(krnl.allc_2m_mp.spec_index(a2).quota.view().value == 0) by {
-            allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(caches.view());
+            allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(caches.view());
             container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, ctn_ptr);
         };
     }

@@ -648,7 +648,7 @@ pub(super) fn ipc_rendezvous_pages(
             &&& krnl.thrd_mp.perms_wf()
             &&& krnl.thrd_mp.spec_index(current_thrd_ptr).is_init()
             &&& krnl.thrd_mp.spec_index(peer_thrd_ptr).is_init()
-        }) by { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); };
+        }) by { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); };
     }
     let source_thread_ref = krnl.thrd_mp.borrow_typed(
         source_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(if source_thread == current_thrd_ptr { &current_thread_lock_perm } else { &peer_thread_lock_perm }),

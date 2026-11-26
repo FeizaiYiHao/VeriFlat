@@ -410,7 +410,7 @@ proof fn pop_stage_4k_page_eof_global_pool_after_cache_pop(pre: KernelK, post: K
     reveal(pop_stage_4k_page_eof_transition_framing);
     assert(allocator_global_pool_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_free_4k_pages_wf); reveal(allocator_free_page_ptrs_wf);
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
     };
 }
 

@@ -136,21 +136,23 @@ pub fn drain_2m_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, krnl.pcid_allc_mp, old(lctx)),
         decreases ALLOCATOR_BATCH_2M - moved,
     {
-        assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(allocator).wf()) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator); };
+        assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(allocator).wf()) by { allocator_perms_wf_implies_map_perms_wf(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, allocator); };
         let cache = krnl.allc_2m_mp.borrow_cache_typed(allocator, cpu_id, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), cache_perm);
         assert(cache.linked_list.len() > 0) by { cache.linked_list.wf_implies_view_len_eq_len(); };
         let (_, pg_ptr) = cache.linked_list.peek_head();
         assert(page_ptr_valid(pg_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_2m_mp, allocator, cpu_id, pg_ptr); };
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR) by {
-            allocator_free_2m_pages_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, allocator, cpu_id, pg_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid();
+            allocator_free_2m_pages_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, allocator, cpu_id, pg_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_implies_page_index_valid();
             page_array_wf_at(krnl.pg_arr, pg_idx);
         };
         let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
         move_cache_page_to_pool_2m(krnl, allocator, cpu_id, pg_ptr, Tracked(&mut *lctx), cache_perm, pool_perm, Tracked(&page_perm));
         krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_perm));
         proof {
-            assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write }); };
+            assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
+                absent_key_implies_map_insert_remove_eq_map(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(if moved == 0 { *old(krnl) } else { steps.snapshot_k() })) by {

@@ -1132,7 +1132,7 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
         assert(flushed) by { if !flushed { assert(post_u == pre_u); } };
         reveal(kernel_u_cpu_tlb_cleared);
         let mid = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*post };
-        kernel_cpu_tlb_updated_implies_u_step(pre, &mid); kernel_cpu_tlb_within_may_cache_projection(&mid, c, pcid, post.cpu_tlb.spec_index((c, pcid)), post.cpu_tlb.structure_cache((c, pcid)));
+        kernel_cpu_tlb_updated_implies_u_step(pre, &mid); cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(&mid, c, pcid, post.cpu_tlb.spec_index((c, pcid)), post.cpu_tlb.structure_cache((c, pcid)));
         assert(!pre_u.cpu_tlb.dom().contains((c, pcid)) || pre_u.cpu_tlb[(c, pcid)] != post.cpu_tlb.spec_index((c, pcid))) by {
             if pre_u.cpu_tlb.dom().contains((c, pcid)) && pre_u.cpu_tlb[(c, pcid)] == post.cpu_tlb.spec_index((c, pcid)) { assert_maps_equal!(pre_u.cpu_tlb, post.cpu_tlb.view(), key => {}); }
         };

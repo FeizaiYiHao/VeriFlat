@@ -27,7 +27,7 @@ fn io_leaf_function_entry(krnl: &KernelK, pagetable: RwLockPageTableRoot, addr: 
 {
     let ghost f = pci_bar_function_of_page(krnl.pci_bars.view(), addr)->0;
     let (bus, device, function) = krnl.pci_bars.function_of_page(addr).unwrap();
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); };
+    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let index = pt.higher.pci.find(bus, device, function).unwrap();
     proof { pt.higher.pci.wf_function_at(f); }
@@ -344,7 +344,7 @@ pub fn remove_io_2m_mapping(
         assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && window_of(va).va == va) by {
             broadcast use spec_va_2m_valid_index_roundtrip;
         };
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.wf_mapping_2m_at(indices.0, indices.1, indices.2);
         c.spec_resolve_mapping_2m_l2_some_implies_spec_nonempty_2m_l2_eq(indices.0, indices.1, indices.2);
         pagetable_pci_mappings_wf_present_2m_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, va);

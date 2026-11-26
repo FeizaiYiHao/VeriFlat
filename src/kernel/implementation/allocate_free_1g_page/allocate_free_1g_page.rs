@@ -121,7 +121,8 @@ verus! {
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
             assert(typed_lock_maps_inserted(old(lctx), lctx, KernelObjId::Page(page_ptr2page_index(pg_ptr)), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(pg_ptr)), mode: TypedLockMode::Write })
                 && old(lctx).page_lock_map().dom().subset_of(lctx.page_lock_map().dom())) by {
-                map_insert_remove_absent_lemma(old(lctx).allocator_global_pool_1g_lock_map(), alloc_ptr_1g, TypedHeldLock { lock_id: old(krnl).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.lock_id(), mode: TypedLockMode::Write });
+                absent_key_implies_map_insert_remove_eq_map(old(lctx).allocator_global_pool_1g_lock_map(), alloc_ptr_1g,
+                    TypedHeldLock { lock_id: old(krnl).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.lock_id(), mode: TypedLockMode::Write });
             };
         }
         (pg_ptr, Tracked(page_lock_perm))

@@ -74,7 +74,7 @@ pub open spec fn page_ptr_valid(ptr: usize) -> bool {
     &&& ptr / 0x1000 < NUM_PAGES
 }
 
-pub proof fn page_ptr_valid_imply_mem_valid(v: usize)
+pub proof fn page_ptr_valid_implies_mem_valid(v: usize)
     requires
         page_ptr_valid(v),
     ensures
@@ -391,7 +391,7 @@ pub fn va_add_range_1g(va: usize, i: usize) -> (ret: usize)
 }
 
 // Arithmetic injectivity is only valid while the byte span does not wrap.
-pub proof fn va_range_lemma(va: VAddr, len: usize, i: usize, j: usize)
+pub proof fn bounded_va_range_implies_spec_va_add_range_injective(va: VAddr, len: usize, i: usize, j: usize)
     requires
         len <= usize::MAX / 4096,
         va < usize::MAX - len * 4096,
@@ -401,13 +401,13 @@ pub proof fn va_range_lemma(va: VAddr, len: usize, i: usize, j: usize)
         (i == j) == (spec_va_add_range(va, i) == spec_va_add_range(va, j)),
 { if spec_va_add_range(va, i) == spec_va_add_range(va, j) { vstd::arithmetic::mul::lemma_mul_equality_converse(4096, i as int, j as int); } }
 
-pub proof fn page_ptr_valid_imply_page_index_valid()
+pub proof fn page_ptr_valid_implies_page_index_valid()
     ensures
         forall|pa: PagePtr| #![trigger page_ptr_valid(pa)] #![trigger page_ptr2page_index(pa)] page_ptr_valid(pa) ==> index_valid(NUM_PAGES, page_ptr2page_index(pa)),
 {
 }
 
-pub proof fn page_index_valid_imply_page_ptr_valid()
+pub proof fn page_index_valid_implies_page_ptr_valid()
     ensures
         forall|i: usize| #![trigger index_valid(NUM_PAGES, i)] #![trigger page_index2page_ptr(i)] index_valid(NUM_PAGES, i) ==> page_ptr_valid(page_index2page_ptr(i)),
 {
@@ -473,7 +473,7 @@ pub proof fn page_ptr_seq_indices_excludes_page(pages: Seq<PagePtr>, excluded_pa
 
 // Keep each trusted VA/index fact in its own lemma so callers import only the
 // quantifier and trigger needed by the assertion currently being proved.
-pub proof fn spec_va_4k_valid_imply_indices_valid()
+pub proof fn spec_va_4k_valid_implies_indices_valid()
     ensures
         forall|va: VAddr|
             #![trigger spec_va_4k_valid(va), spec_v2l4index(va)]

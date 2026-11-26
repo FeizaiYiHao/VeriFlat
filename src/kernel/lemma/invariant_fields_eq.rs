@@ -197,7 +197,7 @@ pub proof fn per_container_process_tree_wf_preserved_for_process_fields_except_q
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap|
             #![trigger per_container_process_tree_wf(container_map, pre), per_container_process_tree_wf(container_map, post)]
             per_container_process_tree_wf(container_map, pre) && container_process_wf(container_map, pre) && process_invariant_fields_except_quota_unchanged(pre, post) ==> per_container_process_tree_wf(container_map, post),
-{ reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_imply_wf_forall(); }
+{ reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_implies_wf_forall(); }
 
 pub proof fn process_pagetable_fields_unchanged_implies_process_cpu_wf_preserved_forall()
     ensures

@@ -513,7 +513,7 @@ pub(crate) fn kill_reclaim_nonempty_leaves(
     if same {
         let ghost entry_thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
         proof {
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+            pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
             assert(!thread_is_dangling(krnl.thrd_mp.spec_index(thrd_ptr)) && krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); };
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
@@ -647,7 +647,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
 {
     let ghost entry_thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         assert(same ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
         assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
@@ -763,7 +763,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof {
-            index_path_successor_implies_path_le_drops_only_predecessor(next, cursor); iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
+            index_path_successor_implies_path_le_drops_only_predecessor(next, cursor); iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
             process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
         }
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_perm)).next_mapped_4k_from(cursor);

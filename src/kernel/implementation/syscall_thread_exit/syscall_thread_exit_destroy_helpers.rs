@@ -192,14 +192,14 @@ pub(super) fn thread_exit_destroy_remove_thread(
     let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     let ghost proc_node_addr = krnl.thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr();
     proof {
-        thread_perms_wf_map(krnl.thrd_mp);
+        thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, thrd_ptr);
         thread_cpu_wf_thread_at(krnl.thrd_mp, krnl.cpu_arr, thrd_ptr); cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, cpu_id);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-        process_perms_wf_map(krnl.prc_mp);
+        process_perms_wf_implies_map_perms_wf(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, prc_ptr);
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
-        container_perms_wf_map(krnl.ctn_mp);
+        container_perms_wf_implies_map_perms_wf(krnl.ctn_mp);
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr)) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); };
         container_process_thread_quota_sums_bounded(&*krnl, ctn_ptr, prc_ptr, thrd_ptr);
@@ -207,7 +207,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         page_array_wf_at(krnl.pg_arr, pg_idx);
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
         kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thrd_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, thrd_ptr); };
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(ctn_ptr)) by {
             uppers.to_set_ensures(); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);

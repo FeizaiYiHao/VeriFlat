@@ -184,7 +184,7 @@ pub fn install_io_2m_mapping(
 {
     let indices = va2index(va);
     let ghost f = krnl.pt_mp.spec_index(pagetable).view().higher.pci.spec_entry(index as int).bdf;
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); };
+    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); };
     proof {
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && window_of(va).va == va) by {
@@ -204,7 +204,7 @@ pub fn install_io_2m_mapping(
             let bars = krnl.pci_bars.view();
             if c.page_closure().contains(entry.addr) {
                 pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, entry.addr);
-                page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+                page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
                 pci_bar_pages_unavailable_wf_at(bars, krnl.pg_arr, page_ptr2page_index(entry.addr));
             }
         };

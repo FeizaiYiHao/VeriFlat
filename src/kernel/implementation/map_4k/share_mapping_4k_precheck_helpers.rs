@@ -96,7 +96,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
     let source_va = source_range.index(i);
     let source_indices = va2index(source_va);
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp);
         pagetable_perms_wf_at(krnl.pt_mp, source_pagetable);
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
         assert({
@@ -105,7 +105,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
             &&& pei_valid(source_indices.0) && pei_valid(source_indices.1) && pei_valid(source_indices.2) && pei_valid(source_indices.3)
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
         }) by {
-            source_range.wf_implies_view_index_is_start_plus_offset(); spec_v2l4index_monotonic(source_range.start, source_va); spec_va_4k_valid_imply_indices_valid();
+            source_range.wf_implies_view_index_is_start_plus_offset(); spec_v2l4index_monotonic(source_range.start, source_va); spec_va_4k_valid_implies_indices_valid();
             spec_va_4k_index_roundtrip_at(source_va, source_indices.0, source_indices.1, source_indices.2, source_indices.3);
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).wf_mapping_4k_at(source_indices.0, source_indices.1, source_indices.2, source_indices.3);
         };
@@ -133,14 +133,14 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
                 &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
                 &&& krnl.ctn_mp.dom().contains(krnl.pg_arr.spec_index(pg_idx).view().view().owning_container)
             }) by {
-                page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
+                page_ptr_valid_implies_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
                 container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
             };
         }
         let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
         let page_owner;
         {
-            proof { assert(krnl.pg_arr.inv()) by { page_array_wf_map(krnl.pg_arr); }; }
+            proof { assert(krnl.pg_arr.inv()) by { page_array_wf_implies_page_array_inv(krnl.pg_arr); }; }
             let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
             page_owner = page.owning_container;
         }
@@ -162,7 +162,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-                map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+                absent_key_implies_map_insert_remove_eq_map(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
             };
         }
         page_compatible

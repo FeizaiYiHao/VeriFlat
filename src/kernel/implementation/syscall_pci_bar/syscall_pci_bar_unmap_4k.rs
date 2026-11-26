@@ -124,7 +124,7 @@ fn unmap_pci_bar_4k_io_leaf(krnl: &KernelK, pagetable_ptr: RwLockPageTableRoot, 
     let indices = va2index(va);
     proof {
         spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
     }
     let pt = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm));

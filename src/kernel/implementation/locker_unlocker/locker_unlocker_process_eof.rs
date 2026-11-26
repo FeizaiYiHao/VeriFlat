@@ -17,7 +17,7 @@ pub(super) proof fn wlock_process_eof(pre: KernelK, post: KernelK, prc_ptr: RwLo
 {
     assert(ret is Some ==> post.prc_mp.spec_index(prc_ptr).view().state.view() is Running || post.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie) by { process_state_lock_wf_at(pre.prc_mp, prc_ptr); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_preserves_invariant_fields(pre.prc_mp, post.prc_mp, prc_ptr); };
+    assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_implies_process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp, prc_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
@@ -77,7 +77,7 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
         marked ==> post.prc_mp.spec_index(prc_ptr).view().state.view() == if pre.prc_mp.spec_index(prc_ptr).view().zombie { ProcessState::Zombie } else { ProcessState::Killing },
 {
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_preserves_invariant_fields(pre.prc_mp, post.prc_mp, prc_ptr); };
+    assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_implies_process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp, prc_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by {
@@ -129,7 +129,7 @@ pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: L
         post.inv(),
 {
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_preserves_invariant_fields(pre.prc_mp, post.prc_mp, prc_ptr); };
+    assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_implies_process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp, prc_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };

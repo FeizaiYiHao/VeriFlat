@@ -83,7 +83,7 @@ pub proof fn share_mapping_4k_source_range_present_from_wf(krnl: &KernelK, sourc
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_mapping_4k_va_range_present(source_range),
     ensures
         share_mapping_4k_source_range_present(krnl, source_pagetable, source_range),
-{ reveal(mapped_4k_page_pagetable_wf); page_ptr_valid_imply_page_index_valid(); }
+{ reveal(mapped_4k_page_pagetable_wf); page_ptr_valid_implies_page_index_valid(); }
 
 /// Every leaf of a mapped source range is owned by the source process's own container or one of its ancestors.
 pub proof fn share_mapping_4k_range_owner_compatible_own_container(krnl: &KernelK, source_pagetable: RwLockPageTableRoot, ctn_ptr: RwLockContainerPtr, source_range: &VaRange4K)
@@ -100,7 +100,7 @@ pub proof fn share_mapping_4k_range_owner_compatible_own_container(krnl: &Kernel
     ensures
         share_mapping_4k_range_owner_compatible(krnl, source_pagetable, ctn_ptr, source_range),
 { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); reveal(mapped_4k_page_pagetable_wf);
-    reveal(container_process_page_pagetable_wf); reveal(container_subtree_uppertree_agree_wf); page_ptr_valid_imply_page_index_valid(); }
+    reveal(container_process_page_pagetable_wf); reveal(container_subtree_uppertree_agree_wf); page_ptr_valid_implies_page_index_valid(); }
 
 /// Target map after copying the first `upper` source-range mappings to the
 /// corresponding target-range addresses.
@@ -151,7 +151,7 @@ pub fn share_mapping_4k_source_precheck(krnl: &KernelK, source_range: &VaRange4K
         &&& krnl.pt_mp.spec_index(source_pagetable).is_init()
         &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).wf()
         &&& krnl.pt_lower.view().dom().contains(source_pagetable)
-    }) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); };
+    }) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); };
     let pagetable = krnl.pt_mp.borrow_typed(source_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(source_pagetable_lock_perm));
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
     let ret = pagetable.higher.mapping_4k_va_range_present(Tracked(lower), source_range);
@@ -729,7 +729,7 @@ pub fn share_mapping_4k_source_owner_precheck(
                 reveal(share_mapping_4k_leaf_owner_compatible);
                 if !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io {
                     let pg_idx = page_ptr2page_index(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr);
-                    page_ptr_valid_imply_page_index_valid();
+                    page_ptr_valid_implies_page_index_valid();
                     mapped_4k_page_pagetable_wf_pagetable_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, source_pagetable, va);
                     mapped_4k_page_pagetable_wf_pagetable_at(krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.pg_arr, source_pagetable, va);
                     container_owned_pages_wf_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, pg_idx); container_owned_pages_wf_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, pg_idx);
@@ -745,7 +745,7 @@ pub fn share_mapping_4k_source_owner_precheck(
 
 /// Sharing target slot `i` adds exactly that slot to the shared-prefix target map; a target map `cur` that gained only that slot over a map `prev`
 /// matching the slot-`i` prefix in every held window of `root` matches the slot-`i + 1` prefix in those windows.
-pub(super) proof fn prove_share_mapping_4k_iteration_target_partition(source: Map<VAddr, MapEntry>, initial_target: Map<VAddr, MapEntry>, source_range: &VaRange4K, target_range: &VaRange4K, i: usize,
+pub(super) proof fn target_slot_shared_implies_target_map_matches_next_shared_prefix(source: Map<VAddr, MapEntry>, initial_target: Map<VAddr, MapEntry>, source_range: &VaRange4K, target_range: &VaRange4K, i: usize,
     windows: Set<(RwLockPageTableRoot, WindowVa)>, root: RwLockPageTableRoot, prev: Map<VAddr, MapEntry>, cur: Map<VAddr, MapEntry>, entry: MapEntry)
     requires
         source_range.wf(),
@@ -1230,7 +1230,7 @@ pub fn share_mapping_4k_build_and_share(
         proof {
             let source_page = page_ptr2page_index(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).addr);
             source_range.wf_implies_view_index_is_start_plus_offset(); target_range.wf_implies_view_index_is_start_plus_offset();
-            spec_va_4k_valid_imply_indices_valid(); spec_v2l4index_monotonic(target_range.start, target_va); spec_v2l4index_monotonic(source_range.start, source_va);
+            spec_va_4k_valid_implies_indices_valid(); spec_v2l4index_monotonic(target_range.start, target_va); spec_v2l4index_monotonic(source_range.start, source_va);
             spec_va_4k_index_roundtrip_at(source_va, spec_v2l4index(source_va), spec_v2l3index(source_va), spec_v2l2index(source_va), spec_v2l1index(source_va));
             spec_va_4k_index_roundtrip_at(window_of(source_va).va, spec_v2l4index(source_va), spec_v2l3index(source_va), spec_v2l2index(source_va), 0);
             spec_va_4k_index_roundtrip_at(target_va, spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va));
@@ -1244,7 +1244,7 @@ pub fn share_mapping_4k_build_and_share(
                     == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_view(window_of(target_va)).lock_state
             }) by { reveal(share_mapping_4k_build_and_share_eol_loop_framing); };
             assert(share_mapping_4k_leaf_ready(krnl, source_pagetable, target_pagetable, target_container, source_va, target_va)) by {
-                page_ptr_valid_imply_page_index_valid(); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
+                page_ptr_valid_implies_page_index_valid(); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
                 mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
                 container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, source_page);
                 container_thread_wf_uppertree_at(old(krnl).ctn_mp, old(krnl).thrd_mp, quota_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, quota_thread);

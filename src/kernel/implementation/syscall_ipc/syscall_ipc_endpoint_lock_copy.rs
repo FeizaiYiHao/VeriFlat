@@ -154,7 +154,7 @@ pub(super) fn ipc_endpoint_lock_and_copy(
     }
     let receiver_lock_perm = Tracked(if receiver_thrd_ptr == current_thrd_ptr { current_thread_lock_perm } else { peer_thread_lock_perm });
     let Tracked(payload_endpoint_lock_perm) = krnl.wlock_endpoint(payload_ep_ptr, Tracked(&mut *lctx));
-    proof { endpoint_perms_wf_map(krnl.ep_mp); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
+    proof { endpoint_perms_wf_implies_map_perms_wf(krnl.ep_mp); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
     let payload_endpoint_ref = krnl.ep_mp.borrow_typed(payload_ep_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&payload_endpoint_lock_perm));
     let endpoint_owner = payload_endpoint_ref.owning_container;
     let receiver_container = krnl.thrd_mp.borrow_typed(receiver_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), receiver_lock_perm).owning_container;

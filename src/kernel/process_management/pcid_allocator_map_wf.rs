@@ -11,7 +11,7 @@ pub open spec fn pcid_allocator_perms_wf(pcid_allc_mp: PcidAllocatorLockedMap) -
         pcid_allc_mp.dom().contains(pa) ==> pcid_allc_mp.spec_index(pa).inv()
 }
 
-pub proof fn pcid_allocator_perms_wf_map(pcid_allc_mp: PcidAllocatorLockedMap)
+pub proof fn pcid_allocator_perms_wf_implies_map_perms_wf(pcid_allc_mp: PcidAllocatorLockedMap)
     requires pcid_allocator_perms_wf(pcid_allc_mp)
     ensures pcid_allc_mp.perms_wf()
 { reveal(pcid_allocator_perms_wf); }

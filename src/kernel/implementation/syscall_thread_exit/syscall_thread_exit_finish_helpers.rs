@@ -137,7 +137,7 @@ pub(super) fn thread_exit_finish_lock_page_and_cache(
     }
     let ghost pcid_k = *krnl;
     proof {
-        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); page_ptr_valid_imply_page_index_valid();
+        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); page_ptr_valid_implies_page_index_valid();
         assert(page_ptr_valid(thrd_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(thrd_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by {
             thread_pages_wf_at(krnl.thrd_mp, krnl.pg_arr, thrd_ptr);
         };

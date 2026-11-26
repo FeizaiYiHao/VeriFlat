@@ -298,7 +298,7 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
     };
     if let Some(pcid) = flushed_pcid {
         assert(cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))) by { reveal(kernel_context_switch_fields); };
-        kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)));
+        cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)));
     }
 }
 

@@ -42,7 +42,7 @@ impl KernelK {
             },
     {
         proof {
-            thread_perms_wf_map(old(self).thrd_mp);
+            thread_perms_wf_implies_map_perms_wf(old(self).thrd_mp);
             thread_perms_wf_at(old(self).thrd_mp, thrd_ptr);
             assert(!old(self).thrd_mp.spec_index(thrd_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).thrd_mp.spec_index(thrd_ptr).locked_by_thread(old(lctx).thread_id()) {
@@ -565,7 +565,7 @@ impl KernelK {
     {
         proof {
             assert(old(self).thrd_mp.dom().contains(thrd_ptr)) by { process_thread_wf_process_at(old(self).prc_mp, old(self).thrd_mp, prc_ptr, thrd_ptr); };
-            thread_perms_wf_map(old(self).thrd_mp);
+            thread_perms_wf_implies_map_perms_wf(old(self).thrd_mp);
             thread_perms_wf_at(old(self).thrd_mp, thrd_ptr);
             old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), prc_ptr);
             old(self).thrd_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), thrd_ptr);
@@ -575,7 +575,7 @@ impl KernelK {
         proof {
             let entry = TypedHeldLock { lock_id: old(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write };
             lctx.update_lock_id(KernelObjId::Thread(thrd_ptr), old(self).thrd_mp.lock_id_by_key(thrd_ptr), self.thrd_mp.lock_id_by_key(thrd_ptr));
-            map_insert_overwrite_lemma(old(lctx).thread_lock_map(), thrd_ptr, entry, TypedHeldLock { lock_id: self.thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write });
+            map_insert_twice_implies_eq_last_insert(old(lctx).thread_lock_map(), thrd_ptr, entry, TypedHeldLock { lock_id: self.thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write });
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             mark_thread_kill_eof(*old(self), *self, *old(lctx), thrd_ptr, prc_ptr);
         }
@@ -634,7 +634,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), old(self).thrd_mp.lock_id_by_key(thrd_ptr)),
     {
         proof {
-            assert(old(self).thrd_mp.perms_wf() && old(self).thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(old(self).thrd_mp); thread_perms_wf_at(old(self).thrd_mp, thrd_ptr); };
+            assert(old(self).thrd_mp.perms_wf() && old(self).thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_implies_map_perms_wf(old(self).thrd_mp); thread_perms_wf_at(old(self).thrd_mp, thrd_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).thrd_mp.lock_id_by_key(thrd_ptr), KernelObjId::Thread(thrd_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.thrd_mp.spec_index(thrd_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -674,13 +674,13 @@ impl KernelK {
             final(self).thrd_mp.spec_index(thrd_ptr).being_killed() == old(self).thrd_mp.spec_index(thrd_ptr).being_killed(),
             final(self).thrd_mp.lock_id_by_key(thrd_ptr) == old(self).thrd_mp.lock_id_by_key(thrd_ptr),
     {
-        assert(self.thrd_mp.perms_wf() && self.thrd_mp.spec_index(thrd_ptr).is_init()) by { thread_perms_wf_map(self.thrd_mp); thread_perms_wf_at(self.thrd_mp, thrd_ptr); };
+        assert(self.thrd_mp.perms_wf() && self.thrd_mp.spec_index(thrd_ptr).is_init()) by { thread_perms_wf_implies_map_perms_wf(self.thrd_mp); thread_perms_wf_at(self.thrd_mp, thrd_ptr); };
         {
             let thread = self.thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), lock_perm);
             thread.syscall_progress = progress;
         }
         proof {
-            assert(typed_lock_maps_aligned(self, lctx) && self.thrd_mp.lock_id_by_key(thrd_ptr) == old(self).thrd_mp.lock_id_by_key(thrd_ptr)) by { lock_id_fields_eq_imply_eq(); };
+            assert(typed_lock_maps_aligned(self, lctx) && self.thrd_mp.lock_id_by_key(thrd_ptr) == old(self).thrd_mp.lock_id_by_key(thrd_ptr)) by { lock_id_fields_eq_implies_eq(); };
             set_thread_syscall_progress_eof(*old(self), *self, *lctx, thrd_ptr, progress);
         }
     }

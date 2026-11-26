@@ -307,7 +307,7 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
                     || (cpu_id < NUM_CPUS && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(cpu_id, NUM_CPUS))),
         decreases NUM_CPUS - cpu_id,
     {
-        proof { assert(krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(cpu_set_ptr).is_init()) by { cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
+        proof { assert(krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(cpu_set_ptr).is_init()) by { cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
         let owned_cpu = krnl.cpu_set_mp.borrow_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_perm)).owned_cpus.contains(cpu_id);
         if owned_cpu {
             let ghost krnl_i = *krnl;

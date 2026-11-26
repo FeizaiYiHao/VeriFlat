@@ -215,7 +215,7 @@ pub proof fn kernel_container_free_1g_page_moved_implies_u_step(pre: &KernelK, p
 }
 
 /// A container whose 4K and 2M allocators hold no quota, whose 1G allocator holds exactly its free pages as quota, and whose 1G global pool is empty has no quota of any size in the projection; no 1G cpu cache holds a page.
-pub proof fn kernel_container_quotas_zero_projection(krnl: &KernelK, ctn_ptr: RwLockContainerPtr)
+pub proof fn container_allocators_hold_no_quota_implies_projected_container_quotas_zero(krnl: &KernelK, ctn_ptr: RwLockContainerPtr)
     requires
         krnl.inv(),
         krnl.ctn_mp.dom().contains(ctn_ptr),
@@ -238,7 +238,7 @@ pub proof fn kernel_container_quotas_zero_projection(krnl: &KernelK, ctn_ptr: Rw
     let allc_ptr = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g;
     let allocator = krnl.allc_1g_mp.spec_index(allc_ptr);
     kernel_container_projection_at(krnl, ctn_ptr); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-    allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
+    allocator_perms_wf_implies_map_perms_wf(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
     assert(forall|i: CpuId| #![trigger allocator.cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i) ==> allocator.cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0) by {
         reveal(allocator_1g_cpu_caches_empty_wf);
     };

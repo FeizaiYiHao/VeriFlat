@@ -69,8 +69,8 @@ pub fn map_shared_page_into_iommu_4k(
     let source_indices = va2index(va);
     let indices = va2index(iova);
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
+        iommu_table_perms_wf_implies_map_perms_wf(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr);
     }
     assert({
         &&& spec_index2va(source_indices) == va
@@ -95,7 +95,7 @@ pub fn map_shared_page_into_iommu_4k(
             &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
             &&& !lctx.page_lock_map().dom().contains(pg_idx)
             &&& krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR
-        }) by { page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, va); };
+        }) by { page_ptr_valid_implies_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, va); };
     }
     let target_l1_ptr;
     {
@@ -108,7 +108,7 @@ pub fn map_shared_page_into_iommu_4k(
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     let ghost locked_k = *krnl;
     proof {
-        assert(krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv()) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
+        assert(krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv()) by { page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
         assert(!krnl.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table_ptr, iova))) by {
             page_iommu_table_wf_page_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, pg_idx, iommu_table_ptr, iova);
         };
@@ -128,7 +128,7 @@ pub fn map_shared_page_into_iommu_4k(
     krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            absent_key_implies_map_insert_remove_eq_map(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
     }
 }

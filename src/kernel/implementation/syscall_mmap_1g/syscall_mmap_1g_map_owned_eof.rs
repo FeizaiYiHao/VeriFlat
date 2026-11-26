@@ -120,7 +120,7 @@ proof fn map_owned_1g_page_eof_subsystems_inv(pre: KernelK, post: KernelK, pg_pt
 {
     reveal(map_owned_1g_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
     assert(thread_perms_wf(post.thrd_mp)) by {
@@ -292,7 +292,7 @@ proof fn map_owned_1g_page_eof_memory_management_inv(pre: KernelK, post: KernelK
 {
     reveal(map_owned_1g_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_implies_page_index_valid(); };
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     map_owned_1g_page_eof_pagetable_pci_mappings_wf(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {

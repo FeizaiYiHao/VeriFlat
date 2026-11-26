@@ -50,7 +50,7 @@ pub(super) fn mmap_1g_attempt(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         return RetValueType::ErrorThreadKilled;
     }
     let (prc_ptr, thrd_ptr, ctn_ptr, _alloc_ptr_4k, pagetable, quota_4k, Tracked(thread_perm), Tracked(cpu_perm)) = locked.unwrap();
-    proof { thread_perms_wf_map(krnl.thrd_mp); }
+    proof { thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); }
     let quota_1g = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_perm)).quota_1g;
     if quota_1g < len || quota_4k < len {
         proof { mmap_1g_result_from_k(&*old(krnl), cpu_id, va, len, RetValueType::ErrorNoQuota, 0, None, None); }

@@ -72,7 +72,7 @@ pub fn remove_iommu_4k_mapping_without_free(
     let iova = index2va(indices);
     assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv() && krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
         && krnl.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table, iova))) by {
-        page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); page_ptr_roundtrip();
+        page_ptr_valid_implies_page_index_valid(); page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); page_ptr_roundtrip();
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     page_array_remove_4k_iommu_mapping_without_free(&mut krnl.pg_arr, pg_idx, iommu_table, iova, Tracked(&*lctx), page_perm);

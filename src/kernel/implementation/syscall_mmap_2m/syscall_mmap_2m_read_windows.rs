@@ -131,8 +131,8 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
         !(ret is Success) ==> final(steps).view().len() == 0,
 {
     proof {
-        pre_k.pt_mp.typed_lock_map_aligned_locked_at(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_map(pre_k.pt_mp); pagetable_perms_wf_at(pre_k.pt_mp, pagetable_ptr);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+        pre_k.pt_mp.typed_lock_map_aligned_locked_at(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_implies_map_perms_wf(pre_k.pt_mp); pagetable_perms_wf_at(pre_k.pt_mp, pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     }
     let ghost unlocked_windows = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
     let Tracked(window_perms) = krnl.lock_pagetable_range_windows::<false>(pagetable_ptr, cover, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));

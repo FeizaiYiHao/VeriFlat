@@ -240,7 +240,7 @@ pub(crate) fn kill_walk_and_finish(
         let ghost iter_lctx = *lctx;
         let ghost iter_perms = chain_perms;
         proof {
-            process_perms_wf_map(krnl.prc_mp);
+            process_perms_wf_implies_map_perms_wf(krnl.prc_mp);
             process_perms_wf_at(krnl.prc_mp, target);
             krnl.prc_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); krnl.prc_mp.spec_index(target).view().owned_threads.wf_implies_view_len_eq_len();
         }
@@ -296,7 +296,7 @@ pub(crate) fn kill_walk_and_finish(
         kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&cleared_k, &*krnl, &*lctx, cpu_id, prc_ptr, thrd_ptr, None, false, None, false, None);
         kill_finish_step_from_u(kernel_k_to_kernel_u(walk_k), kernel_k_to_kernel_u(cleared_k), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr);
         kill_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(walk_k), kernel_k_to_kernel_u(*krnl), cpu_id, child_index);
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
+        no_locks_held_implies_all_objects_unlocked(&*krnl, &*lctx);
     }
 }
 } // verus!

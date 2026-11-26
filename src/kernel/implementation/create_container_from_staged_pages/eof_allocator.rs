@@ -50,7 +50,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_allocator_free_4
         },
 {
     reveal(publish_staged_container_root_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid();
+    page_ptr_valid_implies_page_index_valid();
     page_ptr_roundtrip();
     if alloc_ptr == allocator_4k_page {
         funding_pages.to_set_ensures();
@@ -100,7 +100,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_allocator_free_4
         }),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+    page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip();
     let pg_ptr = page_index2page_ptr(pg_idx);
     if funding_pages.to_set().contains(pg_ptr) {
         funding_pages.to_set_ensures();
@@ -212,7 +212,7 @@ pub(super) proof fn publish_staged_container_root_eof_allocator_free_pages_wf(
         reveal(allocator_global_pool_4k_pages_wf);
     };
     assert(allocator_cpu_cache_4k_pages_wf(post.allc_4k_mp, post.pg_arr,)) by {
-        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq;
+        page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq;
         reveal(allocator_free_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr,)) by { reveal(allocator_free_4k_pages_wf); };
@@ -221,7 +221,7 @@ pub(super) proof fn publish_staged_container_root_eof_allocator_free_pages_wf(
         reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr,)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; page_ptr_valid_imply_page_index_valid();
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; page_ptr_valid_implies_page_index_valid();
         reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr,)) by { reveal(allocator_free_2m_pages_wf); };

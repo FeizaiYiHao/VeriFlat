@@ -326,7 +326,7 @@ pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner
     if cursor.source < NUM_CPUS { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.source, cursor.page); }
     else { allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.page); }
     assert(post.candidate_prefix_valid(krnl, allocator)) by {
-        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); reveal(Merge2mScanner::candidate_prefix_valid);
+        page_ptr_valid_implies_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); reveal(Merge2mScanner::candidate_prefix_valid);
     };
 }
 

@@ -22,7 +22,7 @@ pub open spec fn pagetables_inv<T: LockInvTrait, GhostT, I>(table_mp: LockedMap<
         table_mp.dom().contains(pt) ==> table_mp.spec_index(pt).inv()
 }
 
-pub proof fn pagetable_perms_wf_map(pt_mp: PageTableLockedMap)
+pub proof fn pagetable_perms_wf_implies_map_perms_wf(pt_mp: PageTableLockedMap)
     requires pagetable_perms_wf(pt_mp)
     ensures pt_mp.perms_wf()
 { reveal(pagetable_perms_wf); }

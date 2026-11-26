@@ -12,7 +12,7 @@ pub open spec fn cpu_offline_flags_invariant_fields_unchanged(pre: CpuOfflineFla
         pre.dom().contains(f_ptr) && index_valid(NUM_CPUS, cpu_id) ==> post.spec_index(f_ptr).flags.spec_index(cpu_id).view().view() == pre.spec_index(f_ptr).flags.spec_index(cpu_id).view().view()
 }
 
-pub proof fn cpu_offline_flags_lock_op_preserves_invariant_fields(pre: CpuOfflineFlagsUnLockedMap, post: CpuOfflineFlagsUnLockedMap, changed: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId)
+pub proof fn cpu_offline_flags_lock_op_implies_cpu_offline_flags_invariant_fields_unchanged(pre: CpuOfflineFlagsUnLockedMap, post: CpuOfflineFlagsUnLockedMap, changed: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId)
     requires
         post.unchanged_except(&pre, changed),
         post.spec_index(changed).owning_container == pre.spec_index(changed).owning_container,

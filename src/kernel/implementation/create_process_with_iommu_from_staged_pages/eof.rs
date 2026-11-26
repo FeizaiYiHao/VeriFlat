@@ -283,7 +283,7 @@ proof fn create_process_with_iommu_from_staged_pages_eof_mapped_4k_page_pagetabl
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_nonempty_4k; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_4k; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -320,7 +320,7 @@ proof fn create_process_with_iommu_from_staged_pages_eof_mapped_2m_page_pagetabl
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_nonempty_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -535,7 +535,7 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations_io
 {
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); page_ptr_valid_imply_page_index_valid(); };
+    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); page_ptr_valid_implies_page_index_valid(); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
 }

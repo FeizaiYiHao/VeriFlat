@@ -363,7 +363,7 @@ pub(crate) fn kill_retire_table_page_scoped_to_cache(
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
         page_array_wf_at(krnl.pg_arr, pg_idx);
-        allocator_perms_wf_map(krnl.allc_4k_mp);
+        allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr); };
         kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);

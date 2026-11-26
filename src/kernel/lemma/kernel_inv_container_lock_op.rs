@@ -19,7 +19,7 @@ pub open spec fn container_invariant_fields_unchanged(pre: ContainerLockedMap, p
 
 /// Turn the pointwise postcondition of a container lock operation into the
 /// projection used by invariant framing.
-pub proof fn container_lock_op_preserves_invariant_fields(pre: ContainerLockedMap, post: ContainerLockedMap, changed: RwLockContainerPtr)
+pub proof fn container_lock_op_implies_container_invariant_fields_unchanged(pre: ContainerLockedMap, post: ContainerLockedMap, changed: RwLockContainerPtr)
     requires
         post.unchanged_except(&pre, changed),
         post.spec_index(changed).view() == pre.spec_index(changed).view(),
@@ -88,7 +88,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
 {
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { container_pcid_allocator_wf_preserved_for_container_fields(); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { container_invariant_fields_unchanged_implies_process_pcid_allocator_wf_preserved_forall(); };
-    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
+    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_implies_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert({
         &&& pre.ctn_mp.dom().contains(pre.rt_ctn)
         &&& post.ctn_mp.dom().contains(post.rt_ctn)

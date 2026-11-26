@@ -276,12 +276,12 @@ use super::mmap_4k_create_entry_install_eof::*;
         let ghost window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
         let ghost staged_k = *krnl;
         assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(quota_thrd_ptr).inv()) by {
-            pagetable_perms_wf_map(krnl.pt_mp);
-            pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, quota_thrd_ptr);
+            pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp);
+            pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, quota_thrd_ptr);
         };
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().is_init() && krnl.pg_arr.spec_index(pg_idx).view().inv()
             && krnl.pg_arr.spec_index(pg_idx).view().view().inv() && krnl.pg_arr.spec_index(pg_idx).view().view().addr == pg_ptr) by {
-            page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
+            page_ptr_valid_implies_page_index_valid(); page_array_wf_implies_page_array_inv(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
         };
         assert(!whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr)) by {
             if whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr) {

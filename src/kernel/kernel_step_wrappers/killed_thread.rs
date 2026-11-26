@@ -298,7 +298,7 @@ pub broadcast proof fn kernel_container_lock_state_projection_at(krnl: &KernelK,
 
 /// K states agreeing on the lock modes, kill marks, and owning containers of `processes` and on the lock modes and upper
 /// trees of `containers` project to user states agreeing on them.
-pub proof fn kernel_process_container_lock_states_projection_eq(a: &KernelK, b: &KernelK, processes: Set<RwLockProcessPtr>, containers: Set<RwLockContainerPtr>)
+pub proof fn kernel_process_container_lock_states_equal_implies_projected_lock_states_equal(a: &KernelK, b: &KernelK, processes: Set<RwLockProcessPtr>, containers: Set<RwLockContainerPtr>)
     requires
         forall|p: RwLockProcessPtr| #![trigger processes.contains(p)] processes.contains(p) ==> {
             &&& a.prc_mp.dom().contains(p)

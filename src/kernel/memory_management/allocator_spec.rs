@@ -18,7 +18,7 @@ pub proof fn allocator_perms_wf_at<const SIZE: usize>(allc_mp: PageAllocatorUnLo
         allc_mp.spec_index(allc_ptr).inv(),
 { reveal(allocator_perms_wf); }
 
-pub proof fn allocator_perms_wf_map<const SIZE: usize>(allc_mp: PageAllocatorUnLockedMap<SIZE>)
+pub proof fn allocator_perms_wf_implies_map_perms_wf<const SIZE: usize>(allc_mp: PageAllocatorUnLockedMap<SIZE>)
     requires allocator_perms_wf(allc_mp)
     ensures allc_mp.perms_wf()
 { reveal(allocator_perms_wf); }

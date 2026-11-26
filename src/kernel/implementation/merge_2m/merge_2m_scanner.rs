@@ -310,7 +310,7 @@ impl Merge2mScanner {
             self.queue.advance_min(next_page, next);
             self.consumed_pages = Ghost(self.consumed_pages.view().insert(page));
             let index = page_ptr2page_index(page);
-            assert(index_valid(NUM_PAGES, index)) by { page_ptr_valid_imply_page_index_valid(); }
+            assert(index_valid(NUM_PAGES, index)) by { page_ptr_valid_implies_page_index_valid(); }
             assert(krnl.pg_arr.spec_index(index).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state:
                 if cursor.source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: cursor.source } } else { FreePageAllocatorState::GlobalList } })) by {
                 if cursor.source < NUM_CPUS { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.source, page); }

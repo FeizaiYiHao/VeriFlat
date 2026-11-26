@@ -428,7 +428,7 @@ proof fn pop_stage_2m_page_eof_global_pool(pre: KernelK, post: KernelK, allocato
     if source is Some {
         assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
             reveal(allocator_perms_wf); reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_free_page_ptrs_wf);
-            page_ptr_valid_imply_page_index_valid();
+            page_ptr_valid_implies_page_index_valid();
         };
     } else {
         assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
@@ -476,7 +476,7 @@ proof fn pop_stage_2m_page_eof_cpu_cache(pre: KernelK, post: KernelK, allocator:
     } else {
         assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
             reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf);
-            page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective(); reveal(allocator_perms_wf);
+            page_ptr_valid_implies_page_index_valid(); page_ptr2page_index_injective(); reveal(allocator_perms_wf);
         };
     }
 }

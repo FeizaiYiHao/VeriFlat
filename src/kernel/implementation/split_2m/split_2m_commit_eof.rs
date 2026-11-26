@@ -77,7 +77,7 @@ pub proof fn split_2m_commit_eof_implies_mapped_4k_page_pagetable_wf(pre: Kernel
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         reveal(split_2m_commit_eof_transition_framing); reveal(mapped_4k_page_pagetable_wf);
         reveal(pagetable_lower_wf); page_index_roundtrip();
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -109,7 +109,7 @@ pub proof fn split_2m_commit_eof_implies_mapped_2m_page_pagetable_wf(pre: Kernel
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         reveal(split_2m_commit_eof_transition_framing); reveal(mapped_2m_page_pagetable_wf);
         reveal(pagetable_lower_wf); page_index_roundtrip();
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
     };
 }
 

@@ -52,8 +52,8 @@ pub fn move_pool_page_to_cache(krnl: &mut KernelK, allocator: RwLockPageAllocato
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by {
-        page_array_wf_map(krnl.pg_arr);
-        page_array_wf_at(krnl.pg_arr, pg_idx); allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator);
+        page_array_wf_implies_page_array_inv(krnl.pg_arr);
+        page_array_wf_at(krnl.pg_arr, pg_idx); allocator_perms_wf_implies_map_perms_wf(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator);
     };
     assert(krnl.pg_arr.spec_index(pg_idx).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: FreePageAllocatorState::GlobalList })
         && !krnl.allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by {

@@ -386,7 +386,7 @@ proof fn create_process_from_staged_pages_eof_mapped_4k_page_pagetable(
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_nonempty_4k; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_4k; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -427,7 +427,7 @@ proof fn create_process_from_staged_pages_eof_mapped_2m_page_pagetable(
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_nonempty_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -463,7 +463,7 @@ proof fn create_process_from_staged_pages_eof_mapped_1g_page_pagetable(
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use whole_pagetable_is_empty_implies_no_nonempty_1g; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); page_ptr_valid_imply_page_index_valid();
+        broadcast use whole_pagetable_is_empty_implies_no_nonempty_1g; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); page_ptr_valid_implies_page_index_valid();
     };
 }
 
@@ -508,7 +508,7 @@ proof fn create_process_from_staged_pages_eof_page_table_relations(
     create_process_from_staged_pages_eof_mapped_2m_page_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     create_process_from_staged_pages_eof_mapped_1g_page_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
-    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); page_ptr_valid_imply_page_index_valid(); };
+    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); page_ptr_valid_implies_page_index_valid(); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
@@ -548,7 +548,7 @@ broadcast proof fn create_process_from_staged_pages_eof_thread_staged_pages_4k_b
         thread_staged_4k_pages_wf_at(pre.thrd_mp, pre.pg_arr, staging_thrd_ptr, process_pg_ptr);
         thread_staged_4k_pages_wf_at(pre.thrd_mp, pre.pg_arr, staging_thrd_ptr, pagetable_pg_ptr);
         thread_staged_4k_pages_wf_at(pre.thrd_mp, pre.pg_arr, staging_thrd_ptr, l4_pg_ptr);
-        page_ptr_valid_imply_page_index_valid();
+        page_ptr_valid_implies_page_index_valid();
     }
 }
 
@@ -824,7 +824,7 @@ proof fn create_process_from_staged_pages_eof_process_kernel_pages_owner_wf(
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
     hide(Seq::contains); reveal(create_process_from_staged_pages_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
+    page_ptr_valid_implies_page_index_valid(); page_ptr2page_index_injective();
     reveal(process_object_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
 }
 
@@ -863,11 +863,11 @@ proof fn create_process_from_staged_pages_eof_process_tree_invariants(
     let process_tree_dom = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
     assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); };
     assert(process_add_child_ensures(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_pg_ptr)) by { reveal(container_process_wf); ancestors.to_set_ensures(); seq_push_implies_contains::<RwLockProcessPtr>(); };
-    process_add_child_preserves_tree_wf(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_pg_ptr);
-    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
+    process_add_child_ensures_implies_process_tree_wf(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_pg_ptr);
+    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_implies_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
-        reveal(per_container_process_tree_wf); reveal(container_process_wf); reveal(process_uppertree_seq_wf); process_no_change_to_tree_fields_imply_wf_forall();
+        reveal(per_container_process_tree_wf); reveal(container_process_wf); reveal(process_uppertree_seq_wf); process_no_change_to_tree_fields_implies_wf_forall();
         ancestors.to_set_ensures();
     };
 }

@@ -473,7 +473,8 @@ verus! {
         proof {
             assert(krnl.cpu_arr.inv() && krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(source_cpu_set).inv() && krnl.cpu_set_mp.spec_index(target_cpu_set).inv()) by {
                 cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view());
-                cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
+                cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp);
+                cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
             };
         }
         if !transfer { return None; }
@@ -576,7 +577,8 @@ verus! {
         proof {
             assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, transfer_cpu_id); };
             assert(krnl.cpu_arr.inv() && krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(source_cpu_set).inv() && krnl.cpu_set_mp.spec_index(target_cpu_set).inv()) by {
-                cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
+                cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_set_perms_wf_implies_map_perms_wf(krnl.cpu_set_mp);
+                cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
             };
         }
         let source_set = krnl.cpu_set_mp.borrow_mut_typed(source_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(lctx), Tracked(source_cpu_set_lock_perm));
@@ -1037,7 +1039,7 @@ verus! {
         proof {
             lctx.enter_kernel_view_release();
             lctx.update_lock_id(KernelObjId::Thread(peer_thrd_ptr), old_peer_thread_lock_id, krnl.thrd_mp.lock_id_by_key(peer_thrd_ptr));
-            scheduler_perms_wf_map(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_sched_ptr);
+            scheduler_perms_wf_implies_map_perms_wf(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_sched_ptr);
             assert(ipc_cpu_rendezvous_eof_transition_framing(
                 *old(krnl), *krnl, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu,
                 source_container, target_container, source_cpu_set, target_cpu_set,
@@ -1220,7 +1222,7 @@ verus! {
     {
         proof {
             assert(krnl.thrd_mp.perms_wf() && krnl.thrd_mp.spec_index(peer_thrd_ptr).is_init() && krnl.thrd_mp.spec_index(current_thrd_ptr).is_init()) by {
-                thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr);
+                thread_perms_wf_implies_map_perms_wf(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr);
             };
         }
         let current_container = krnl.thrd_mp.borrow_typed(current_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;

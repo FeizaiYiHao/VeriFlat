@@ -213,7 +213,7 @@ impl KernelK {
             reveal(kernel_u_cpu_tlb_cleared); kernel_u_domains_projection(&snap);
             if locked != kernel_k_to_kernel_u(*self) {
                 kernel_cpu_projection_at(&snap, cpu_id);
-                kernel_cpu_tlb_within_may_cache_projection(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));
+                cpu_tlb_within_may_cache_implies_cpu_tlb_within_may_cache_u(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));
                 assert(!locked.cpu_tlb.dom().contains((cpu_id, pcid)) || locked.cpu_tlb[(cpu_id, pcid)] != self.cpu_tlb.spec_index((cpu_id, pcid))) by {
                     if locked.cpu_tlb.dom().contains((cpu_id, pcid)) && locked.cpu_tlb[(cpu_id, pcid)] == self.cpu_tlb.spec_index((cpu_id, pcid)) {
                         assert_maps_equal!(locked.cpu_tlb, self.cpu_tlb.view(), key => {});

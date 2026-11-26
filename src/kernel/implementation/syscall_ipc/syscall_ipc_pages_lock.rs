@@ -389,7 +389,7 @@ fn ipc_pages_range_user(krnl: &KernelK, range: &VaRange4K, pagetable: RwLockPage
         pagetable_lock_perm.state() is ReadLock ==> krnl.pt_mp.spec_index(pagetable).read_lock_perm_match(&pagetable_lock_perm),
     ensures ret == (whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).kernel_l4_end() <= spec_va2index(range.start).0),
 {
-    proof { assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }; }
+    proof { assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }; }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_lock_perm));
     pt.higher.kernel_l4_end <= va2index(range.start).0
 }
@@ -417,7 +417,7 @@ fn ipc_pages_target_l2_present(
             },
 {
     proof {
-        assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(target_pagetable).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
+        assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(target_pagetable).inv()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
         target_range.wf_implies_view_index_is_start_plus_offset();
     }
@@ -1096,7 +1096,7 @@ fn ipc_pages_lock_tables_attempt(
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable);
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable);
         assert(krnl.pt_mp.spec_index(source_pagetable).inv() && krnl.pt_mp.spec_index(target_pagetable).inv()) by {
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
+            pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
         };
     }
     let (source_user, target_user, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(source_windows), Tracked(target_windows)) =

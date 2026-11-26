@@ -500,7 +500,7 @@ pub(super) fn new_process_lock_endpoint_and_source(
         proof { endpoint_lock_perm_opt = Some(endpoint_lock_perm); }
     }
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
+        pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     }
     let source_pagetable_lock_perm = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx));
@@ -593,7 +593,7 @@ pub(super) fn new_process_lock_source_windows(
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == root && ret.1.view().dom().contains(w)),
 {
     let start_indices = va2index(range.start);
-    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); }; }
+    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_implies_map_perms_wf(krnl.pt_mp); }; }
     let pagetable = krnl.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
     let tracked empty_perms: Map<WindowVa, LockPerm> = Map::tracked_empty();
     if pagetable.higher.kernel_l4_end > start_indices.0 {
