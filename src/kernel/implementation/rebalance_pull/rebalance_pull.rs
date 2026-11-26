@@ -144,7 +144,8 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
     {
         let Tracked(perm) = krnl.wlock_scheduler_shard(sched_ptr, next, Tracked(&mut *lctx));
         proof {
-            scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), next); krnl.sched_mp.spec_index(sched_ptr).shard(next).queue.wf_implies_view_len_eq_len();
+            scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr);
+            kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), next); krnl.sched_mp.spec_index(sched_ptr).shard(next).queue.wf_implies_view_len_eq_len();
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
         let shard = krnl.sched_mp.borrow_shard_typed(sched_ptr, next, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&perm));
@@ -487,7 +488,10 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     let mut local_lock_perm: Option<Tracked<LockPerm>> = None;
     if victim < cpu_id {
         let Tracked(local_perm) = krnl.wlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx));
-        proof { scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), cpu_id); krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.wf_implies_view_len_eq_len(); }
+        proof {
+            scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr);
+            kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), cpu_id); krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.wf_implies_view_len_eq_len();
+        }
         let local_len = krnl.sched_mp.borrow_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&local_perm)).queue.len();
         if local_len != 0 {
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
@@ -498,7 +502,10 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         }
         local_lock_perm = Some(Tracked(local_perm));
     }
-    proof { scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), victim); krnl.sched_mp.spec_index(sched_ptr).shard(victim).queue.wf_implies_view_len_eq_len(); }
+    proof {
+        scheduler_perms_wf_implies_map_perms_wf(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr);
+        kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), victim); krnl.sched_mp.spec_index(sched_ptr).shard(victim).queue.wf_implies_view_len_eq_len();
+    }
     let (_, thrd_ptr) = krnl.sched_mp.borrow_shard_typed(sched_ptr, victim, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(shard_perms.tracked_borrow(victim))).queue.peek_head();
     proof { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, victim, thrd_ptr); }
     let res = krnl.wlock_scheduled_thread_unless_killed(thrd_ptr, Tracked(&mut *lctx));

@@ -41,7 +41,7 @@ pub proof fn kernel_pci_entry_updated_implies_u_step(pre: &KernelK, post: &Kerne
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached();
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
@@ -103,7 +103,7 @@ pub proof fn kernel_pagetable_write_locked_and_progress_changed_implies_u_step(
 {
     hide(Map::filter_keys);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     kernel_thread_progress_changed_implies_u_thread_map(pre, post, thrd_ptr);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
@@ -191,7 +191,7 @@ pub proof fn kernel_pci_functions_released_implies_u_step(
 {
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
     if let Some(it) = iommu_table {
@@ -293,7 +293,7 @@ pub proof fn kernel_process_quota_returned_implies_u_step(pre: &KernelK, post: &
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container);
     kernel_process_quota_returned_implies_u_container_map(pre, post, prc_ptr, size);
     kernel_process_quota_returned_implies_u_process_map(pre, post, prc_ptr, size);
@@ -338,7 +338,7 @@ pub proof fn kernel_process_zombified_implies_u_step(pre: &KernelK, post: &Kerne
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container);
     kernel_process_zombified_implies_u_container_map(pre, post, prc_ptr, allc_ptr);
     kernel_process_zombified_implies_u_process_map(pre, post, prc_ptr);

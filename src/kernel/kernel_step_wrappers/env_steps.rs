@@ -39,7 +39,7 @@ pub proof fn iommu_tlb_within_may_cache_implies_iommu_tlb_within_may_cache_u(krn
     let anchor = pci_bdf_of_did(did);
     let root_table = krnl.irt.view();
     assert(pci_bdf_valid(anchor.0, anchor.1, anchor.2) && pci_bdf_did(anchor.0, anchor.1, anchor.2) == did) by (nonlinear_arith) requires vtd_domain_id_valid(did), anchor == pci_bdf_of_did(did);
-    kernel_u_user_domains_projection(krnl); root_table.user_view_eq_owners_and_attached();
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(krnl); root_table.user_view_eq_owners_and_attached();
     if root_table.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did) {
         let owner = root_table.spec_index_owner(anchor.0, anchor.1, anchor.2)->Some_0;
         let it = krnl.prc_mp.spec_index(owner).view().iommu_table->Some_0;
@@ -73,7 +73,7 @@ pub proof fn kernel_k_regs_changed_implies_u_step(pre: &KernelK, post: &KernelK,
     let post_u = kernel_k_to_kernel_u(*post);
     let t = pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
     cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert(kernel_u_regs_changed_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_regs_changed_step_pre); };
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(t, ThreadU { regs, ..pre_u.thread_map[t] }), x => {
         if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, x); }
@@ -96,7 +96,7 @@ pub proof fn kernel_k_trap_return_values_written_implies_u_step(pre: &KernelK, p
     let t = pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
     let thread = pre_u.thread_map[t];
     cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert(kernel_u_trap_return_values_written_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_return_values_written_step_pre); };
     kernel_thread_projection_at(pre, t);
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(t, ThreadU { regs: Registers { rax, rdx, rsi, ..thread.regs }, ..thread }), x => {
@@ -174,7 +174,7 @@ pub proof fn kernel_k_trap_enter_implies_u_step(pre: &KernelK, post: &KernelK, c
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert(kernel_u_trap_enter_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_enter_step_pre); };
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map, x => {
         let c = pre.thrd_mp.spec_index(x).view().state->RUNNING_cpu_id;
@@ -200,7 +200,7 @@ pub proof fn kernel_k_trap_return_implies_u_step(pre: &KernelK, post: &KernelK, 
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert(kernel_u_trap_return_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_return_step_pre); };
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map, x => {
         if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); }
@@ -224,7 +224,7 @@ pub proof fn kernel_k_trap_divert_implies_u_step(pre: &KernelK, post: &KernelK, 
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert(kernel_u_trap_divert_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_divert_step_pre); };
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map, x => {
         if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); }

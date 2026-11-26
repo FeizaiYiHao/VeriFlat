@@ -41,7 +41,7 @@ pub proof fn share_4k_leaf_step_pre_from_k(krnl: &KernelK, lctx: &LocalContext, 
             &&& u.thread_map.dom().contains(source_thread)
             &&& u.thread_map[source_thread].owning_proc == source
         }),
-{ kernel_share_4k_objects_projection(krnl, lctx, cpu_id); }
+{ share_4k_write_held_implies_share_4k_locked_and_objects_projected(krnl, lctx, cpu_id); }
 
 /// Copying the next recorded source entry into the target table is the leaf step on `pre`/`post`.
 pub proof fn share_4k_leaf_step_from_u(
@@ -326,7 +326,7 @@ pub proof fn share_4k_directory_step_from_k(
         },
     }
     kernel_thread_syscall_progress_changed_implies_u_step(mid, post, progress_thread);
-    kernel_share_4k_objects_projection(pre, pre_lctx, cpu_id);
+    share_4k_write_held_implies_share_4k_locked_and_objects_projected(pre, pre_lctx, cpu_id);
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;

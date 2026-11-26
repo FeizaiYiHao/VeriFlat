@@ -165,7 +165,7 @@ pub(super) proof fn ipc_reply_dangling_caller_held_step_pre_from_k(krnl: &Kernel
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_container == krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container,
 {
     reveal(ipc_reply_dangling_caller_held_step_pre);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr);
 }
 
 /// Reclaim steps recorded from `start` within `container`, the container of the running thread of `entry`, that keep the cpu and that

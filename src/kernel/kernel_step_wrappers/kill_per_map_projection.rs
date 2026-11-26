@@ -10,7 +10,7 @@ pub proof fn kernel_cpu_array_unchanged_implies_u_cpu_array(pre: &KernelK, post:
         post.cpu_op.view().view() == pre.cpu_op.view().view(),
     ensures kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array,
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert_seqs_equal!(kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array, i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
@@ -30,7 +30,7 @@ pub proof fn kernel_container_maps_unchanged_implies_u_container_map(pre: &Kerne
         post.allc_1g_mp == pre.allc_1g_mp,
     ensures kernel_k_to_kernel_u(*post).container_map == kernel_k_to_kernel_u(*pre).container_map,
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).container_map, kernel_k_to_kernel_u(*pre).container_map, c => {
         if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); }
     });
@@ -45,7 +45,7 @@ pub proof fn kernel_process_maps_unchanged_implies_u_process_map(pre: &KernelK, 
         post.it_mp == pre.it_mp,
     ensures kernel_k_to_kernel_u(*post).process_map == kernel_k_to_kernel_u(*pre).process_map,
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).process_map, kernel_k_to_kernel_u(*pre).process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); }
     });
@@ -60,7 +60,7 @@ pub proof fn kernel_thread_map_unchanged_implies_u_thread_map(pre: &KernelK, pos
         post.cpu_op.view().view() == pre.cpu_op.view().view(),
     ensures kernel_k_to_kernel_u(*post).thread_map == kernel_k_to_kernel_u(*pre).thread_map,
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, kernel_k_to_kernel_u(*pre).thread_map, t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); }
     });
@@ -71,7 +71,7 @@ pub proof fn kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre: &KernelK,
     requires post.ep_mp == pre.ep_mp,
     ensures kernel_k_to_kernel_u(*post).endpoint_map == kernel_k_to_kernel_u(*pre).endpoint_map,
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).endpoint_map, kernel_k_to_kernel_u(*pre).endpoint_map, e => {
         if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); kernel_endpoint_projection_at(post, e); }
     });
@@ -105,7 +105,7 @@ pub proof fn kernel_zombie_process_retired_implies_u_container_map(
                 owned_processes: container.owned_processes.remove(prc_ptr), quota_4k: post.allc_4k_mp.spec_index(allc_ptr).quota.view().view(), ..container })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let quota = post.allc_4k_mp.spec_index(allc_ptr).quota.view().view();
@@ -161,7 +161,7 @@ pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, 
         }),
 {
     hide(Map::filter_keys);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     kernel_process_projection_at(pre, prc_ptr);
@@ -222,7 +222,7 @@ pub proof fn kernel_process_quota_returned_implies_u_container_map(pre: &KernelK
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let ctn_ptr = pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container;
@@ -270,7 +270,7 @@ pub proof fn kernel_process_quota_returned_implies_u_process_map(pre: &KernelK, 
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
@@ -308,7 +308,7 @@ pub proof fn kernel_process_zombified_implies_u_container_map(pre: &KernelK, pos
             kernel_k_to_kernel_u(*post).container_map == a.container_map.insert(process.owning_container, ContainerU { free_pcids: container.free_pcids.insert(process.pcid), ..container })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let ctn_ptr = pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container;
@@ -348,7 +348,7 @@ pub proof fn kernel_process_zombified_implies_u_process_map(pre: &KernelK, post:
             kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(prc_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..a.process_map[prc_ptr] })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     kernel_process_projection_at(pre, prc_ptr);

@@ -95,7 +95,7 @@ pub(super) proof fn pci_claim_result_from_k(krnl: &KernelK, cpu_id: CpuId, bus: 
     let c = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
     kernel_cpu_projection_at(krnl, cpu_id);
     krnl.irt.view().user_view_eq_owners_and_attached();
-    kernel_u_domains_projection(krnl);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     if krnl.prc_mp.dom().contains(c.current_process->Some_0) {
         let process = krnl.prc_mp.spec_index(c.current_process->Some_0);
         kernel_process_projection_at(krnl, c.current_process->Some_0);

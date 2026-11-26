@@ -99,7 +99,7 @@ pub proof fn kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_im
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -192,7 +192,7 @@ pub proof fn kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -275,7 +275,7 @@ pub proof fn kernel_pagetable_downgraded_and_progress_changed_implies_u_step(pre
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -367,7 +367,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_impli
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     pre.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
@@ -483,7 +483,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_4k_mapping_added_pagetable_rloc
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);

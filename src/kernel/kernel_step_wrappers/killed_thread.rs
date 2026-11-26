@@ -180,7 +180,7 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] })
@@ -218,7 +218,7 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thrd_ptr] }), t => {
@@ -253,7 +253,7 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
     reveal(kernel_dangling_thread_reclaimed_fields);
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_sets_equal!(pre.thread_map.dom().difference(post.thread_map.dom()), set![dangling_ptr]);

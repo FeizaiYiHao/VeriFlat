@@ -86,7 +86,7 @@ pub proof fn kernel_container_retired_implies_u_step(pre: &KernelK, post: &Kerne
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let target = a.container_map[ctn_ptr];

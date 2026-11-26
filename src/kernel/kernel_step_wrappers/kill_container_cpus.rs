@@ -22,7 +22,7 @@ pub proof fn kernel_cpu_set_locked_and_marked_implies_u_step(before: &KernelK, a
             })
         }),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, ctn_ptr);
@@ -72,7 +72,7 @@ pub proof fn kernel_cpu_moved_to_container_implies_u_step(before: &KernelK, afte
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(before); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_container_projection_at(before, source);
@@ -104,7 +104,7 @@ pub proof fn kernel_container_without_cpus_implies_u(krnl: &KernelK, ctn_ptr: Rw
 {
     let u = kernel_k_to_kernel_u(*krnl);
     let other: RwLockContainerPtr = if ctn_ptr == 0usize { 1usize } else { 0usize };
-    kernel_u_domains_projection(krnl);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     assert_seqs_equal!(u.cpu_array == Seq::new(NUM_CPUS as nat, |i: int| if u.cpu_array[i].owning_container == ctn_ptr { CpuU { owning_container: other, ..u.cpu_array[i] } } else { u.cpu_array[i] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(krnl, i as usize); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, i as usize); }
     });

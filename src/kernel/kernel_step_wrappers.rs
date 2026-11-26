@@ -538,7 +538,9 @@ impl KernelSteps {
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_new_thread_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_u_domains_projection(krnl); };
+        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by {
+            reveal(kernel_new_thread_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&self.snapshot_k()); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
+        };
         self.end_kernel_step_raw(krnl, lctx);
     }
 
@@ -561,7 +563,9 @@ impl KernelSteps {
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_new_endpoint_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_u_domains_projection(krnl); };
+        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by {
+            reveal(kernel_new_endpoint_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&self.snapshot_k()); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
+        };
         self.end_kernel_step_raw(krnl, lctx);
     }
 
@@ -580,7 +584,9 @@ impl KernelSteps {
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_thread_exit_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_u_domains_projection(krnl); };
+        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by {
+            reveal(kernel_thread_exit_fields); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&self.snapshot_k()); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
+        };
         self.end_kernel_step_raw(krnl, lctx);
     }
 

@@ -11,7 +11,7 @@ pub proof fn kernel_container_ancestry_projection_at(krnl: &KernelK, container: 
 { reveal(kernel_k_to_kernel_u); }
 
 /// The projected map domains and scalar fields of the user projection, without unfolding any projected entry.
-pub proof fn kernel_u_domains_projection(krnl: &KernelK)
+pub proof fn kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl: &KernelK)
     ensures
         kernel_k_to_kernel_u(*krnl).cpu_array.len() == NUM_CPUS,
         kernel_k_to_kernel_u(*krnl).container_map.dom() == krnl.ctn_mp.dom(),
@@ -148,7 +148,7 @@ pub proof fn kernel_endpoint_queue_projection_at(krnl: &KernelK, endpoint: RwLoc
     ensures kernel_k_to_kernel_u(*krnl).endpoint_map[endpoint].queue == krnl.ep_mp.spec_index(endpoint).view().queue.view(),
 { reveal(kernel_k_to_kernel_u); }
 
-pub proof fn kernel_write_held_context_projection(krnl: &KernelK, lctx: &LocalContext, cpu: CpuId, process: RwLockProcessPtr, thread: RwLockThreadPtr, endpoint: Option<RwLockEndpointPtr>)
+pub proof fn write_held_context_implies_projected_context_write_locked(krnl: &KernelK, lctx: &LocalContext, cpu: CpuId, process: RwLockProcessPtr, thread: RwLockThreadPtr, endpoint: Option<RwLockEndpointPtr>)
     requires
         typed_lock_maps_aligned(krnl, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu, TypedLockMode::Write),
@@ -372,7 +372,7 @@ pub proof fn kernel_iommu_table_4k_unmapped_projection_at(krnl: &KernelK, proces
 
 /// Project the cpu and its running thread while the thread records a share, the objects that share
 /// names, the source thread's process, and the target page table's write lock.
-pub proof fn kernel_share_4k_objects_projection(krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId)
+pub proof fn share_4k_write_held_implies_share_4k_locked_and_objects_projected(krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId)
     requires
         typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),

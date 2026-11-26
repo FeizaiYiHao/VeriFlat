@@ -4,7 +4,7 @@ use crate::*;
 
 verus! {
 /// Every cpu slot of the user projection, without unfolding the other projected maps.
-pub proof fn kernel_u_cpu_array_projection(krnl: &KernelK)
+pub proof fn kernel_k_to_kernel_u_implies_cpu_array_from_cpu_arr(krnl: &KernelK)
     ensures
         kernel_k_to_kernel_u(*krnl).cpu_array.len() == NUM_CPUS,
         forall|c: CpuId| #![trigger kernel_k_to_kernel_u(*krnl).cpu_array[c as int]] index_valid(NUM_CPUS, c) ==> kernel_k_to_kernel_u(*krnl).cpu_array[c as int] == (CpuU {

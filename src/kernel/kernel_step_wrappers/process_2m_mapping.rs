@@ -174,7 +174,7 @@ broadcast proof fn kernel_owned_2m_page_implies_u_2m_mapping_frame_differs_at(k:
         kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m.dom().contains(v)
             ==> kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v].addr != addr,
 {
-    kernel_u_domains_projection(&k);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&k);
     if k.prc_mp.dom().contains(p) {
         kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
         reveal(mapped_2m_page_pagetable_wf);
@@ -205,7 +205,7 @@ broadcast proof fn kernel_owned_2m_page_implies_u_4k_mapping_outside_its_frame_a
         kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
             ==> !(addr <= kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v].addr < addr + 0x200000),
 {
-    kernel_u_domains_projection(&k);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&k);
     if k.prc_mp.dom().contains(p) {
         let pt = k.prc_mp.spec_index(p).view().pagetable;
         let head = page_ptr2page_index(addr);
@@ -250,7 +250,7 @@ broadcast proof fn kernel_owned_2m_page_implies_u_iommu_4k_mapping_outside_its_f
         kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].iommu_table is Some && kernel_k_to_kernel_u(k).process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
             ==> !(addr <= kernel_k_to_kernel_u(k).process_map[p].iommu_table->Some_0.mapping_4k[v].addr < addr + 0x200000),
 {
-    kernel_u_domains_projection(&k);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&k);
     if k.prc_mp.dom().contains(p) { kernel_process_projection_at(&k, p); }
     if k.prc_mp.dom().contains(p) && k.prc_mp.spec_index(p).view().iommu_table is Some {
         let it = k.prc_mp.spec_index(p).view().iommu_table->Some_0;
@@ -296,7 +296,7 @@ broadcast proof fn kernel_owned_4k_page_implies_u_4k_mapping_target_differs_at(k
         kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
             ==> kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v].addr != addr,
 {
-    kernel_u_domains_projection(&k);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&k);
     if k.prc_mp.dom().contains(p) {
         let pt = k.prc_mp.spec_index(p).view().pagetable;
         kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
@@ -345,7 +345,7 @@ broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k:
         kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m.dom().contains(v)
             ==> !(kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v].addr <= addr < kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v].addr + 0x200000),
 {
-    kernel_u_domains_projection(&k);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(&k);
     if k.prc_mp.dom().contains(p) {
         let pt = k.prc_mp.spec_index(p).view().pagetable;
         kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
@@ -485,7 +485,7 @@ pub proof fn kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rloc
     table.wf_l2_at(table.window_l2_page(idx.0, idx.1), idx.2);
     table.higher.wf_mapping_1g_at(idx.0, idx.1);
     reveal(WholePageTable::wf_mapping_4k);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -562,7 +562,7 @@ pub proof fn kernel_pagetable_2m_present_cleared_and_progress_changed_implies_u_
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(process_pagetable_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;

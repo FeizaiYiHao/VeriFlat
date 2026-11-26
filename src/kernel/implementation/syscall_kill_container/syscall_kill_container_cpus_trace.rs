@@ -44,14 +44,14 @@ pub(crate) proof fn kill_container_cpus_pre_from_k(
         }),
 {
     let owner = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id);
     krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), owner); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
     krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
     kernel_process_projection_at(krnl, prc_ptr); kernel_thread_projection_at(krnl, thrd_ptr);
     assert(krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     let set_ptr = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set;
     if typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), set_ptr, TypedLockMode::Write) { krnl.cpu_set_mp.typed_lock_map_aligned_write_at(lctx.cpu_set_lock_map(), lctx.thread_id(), set_ptr); }
-    kernel_container_projection_at(krnl, owner); kernel_container_projection_at(krnl, ctn_ptr); kernel_u_domains_projection(krnl);
+    kernel_container_projection_at(krnl, owner); kernel_container_projection_at(krnl, ctn_ptr); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     reveal(kill_container_step_pre);
 }
 
@@ -74,7 +74,7 @@ pub(crate) proof fn kill_container_move_cpu_pre_from_k(krnl: &KernelK, moved: Cp
             &&& cpu.lock_state is Unlocked
         }),
         forall|j: int| #![trigger kernel_k_to_kernel_u(*krnl).cpu_array[j]] 0 <= j < moved ==> kernel_k_to_kernel_u(*krnl).cpu_array[j].owning_container != ctn_ptr,
-{ kernel_cpu_projection_at(krnl, moved); kernel_u_cpu_array_projection(krnl); reveal(container_cpu_wf); }
+{ kernel_cpu_projection_at(krnl, moved); kernel_k_to_kernel_u_implies_cpu_array_from_cpu_arr(krnl); reveal(container_cpu_wf); }
 
 /// Marking and write-locking the cpu set of the marked target `ctn_ptr`, which has no child containers and no
 /// processes, and moving the kill on to its cpus is a middle step of the container kill.

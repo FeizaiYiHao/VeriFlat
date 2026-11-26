@@ -18,7 +18,7 @@ pub proof fn kernel_container_quota_1g_changed_implies_u_step(pre: &KernelK, pos
             }), ..kernel_k_to_kernel_u(*pre)
         }),
 {
-    reveal(kernel_container_quota_1g_changed); kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_thread_nonlock_fields_unchanged);
+    reveal(kernel_container_quota_1g_changed); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(kernel_thread_nonlock_fields_unchanged);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     if pre.ctn_mp.dom().contains(container) { kernel_container_projection_at(pre, container); } if post.ctn_mp.dom().contains(container) { kernel_container_projection_at(post, container); }
@@ -73,7 +73,7 @@ pub proof fn kernel_page_freed_to_owner_quota_1g_implies_u_step(
     kernel_container_quota_1g_changed_implies_u_step(&mid, post, owner, 1);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_container_projection_at(pre, origin);
     assert(kernel_u_container_quota_1g_increased(a, b, origin)) by {
         reveal(kernel_u_container_quota_1g_increased);
         kernel_container_ancestry_projection_at(pre, origin);
@@ -163,7 +163,7 @@ pub(super) proof fn kernel_process_quota_1g_changed_implies_u_step(pre: &KernelK
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_only_process_quota_1g_changed); reveal(kernel_process_quota_1g_changed); reveal(kernel_endpoint_nonlock_fields_unchanged);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_container_user_projection_at(pre, ctn_ptr); kernel_process_user_projection_at(pre, prc_ptr);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
@@ -189,7 +189,7 @@ proof fn kernel_process_quota_1g_changed_implies_u_container_map(pre: &KernelK, 
 {
     hide(kernel_k_user_projection);
     reveal(kernel_process_quota_1g_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let container = pre_u.container_map.spec_index(ctn_ptr);
@@ -213,7 +213,7 @@ proof fn kernel_process_quota_1g_changed_implies_u_process_map(pre: &KernelK, po
 {
     hide(kernel_k_user_projection);
     reveal(kernel_process_quota_1g_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
@@ -232,7 +232,7 @@ pub(super) proof fn kernel_process2thread_quota_1g_changed_implies_u_step(pre: &
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_only_process2thread_quota_1g_changed); reveal(kernel_process2thread_quota_1g_changed);
-    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_k_user_projection_implies_domains_and_scalars_from_k(pre); kernel_k_user_projection_implies_domains_and_scalars_from_k(post);
     kernel_cpu_user_projection_at(pre, cpu_id); kernel_process_user_projection_at(pre, prc_ptr); kernel_thread_user_projection_at(pre, thrd_ptr);
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);

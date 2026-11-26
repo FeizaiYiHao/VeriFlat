@@ -60,7 +60,7 @@ pub proof fn refund_unmap_1g_step_pre_from_k(krnl: &KernelK, entry: &KernelK, lc
     if !typed_lock_map_contains_mode(held.process_lock_map(), entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc, TypedLockMode::Write) {
         process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
     }
-    kernel_write_held_context_projection(krnl, lctx, held.cpu_id(), entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, held.cpu_id(), entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc, thrd_ptr, None);
     kernel_cpu_projection_at(krnl, held.cpu_id()); kernel_cpu_projection_at(entry, held.cpu_id());
     entry.prc_mp.typed_lock_map_aligned_held_in_dom(held.process_lock_map(), held.thread_id()); broadcast use kernel_process_lock_state_projection_at;
     let owner_table = entry.prc_mp.spec_index(entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc).view().pagetable;

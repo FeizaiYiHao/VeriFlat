@@ -125,7 +125,7 @@ pub(super) proof fn unmap_pci_bar_4k_hide_step_from_k(
         unmap_pci_bar_4k_function(kernel_k_to_kernel_u(*krnl), cpu_id, va) == pci_bar_function_of_page(krnl.pci_bars.view(), addr)->0,
 {
     unmap_pci_bar_4k_result_from_k(krnl, cpu_id, va, RetValueType::Success);
-    kernel_u_domains_projection(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
     reveal(unmap_pci_bar_4k_hide_step_pre); reveal(unmap_pci_bar_4k_hide_step);
     let pre = kernel_k_to_kernel_u(*krnl);
     let t = pre.process_map[prc_ptr].pagetable->Some_0;
@@ -179,7 +179,7 @@ pub(super) proof fn unmap_pci_bar_4k_flush_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pcid == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid,
 {
     reveal(unmap_pci_bar_4k_flush_step_pre);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_u_domains_projection(krnl);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(krnl);
     krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
 }
@@ -330,7 +330,7 @@ pub(super) proof fn unmap_pci_bar_4k_exit_step_from_k(
         unmap_pci_bar_4k_flushed_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         unmap_pci_bar_4k_exit_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, f),
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    write_held_context_implies_projected_context_write_locked(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     kernel_pagetable_mappings_projection_at(krnl, prc_ptr); kernel_process_projection_at(krnl, prc_ptr);
     reveal(unmap_pci_bar_4k_flushed_step_pre); reveal(unmap_pci_bar_4k_exit_step);

@@ -3,7 +3,7 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_process::syscall_kill_process_retire_spec::{kill_retire_eof_transition_framing, kill_retire_pages, kill_retire_tables_emptied};
 #[cfg(verus_keep_ghost)]
-use super::super::syscall_kill_process::syscall_kill_process_retire_pages::kill_retire_pages_held_and_owned;
+use super::super::syscall_kill_process::syscall_kill_process_retire_pages::kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_process::syscall_kill_process_retire_eof_memory::kill_retire_eof_memory;
 #[cfg(verus_keep_ghost)]
@@ -117,7 +117,7 @@ pub(crate) proof fn kill_container_retire_root_eof(
     kill_container_retire_root_eof_tree(pre, post, cpu_id, target, ctn_ptr, allc_ptr);
     assert(container_perms_wf(post.ctn_mp)) by { reveal(kill_retire_eof_transition_framing); reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(kill_retire_eof_transition_framing); reveal(process_perms_wf); };
-    kill_retire_pages_held_and_owned(pre, target, kill_retire_pages(pre, target).to_set(), allc_ptr, cpu_id);
+    kernel_inv_implies_kill_retire_pages_held_allocated_4k_and_uncached(pre, target, kill_retire_pages(pre, target).to_set(), allc_ptr, cpu_id);
     kill_retire_eof_memory(pre, post, cpu_id, target, None, ctn_ptr, allc_ptr);
     kill_retire_eof_container_relations(pre, post, cpu_id, target, None, ctn_ptr, allc_ptr);
     kill_retire_eof_process_relations(pre, post, lctx, cpu_id, target, None, ctn_ptr, allc_ptr);

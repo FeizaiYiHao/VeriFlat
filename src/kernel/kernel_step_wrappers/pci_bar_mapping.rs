@@ -78,7 +78,7 @@ pub proof fn kernel_pci_bar_mapped_implies_u_step(pre: &KernelK, post: &KernelK,
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(process_pagetable_wf);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let prc_ptr = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
@@ -144,7 +144,7 @@ pub proof fn kernel_pci_bar_unmapped_implies_u_step(pre: &KernelK, post: &Kernel
             &&& a != kernel_k_to_kernel_u(*post)
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
+    kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(pre); kernel_k_to_kernel_u_implies_domains_and_scalars_from_k(post); reveal(process_pagetable_wf);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let prc_ptr = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
